@@ -1,0 +1,38 @@
+[Unit]
+Description=Streamlit App - app myogait
+After=network.target
+
+[Service]
+Type=simple
+User=streamlit
+Group=streamlit
+WorkingDirectory=/opt/streamlit/apps/app-myogait
+
+# Workspace lives outside the source tree: everything in it is deleted on
+# a fixed clock, and it must never sit next to the code.
+Environment=MYOGAIT_APP_WORKSPACE=/var/lib/app-myogait
+Environment=MYOGAIT_APP_RETENTION_HOURS=24
+Environment=MYOGAIT_APP_MAX_UPLOAD_MB=2048
+# One extraction at a time today. Raise when the server can take it --
+# the queue needs no code change.
+Environment=MYOGAIT_APP_MAX_JOBS=1
+# Optional drop folder: a 2 GB file copied here over SMB or scp avoids
+# pushing it through the browser uploader.
+Environment=MYOGAIT_APP_WATCH_DIR=/var/lib/app-myogait/incoming
+
+ExecStart=/opt/streamlit/apps/app-myogait/.venv/bin/streamlit run app.py \
+    --server.port 8502 \
+    --server.baseUrlPath /apps/app-myogait \
+    --server.headless true \
+    --server.maxUploadSize 2048
+
+Restart=always
+RestartSec=5
+
+# The workspace is the only path the service needs to write.
+ReadWritePaths=/var/lib/app-myogait
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

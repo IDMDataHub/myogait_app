@@ -1,0 +1,18 @@
+[server]
+# Matches Settings.max_upload_mb and nginx client_max_body_size.
+# A 2 GB upload is buffered server-side; see deploy/nginx-location.conf.
+maxUploadSize = 2048
+maxMessageSize = 2048
+enableXsrfProtection = true
+headless = true
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+# Neutral identity. Colours are mirrored in myogait_app/branding.py;
+# change both together when the lab identity is applied.
+primaryColor = "#2F6FEB"
+
+[runner]
+fastReruns = true

@@ -1,0 +1,24 @@
+# Interface
+streamlit>=1.38
+plotly>=5.24
+
+# Core toolkit -- tracked from the repository as requested, so the app
+# always exercises the latest myogait rather than a frozen PyPI release.
+# Pin to a tag here if a study needs a reproducible environment.
+myogait[mediapipe,yolo,excel,yaml,c3d,loess,wavelet] @ git+https://github.com/IDMDataHub/myogait.git@main
+
+# myogait requires >=1.4.8 for the gk_* event detectors used by the
+# comparator. Stated explicitly because older environments carry 1.3.x.
+gaitkit>=1.4.8
+
+# Scientific stack (also pulled by myogait, listed for clarity)
+numpy>=1.24
+pandas>=2.0
+scipy>=1.11
+matplotlib>=3.7
+
+# Optional backends -- install on machines that can run them:
+#   pip install "myogait[vitpose]"     # ViTPose
+#   pip install "myogait[rtmw]"        # RTMW whole-body (133 kp)
+#   pip install "myogait[sapiens2]"    # Sapiens 2, then: myogait setup-sapiens2
+#   pip install intel-extension-for-pytorch   # Intel Arc / Xe acceleration
