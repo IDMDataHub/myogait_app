@@ -22,7 +22,9 @@ from myogait_app.ui import (
     page_data,
     page_experimental,
     page_export,
+    page_longitudinal,
     page_pipeline,
+    page_reference,
     sidebar,
     state,
 )
@@ -50,10 +52,12 @@ PAGES = {
     "Data": page_data.render,
     "Pipeline explorer": page_pipeline.render,
     "Comparator": page_compare.render,
+    "Longitudinal": page_longitudinal.render,
     "Export": page_export.render,
 }
 if SETTINGS.enable_experimental:
     PAGES["Experimental"] = page_experimental.render
+PAGES["Reference"] = page_reference.render
 
 
 def main() -> None:
@@ -76,8 +80,9 @@ def main() -> None:
 
         # The configuration panel is only useful once there is something
         # to apply it to, and showing thirty disabled controls on first
-        # load would bury the one action that matters.
-        if source is not None and page != "Data":
+        # load would bury the one action that matters. Reference is pure
+        # documentation and never needs it, loaded source or not.
+        if source is not None and page not in ("Data", "Reference"):
             st.markdown("**Pipeline configuration**")
             state.set_config(sidebar.render(state.get_config()))
             if st.button("Reset to defaults", use_container_width=True):

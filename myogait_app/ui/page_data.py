@@ -1,19 +1,19 @@
 """Getting data into the workbench.
 
-Four ways in, in ascending order of cost: the synthetic dataset, a pivot
-JSON, a video already sitting on the server, and a browser upload. The
-last two run extraction as a background job and hand back a ticket,
-because anything heavier than MediaPipe outlives the browser session.
+Three ways in, in ascending order of cost: a pivot JSON, a video already
+sitting on the server, and a browser upload. The last two run extraction
+as a background job and hand back a ticket, because anything heavier
+than MediaPipe outlives the browser session.
 """
 
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 
 import streamlit as st
 
-from ..demo import DEMO_PRESETS, make_demo_data
 from ..jobs import DONE, FAILED, JobManager, RUNNING
 from ..runtime import SAPIENS_BACKENDS, get_runtime
 from ..settings import SETTINGS
@@ -29,6 +29,18 @@ from .components import (
 
 #: Extensions myogait can open.
 VIDEO_TYPES = ["mp4", "mov", "avi", "mkv", "m4v"]
+
+#: The full mediapipe-style landmark set the pipeline expects. A C3D
+#: marker mapping rarely covers all of them (the package default has no
+#: elbow or wrist, for instance), so this is the reference used to report
+#: what a loaded file actually matched.
+MEDIAPIPE_LANDMARKS = (
+    "NOSE", "LEFT_EYE", "RIGHT_EYE", "LEFT_EAR", "RIGHT_EAR",
+    "LEFT_SHOULDER", "RIGHT_SHOULDER", "LEFT_ELBOW", "RIGHT_ELBOW",
+    "LEFT_WRIST", "RIGHT_WRIST", "LEFT_HIP", "RIGHT_HIP",
+    "LEFT_KNEE", "RIGHT_KNEE", "LEFT_ANKLE", "RIGHT_ANKLE",
+    "LEFT_HEEL", "RIGHT_HEEL", "LEFT_FOOT_INDEX", "RIGHT_FOOT_INDEX",
+)
 
 
 @st.cache_resource
@@ -53,14 +65,14 @@ def render() -> None:
             st.rerun()
         st.divider()
 
-    tab_demo, tab_json, tab_video, tab_ticket = st.tabs(
-        ["Synthetic data", "Pivot JSON", "Video -> extraction", "Recover a job"]
+    tab_json, tab_c3d, tab_video, tab_ticket = st.tabs(
+        ["Pivot JSON", "C3D", "Video -> extraction", "Recover a job"]
     )
 
-    with tab_demo:
-        _demo_tab()
     with tab_json:
         _json_tab()
+    with tab_c3d:
+        _c3d_tab()
     with tab_video:
         _video_tab()
     with tab_ticket:
@@ -68,39 +80,6 @@ def render() -> None:
 
     st.divider()
     storage_banner()
-
-
-# ── Synthetic ────────────────────────────────────────────────────────
-
-
-def _demo_tab() -> None:
-    st.caption(
-        "A generated gait-like signal. It exists so every control can be "
-        "exercised before a real recording is committed to the app - and so the "
-        "app can be tested without one."
-    )
-    preset_name = st.selectbox("Preset", list(DEMO_PRESETS))
-    preset = DEMO_PRESETS[preset_name]
-    st.info(preset["note"])
-
-    columns = st.columns(2)
-    n_frames = columns[0].slider("Frames", 100, 1200, 300, 50)
-    fps = columns[1].select_slider("Frame rate", [25.0, 30.0, 50.0, 60.0], value=30.0)
-
-    if st.button("Load synthetic dataset", type="primary", use_container_width=True):
-        parameters = {k: v for k, v in preset.items() if k != "note"}
-        data = make_demo_data(n_frames=n_frames, fps=fps, **parameters)
-        state.set_source(
-            state.Source(
-                kind="demo",
-                name=f"{preset_name} ({n_frames} frames)",
-                data=data,
-                key=state.source_key(preset_name, (n_frames, fps, tuple(sorted(parameters.items())))),
-                model="synthetic",
-                note=preset["note"],
-            )
-        )
-        st.rerun()
 
 
 # ── Pivot JSON ───────────────────────────────────────────────────────
@@ -159,6 +138,269 @@ def _load_pivot(path: Path, name: str) -> None:
             key=state.source_key(name, (path.stat().st_size, path.stat().st_mtime)),
             model=model,
             path=path,
+        )
+    )
+    st.rerun()
+
+
+# ── C3D ──────────────────────────────────────────────────────────────
+
+
+def _c3d_tab() -> None:
+    runtime = get_runtime()
+    if not runtime.has("c3d_import"):
+        st.caption(runtime.missing_feature_hint("c3d_import"))
+        return
+
+    st.caption(
+        "Loads 3-D marker trajectories from a motion-capture trial and projects "
+        "them into the same sagittal-plane pivot format a video extraction "
+        "produces, so the whole downstream pipeline runs on it unchanged."
+    )
+    if runtime.c3d_isotropic_native:
+        st.caption(
+            f"myogait {runtime.myogait_version} normalises the antero-posterior "
+            "and vertical axes isotropically inside load_c3d itself (fixed in "
+            "0.8.0), so no aspect-ratio recovery is needed or offered here."
+        )
+    else:
+        st.warning(
+            f"myogait {runtime.myogait_version or ''} normalises the "
+            "antero-posterior and vertical axes independently, but reports a "
+            "square virtual canvas - so compute_angles' own aspect-ratio "
+            "correction never triggers for a C3D source. This can bias angles "
+            "and segment lengths whenever the two axes cover different "
+            "physical ranges, which is typically true for a walking trial. "
+            "The option below corrects it by reading the true ranges back out "
+            "of the file. Upgrading to myogait >= 0.8.0 fixes this upstream "
+            "instead."
+        )
+
+    uploaded = st.file_uploader("C3D file", type=["c3d"], key="c3d_upload")
+
+    from myogait.experimental_vicon import DEFAULT_C3D_MARKER_MAP
+
+    target: Path | None = None
+    labels: list[str] = []
+    detected_mapping: dict[str, list[str]] = {}
+    detected_source: dict[str, str] = {}
+    if uploaded is not None:
+        workspace = state.workspace()
+        target = workspace.path_for(uploaded.name)
+        if not target.exists() or target.stat().st_size != uploaded.size:
+            target.write_bytes(uploaded.getbuffer())
+        try:
+            from ..marker_presets import auto_detect_mapping, read_c3d_labels
+
+            labels = read_c3d_labels(target)
+            detected_mapping, detected_source = auto_detect_mapping(labels)
+        except Exception as exc:
+            st.caption(f"Could not pre-scan marker labels: {type(exc).__name__}: {exc}")
+
+    with st.expander("Marker mapping and axes", expanded=False):
+        if uploaded is not None:
+            n_found = sum(1 for lm in MEDIAPIPE_LANDMARKS if lm in detected_mapping)
+            st.caption(
+                f"Auto-detected {n_found}/{len(MEDIAPIPE_LANDMARKS)} tracked "
+                f"landmarks from {len(labels)} markers in the file (package "
+                "default and Plug-in Gait aliases, then a side/keyword scan "
+                "for anything left over)."
+            )
+            st.dataframe(
+                [
+                    {
+                        "Landmark": lm,
+                        "Matched marker(s)": ", ".join(detected_mapping.get(lm, [])) or "—",
+                        "Via": detected_source.get(lm, "—"),
+                    }
+                    for lm in MEDIAPIPE_LANDMARKS
+                ],
+                use_container_width=True,
+                hide_index=True,
+            )
+            st.divider()
+
+        mapping_mode = st.radio(
+            "Marker mapping",
+            [
+                "Auto-detect (recommended)",
+                "Package default (myogait's built-in set)",
+                "Structured fields",
+                "Raw JSON",
+            ],
+            horizontal=True,
+            key="c3d_map_mode",
+            help="Auto-detect scans the uploaded file's own labels against "
+                 "known conventions (the package default, Vicon Plug-in Gait) "
+                 "plus a fuzzy side/keyword fallback, so files from different "
+                 "projects or labs do not need a hand-written mapping. "
+                 "Package default has no elbow or wrist, so arm-swing "
+                 "analysis needs auto-detect or a custom mapping.",
+        )
+        mapping = _c3d_marker_mapping(
+            mapping_mode, DEFAULT_C3D_MARKER_MAP, detected_mapping or None
+        )
+
+        st.divider()
+        columns = st.columns(2)
+        axis_labels = {0: "0 (X)", 1: "1 (Y)", 2: "2 (Z)"}
+        ap_axis = columns[0].selectbox(
+            "Antero-posterior axis", [0, 1, 2], index=1,
+            format_func=lambda i: axis_labels[i], key="c3d_ap_axis",
+            help="Vicon standard: Y (1).",
+        )
+        vertical_axis = columns[1].selectbox(
+            "Vertical axis", [0, 1, 2], index=2,
+            format_func=lambda i: axis_labels[i], key="c3d_vert_axis",
+            help="Vicon standard: Z (2).",
+        )
+
+        st.divider()
+        if runtime.c3d_isotropic_native:
+            fix_aspect = False
+            st.caption(
+                "Aspect-ratio recovery: not offered - load_c3d already "
+                "normalises isotropically on this myogait version (see above)."
+            )
+        else:
+            fix_aspect = st.checkbox(
+                "Correct the aspect ratio from the file (recommended)",
+                value=True,
+                key="c3d_fix_aspect",
+                help="Re-reads the file to recover the true antero-posterior "
+                     "and vertical ranges and sets them as meta.width/height, "
+                     "so compute_angles' aspect-ratio correction has something "
+                     "to act on. Turn off to reproduce the package's raw "
+                     "behaviour.",
+            )
+
+    if uploaded is not None and target is not None and st.button(
+        "Load C3D", type="primary", use_container_width=True, key="c3d_load"
+    ):
+        if mapping is None and mapping_mode != "Package default (myogait's built-in set)":
+            st.error("Fix the marker mapping above before loading.")
+            return
+        _load_c3d(target, uploaded.name, mapping, int(ap_axis), int(vertical_axis), fix_aspect)
+
+
+def _c3d_marker_mapping(
+    mode: str, defaults: dict, detected: dict[str, list[str]] | None
+) -> dict | None:
+    """Return the mapping for *mode*, or ``None`` for the package default.
+
+    ``None`` is meaningful for the package-default mode: it tells
+    ``load_c3d`` to use its own ``DEFAULT_C3D_MARKER_MAP`` rather than a
+    copy of it built here, so the two stay in sync automatically if the
+    package's default ever changes.
+    """
+    if mode == "Package default (myogait's built-in set)":
+        return None
+
+    if mode == "Auto-detect (recommended)":
+        if not detected:
+            st.error(
+                "No markers were auto-detected yet - upload a file first, "
+                "or switch to a manual mapping mode."
+            )
+            return None
+        return detected
+
+    # Structured fields and Raw JSON both seed from whatever auto-detect
+    # already found, so a manual edit starts from a working mapping instead
+    # of the package default's own (narrower) landmark set.
+    seed = detected or defaults
+
+    if mode == "Structured fields":
+        st.caption(
+            "One row per myogait landmark, pre-filled from auto-detection "
+            "where available. Comma-separated candidate marker names - all "
+            "that are found in the file are averaged."
+        )
+        mapping: dict[str, list[str]] = {}
+        for landmark in sorted(set(defaults) | set(seed)):
+            candidates = seed.get(landmark) or defaults.get(landmark, [])
+            raw = st.text_input(
+                landmark, value=", ".join(candidates), key=f"c3d_map_{landmark}"
+            )
+            names = [c.strip() for c in raw.split(",") if c.strip()]
+            if names:
+                mapping[landmark] = names
+        return mapping
+
+    st.caption('`{"LANDMARK_NAME": ["MARKER1", "MARKER2"], ...}`')
+    raw_json = st.text_area(
+        "Mapping JSON", value=json.dumps(seed, indent=2), height=240,
+        key="c3d_map_json",
+    )
+    try:
+        return json.loads(raw_json)
+    except Exception as exc:
+        st.error(f"Invalid JSON: {exc}")
+        return None
+
+
+def _load_c3d(
+    path: Path,
+    name: str,
+    mapping: dict | None,
+    ap_axis: int,
+    vertical_axis: int,
+    fix_aspect: bool,
+) -> None:
+    """Load a C3D trial and install it, correcting the aspect ratio if asked."""
+    try:
+        from myogait import load_c3d
+
+        data = load_c3d(
+            str(path), marker_mapping=mapping, ap_axis=ap_axis, vertical_axis=vertical_axis
+        )
+    except Exception as exc:
+        st.error(f"Could not read the C3D file: {type(exc).__name__}: {exc}")
+        return
+
+    if not data.get("frames"):
+        st.error("This file produced no frames - check the marker mapping.")
+        return
+
+    from myogait.experimental_vicon import DEFAULT_C3D_MARKER_MAP
+
+    effective_mapping = mapping or DEFAULT_C3D_MARKER_MAP
+    ranges: tuple[float, float] | None = None
+    if fix_aspect:
+        try:
+            from ..c3d_utils import marker_axis_ranges
+
+            ranges = marker_axis_ranges(path, effective_mapping, ap_axis, vertical_axis)
+            data["meta"]["width"], data["meta"]["height"] = ranges
+        except Exception as exc:
+            st.warning(
+                f"Could not recover the true axis ratio, keeping the file's "
+                f"raw (square) canvas: {type(exc).__name__}: {exc}"
+            )
+
+    matched = sorted((data["frames"][0].get("landmarks") or {}).keys())
+    missing = [lm for lm in MEDIAPIPE_LANDMARKS if lm not in matched]
+
+    state.set_source(
+        state.Source(
+            kind="c3d",
+            name=name,
+            data=data,
+            key=state.source_key(
+                name,
+                (path.stat().st_size, path.stat().st_mtime, ap_axis, vertical_axis, fix_aspect),
+            ),
+            model="vicon",
+            path=path,
+            c3d_options={
+                "marker_mapping": mapping,
+                "ap_axis": ap_axis,
+                "vertical_axis": vertical_axis,
+                "fix_aspect_ratio": fix_aspect,
+                "matched_landmarks": matched,
+                "missing_landmarks": missing,
+                "ranges": ranges,
+            },
         )
     )
     st.rerun()

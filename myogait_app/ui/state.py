@@ -32,19 +32,24 @@ K_CONFIG = "mg_config"
 K_RUNNER = "mg_runner"
 K_COMPARE = "mg_compare_results"
 K_TICKETS = "mg_known_tickets"
+K_LONGITUDINAL = "mg_longitudinal_sessions"
 
 
 @dataclass
 class Source:
     """The extraction currently loaded into the workbench."""
 
-    kind: str  # demo | json | video
+    kind: str  # demo | json | video | c3d
     name: str
     data: dict
     key: str
     model: str = "unknown"
     path: Path | None = None
     note: str = ""
+    #: C3D-specific loading parameters (marker_mapping, axes, aspect-ratio
+    #: fix, matched/missing landmarks) -- set only when kind == "c3d", so
+    #: the reproducibility panel can regenerate the exact load_c3d call.
+    c3d_options: dict | None = None
 
     @property
     def n_frames(self) -> int:
@@ -68,6 +73,10 @@ class Source:
     def is_demo(self) -> bool:
         return self.kind == "demo"
 
+    @property
+    def is_c3d(self) -> bool:
+        return self.kind == "c3d"
+
 
 def source_key(name: str, payload: Any) -> str:
     """Stable identifier for a source, used as the cache root.
@@ -89,6 +98,7 @@ def init() -> None:
     st.session_state.setdefault(K_RUNNER, None)
     st.session_state.setdefault(K_COMPARE, {})
     st.session_state.setdefault(K_TICKETS, [])
+    st.session_state.setdefault(K_LONGITUDINAL, [])
 
 
 # ── Source ───────────────────────────────────────────────────────────
@@ -158,6 +168,17 @@ def get_compare() -> dict:
 
 def set_compare(results: dict) -> None:
     st.session_state[K_COMPARE] = results
+
+
+# ── Longitudinal ─────────────────────────────────────────────────────
+
+
+def get_longitudinal_sessions() -> list[dict]:
+    return st.session_state.get(K_LONGITUDINAL) or []
+
+
+def set_longitudinal_sessions(sessions: list[dict]) -> None:
+    st.session_state[K_LONGITUDINAL] = sessions
 
 
 # ── Job tickets ──────────────────────────────────────────────────────

@@ -5,7 +5,17 @@ plotly>=5.24
 # Core toolkit -- tracked from the repository as requested, so the app
 # always exercises the latest myogait rather than a frozen PyPI release.
 # Pin to a tag here if a study needs a reproducible environment.
-myogait[mediapipe,yolo,excel,yaml,c3d,loess,wavelet] @ git+https://github.com/IDMDataHub/myogait.git@main
+#
+# The [c3d] extra is deliberately NOT requested here: myogait's pyproject
+# pins it to ezc3d>=2.0, and PyPI has never published an ezc3d 2.x wheel
+# (1.7.2 is the latest as of this writing) -- requesting [c3d] makes this
+# entire install fail with "No matching distribution found for ezc3d>=2.0"
+# on every platform. C3D import only needs ezc3d itself (any version it
+# can resolve); C3D export needs the separate `c3d` package. Both are
+# listed below, unbundled, so the install succeeds and both features work.
+myogait[mediapipe,yolo,excel,yaml,loess,wavelet] @ git+https://github.com/IDMDataHub/myogait.git@master
+ezc3d
+c3d>=0.5
 
 # myogait requires >=1.4.8 for the gk_* event detectors used by the
 # comparator. Stated explicitly because older environments carry 1.3.x.

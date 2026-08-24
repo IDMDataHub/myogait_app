@@ -39,6 +39,9 @@ FIGURE_SPECS: dict[str, dict] = {
     # Takes the segmentation itself, not the score dict -- it derives the
     # gait variable scores internally.
     "plot_gvs_profile": {"args": ("cycles",), "label": "GVS / Movement Analysis Profile"},
+    # Stratum defaults to "adult", same as plot_gvs_profile above -- not
+    # exposed as a control here, to keep this tab's surface small.
+    "plot_frontal_comparison": {"args": ("cycles",), "label": "Frontal-plane comparison"},
 }
 
 
@@ -82,7 +85,9 @@ def render() -> None:
     st.divider()
     reproducibility_panel(
         config, source_name=source.name, model=source.model,
-        from_json=True, key="export",
+        from_json=True,
+        c3d_options=source.c3d_options if source.kind == "c3d" else None,
+        key="export",
     )
 
 
@@ -119,6 +124,12 @@ def _data_tab(result: PipelineResult, source: state.Source) -> None:
             )
         if st.button("CSV bundle", use_container_width=True, key="exp_csv"):
             _run_csv_bundle(result, out, stem)
+        if st.button("Landmarks Excel (raw)", use_container_width=True, key="exp_lmxlsx"):
+            _run_export(
+                "Landmarks Excel", out / f"{stem}_landmarks.xlsx",
+                lambda path: _call("export_landmarks_excel", result.data, str(path),
+                                   result.cycles),
+            )
 
     st.divider()
     st.markdown("**Biomechanics interchange**")
@@ -156,6 +167,52 @@ def _data_tab(result: PipelineResult, source: state.Source) -> None:
                 lambda path: _call("export_openpose_json", result.data, str(path)),
                 zip_directory=True,
             )
+
+    st.divider()
+    st.markdown("**OpenSim setup files**")
+    opensim_ok = runtime.has("opensim")
+    if not opensim_ok:
+        st.caption(runtime.missing_feature_hint("opensim"))
+    columns = st.columns(3)
+    with columns[0]:
+        if st.button("Scale setup", use_container_width=True, key="exp_osim_scale",
+                     disabled=not opensim_ok):
+            _run_export(
+                "OpenSim Scale setup", out / f"{stem}_scale_setup.xml",
+                lambda path: _call("export_opensim_scale_setup", result.data, str(path)),
+            )
+    with columns[1]:
+        if st.button("IK setup (+ .trc)", use_container_width=True, key="exp_osim_ik",
+                     disabled=not opensim_ok):
+            _run_export(
+                "OpenSim IK setup", out / f"{stem}_ik",
+                lambda path: _export_ik_bundle(result, path, stem),
+                zip_directory=True,
+            )
+    with columns[2]:
+        if st.button("Moco setup (+ .mot)", use_container_width=True, key="exp_osim_moco",
+                     disabled=not opensim_ok):
+            _run_export(
+                "OpenSim Moco setup", out / f"{stem}_moco",
+                lambda path: _export_moco_bundle(result, path, stem),
+                zip_directory=True,
+            )
+
+
+def _export_ik_bundle(result: PipelineResult, target_dir: Path, stem: str) -> None:
+    """IK setup needs a .trc on disk to point at, so this produces both."""
+    target_dir.mkdir(parents=True, exist_ok=True)
+    trc_path = target_dir / f"{stem}.trc"
+    _call("export_trc", result.data, str(trc_path))
+    _call("export_ik_setup", str(trc_path), str(target_dir / "ik_setup.xml"))
+
+
+def _export_moco_bundle(result: PipelineResult, target_dir: Path, stem: str) -> None:
+    """Moco setup needs a .mot on disk to point at, so this produces both."""
+    target_dir.mkdir(parents=True, exist_ok=True)
+    mot_path = target_dir / f"{stem}.mot"
+    _call("export_mot", result.data, str(mot_path))
+    _call("export_moco_setup", str(mot_path), str(target_dir / "moco_setup.xml"))
 
 
 def _run_csv_bundle(result: PipelineResult, out: Path, stem: str) -> None:
@@ -220,13 +277,51 @@ def _figures_tab(result: PipelineResult) -> None:
 
     plt.close(figure)
 
+    st.divider()
+    _normative_animation_section(result)
+
+
+def _normative_animation_section(result: PipelineResult) -> None:
+    runtime = get_runtime()
+    st.markdown("**Animated normative comparison**")
+    if not runtime.has("normative"):
+        st.caption(runtime.missing_feature_hint("normative"))
+        return
+    st.caption(
+        "The patient curve traces out against the normative band, frame by frame - "
+        "useful in a talk where the static overlay above is read too quickly."
+    )
+    columns = st.columns(2)
+    stratum = columns[0].selectbox("Stratum", ["adult", "elderly", "pediatric"], key="anim_stratum")
+    fps = columns[1].slider("Animation fps", 5, 30, 10, key="anim_fps")
+
+    if not st.button("Render animated GIF", use_container_width=True, key="anim_go"):
+        return
+
+    out = state.workspace().outputs / "normative_comparison.gif"
+    _run_export(
+        "Normative animation", out,
+        lambda path: _call(
+            "animate_normative_comparison", result.cycles, stratum=stratum,
+            output_path=str(path), fps=int(fps),
+        ),
+        spinner="Rendering the animation - this takes a while.",
+    )
+
 
 def _build_figure(name: str, result: PipelineResult):
-    """Call a myogait plotting function with the arguments it declares."""
+    """Call a myogait plotting function with the arguments it declares.
+
+    Looks at the top-level package first, then falls back to
+    myogait.plotting directly: plot_frontal_comparison exists in that
+    module but is missing from __init__.py's lazy-export map, unlike
+    every other plot_* function.
+    """
     import myogait
+    import myogait.plotting as plotting_module
 
     spec = FIGURE_SPECS[name]
-    function = getattr(myogait, name, None)
+    function = getattr(myogait, name, None) or getattr(plotting_module, name, None)
     if function is None:
         raise RuntimeError(f"myogait has no {name} in this version.")
 

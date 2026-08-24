@@ -99,7 +99,7 @@ def runtime_warnings(runtime: Runtime | None = None) -> None:
             "```bash\n"
             "pip install --upgrade "
             '"myogait[mediapipe,yolo,excel,yaml] @ '
-            'git+https://github.com/IDMDataHub/myogait.git@main" "gaitkit>=1.4.8"\n'
+            'git+https://github.com/IDMDataHub/myogait.git@master" "gaitkit>=1.4.8"\n'
             "```"
         )
 
@@ -158,6 +158,37 @@ def source_summary(source: state.Source) -> None:
             "recording. Use it to learn the controls; do not read clinical meaning "
             "into the numbers."
         )
+    if source.is_c3d and source.c3d_options:
+        _c3d_source_summary(source.c3d_options)
+
+
+def _c3d_source_summary(options: dict) -> None:
+    """What load_c3d actually matched, and whether the app corrected it.
+
+    A C3D file's marker set rarely covers every myogait landmark (the
+    default mapping, for instance, has no elbow or wrist), so this states
+    plainly what is and is not present rather than letting a downstream
+    NaN be the first sign of it.
+    """
+    matched = options.get("matched_landmarks") or []
+    missing = options.get("missing_landmarks") or []
+    st.info(f"C3D source - {len(matched)} of {len(matched) + len(missing)} landmark(s) matched.")
+    if missing:
+        st.caption("Not covered by this marker mapping: " + ", ".join(missing))
+    if options.get("fix_aspect_ratio") and options.get("ranges"):
+        ap_range, vert_range = options["ranges"]
+        st.caption(
+            f"Aspect-ratio correction applied from the file (AP range "
+            f"{ap_range:.1f}, vertical range {vert_range:.1f}) - without it, "
+            "compute_angles' own aspect-ratio fix would not trigger for this "
+            "source."
+        )
+    elif options.get("fix_aspect_ratio") is False:
+        st.caption(
+            "Aspect-ratio correction from the file was left off - angles and "
+            "segment lengths may be biased if the AP and vertical axes have "
+            "different physical ranges in this recording."
+        )
 
 
 # ── Reproducibility ──────────────────────────────────────────────────
@@ -168,6 +199,7 @@ def reproducibility_panel(
     source_name: str = "video.mp4",
     model: str = "mediapipe",
     from_json: bool = False,
+    c3d_options: dict | None = None,
     key: str = "repro",
 ) -> None:
     """Show the current state as runnable code.
@@ -184,7 +216,8 @@ def reproducibility_panel(
 
         with tab_py:
             snippet = python_snippet(
-                config, source=source_name, model=model, from_json=from_json
+                config, source=source_name, model=model, from_json=from_json,
+                c3d_options=c3d_options,
             )
             st.code(snippet, language="python")
             st.download_button(

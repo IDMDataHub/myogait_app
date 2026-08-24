@@ -18,8 +18,7 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Then open the **Data** page and load the synthetic dataset — the whole app can be
-driven without a recording.
+Then open the **Data** page and load a pivot JSON or a video.
 
 ## Environment requirements
 
@@ -31,22 +30,34 @@ version cannot do, rather than failing at click time. Two versions matter:
 | `myogait` | **0.6.1** | Below it, `apply_linear_detrend` does not exist, and Sapiens 2, the clinical scores and the VICON block are missing or behave differently. |
 | `gaitkit` | **1.4.8** | The `gk_*` event detectors the comparator puts in competition come from here. 1.3.x does not provide them. |
 
+Below **0.8.0**, `load_c3d` normalises the antero-posterior and vertical axes
+independently, distorting angles on any non-square recording; the C3D tab's
+"Correct the aspect ratio" control (`myogait_app/c3d_utils.py`) compensates
+for it. From 0.8.0 on the fix is native (isotropic normalisation) and the app
+detects this (`runtime.c3d_isotropic_native`) to stop offering that control,
+so it never double-corrects.
+
 ```bash
 pip install --upgrade \
-  "myogait[mediapipe,yolo,excel,yaml] @ git+https://github.com/IDMDataHub/myogait.git@main" \
-  "gaitkit>=1.4.8"
+  "myogait[mediapipe,yolo,excel,yaml] @ git+https://github.com/IDMDataHub/myogait.git@master" \
+  "gaitkit>=1.4.8" ezc3d "c3d>=0.5"
 ```
 
-Optional backends and exports install as extras — `myogait[vitpose]`,
-`myogait[rtmw]`, `myogait[sapiens2]`, `myogait[c3d]`, plus
-`intel-extension-for-pytorch` for Intel Arc acceleration. Anything absent is
-shown greyed out with the reason.
+Do **not** request the `myogait[c3d]` extra directly: its `pyproject.toml` pins
+`ezc3d>=2.0`, which PyPI has never published for any platform (1.7.2 is the
+newest available), so requesting it fails the whole install. C3D import only
+needs `ezc3d` (any resolvable version); C3D export needs the separate `c3d`
+package — both are installed unbundled above instead.
+
+Optional backends install as extras — `myogait[vitpose]`, `myogait[rtmw]`,
+`myogait[sapiens2]`, plus `intel-extension-for-pytorch` for Intel Arc
+acceleration. Anything absent is shown greyed out with the reason.
 
 ## What is in it
 
 | Page | Does |
 |---|---|
-| **Data** | Load the synthetic dataset, a pivot JSON, or a video. Video extraction runs as a background job and returns a recoverable ticket. |
+| **Data** | Load a pivot JSON or a video. Video extraction runs as a background job and returns a recoverable ticket. |
 | **Pipeline explorer** | Every downstream parameter as a control, with kinematics, cycles, spatio-temporal metrics and signal quality updating live. |
 | **Comparator** | Sweep one parameter across values, or compare separate extractions of the same walk, with divergence curves, an RMS matrix and an event-timing raster. |
 | **Export** | CSV, Excel, OpenSim `.mot`/`.trc`, C3D, Pose2Sim, the PDF report, an anonymised stick figure, and publication figures rendered by myogait's own matplotlib functions. |
@@ -129,7 +140,7 @@ myogait_app/
   jobs.py                  background extraction pool (Streamlit-free, testable)
   pipeline.py              staged engine with per-stage memoisation
   codegen.py               Python / YAML / CLI generation
-  demo.py                  synthetic dataset
+  demo.py                  synthetic dataset (dev/test fixture, not wired into the UI)
   charts/                  Plotly theme and figures
   ui/                      Streamlit pages
 deploy/                    nginx + systemd

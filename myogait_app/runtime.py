@@ -26,6 +26,15 @@ REQUIRED_MYOGAIT = (0, 6, 1)
 #: comparator puts in competition with the built-in ones.
 REQUIRED_GAITKIT = (1, 4, 8)
 
+#: Below this version, load_c3d normalised the antero-posterior and
+#: vertical axes independently, silently distorting angles on any
+#: non-square recording -- the bug myogait_app.c3d_utils compensates for.
+#: 0.8.0 fixed it upstream (isotropic normalisation, both axes divided by
+#: the same range), so from this version on the app's own correction must
+#: NOT run, or it double-corrects and distorts the aspect ratio the other
+#: way. See Runtime.c3d_isotropic_native.
+C3D_ISOTROPIC_NATIVE_VERSION = (0, 8, 0)
+
 
 def _version_tuple(raw: str) -> tuple[int, ...]:
     parts: list[int] = []
@@ -173,8 +182,10 @@ OPTIONAL_FEATURES: dict[str, tuple[str, str]] = {
     "benchmark": ("myogait.experimental_benchmark", "run_single_pair_benchmark"),
     "degradation": ("myogait.experimental", "apply_video_degradation"),
     "c3d": ("myogait.export", "export_c3d"),
+    "c3d_import": ("myogait.experimental_vicon", "load_c3d"),
     "opensim": ("myogait.opensim", "export_opensim_scale_setup"),
     "report": ("myogait.report", "generate_report"),
+    "longitudinal": ("myogait.plotting", "plot_longitudinal"),
     "skeleton_video": ("myogait.video", "render_skeleton_video"),
     "stickfigure": ("myogait.video", "render_stickfigure_animation"),
 }
@@ -186,6 +197,7 @@ OPTIONAL_FEATURES: dict[str, tuple[str, str]] = {
 #: button that cannot work.
 FEATURE_EXTRA_REQUIREMENTS: dict[str, tuple[str, ...]] = {
     "c3d": ("c3d",),
+    "c3d_import": ("ezc3d",),
 }
 
 
@@ -249,6 +261,19 @@ class Runtime:
         if not self.gaitkit_version:
             return False
         return _version_tuple(self.gaitkit_version) >= REQUIRED_GAITKIT
+
+    @property
+    def c3d_isotropic_native(self) -> bool:
+        """True when load_c3d already normalises both axes isotropically.
+
+        The C3D tab's own aspect-ratio recovery (myogait_app.c3d_utils)
+        must be offered only when this is False -- on a fixed install it
+        would re-apply a correction load_c3d already made, distorting the
+        result a second time.
+        """
+        if not self.myogait_version:
+            return False
+        return _version_tuple(self.myogait_version) >= C3D_ISOTROPIC_NATIVE_VERSION
 
     @property
     def available_backends(self) -> tuple[BackendInfo, ...]:

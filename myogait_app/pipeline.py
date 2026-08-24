@@ -62,6 +62,17 @@ class AnglesConfig:
     correction_factor: float = 0.8
     calibrate: bool = True
     calibration_frames: int = 30
+    #: When the first calibration_frames of a joint show no meaningful
+    #: motion (angle std below calibration_min_std_deg), fall back to the
+    #: median of all valid frames of that joint instead of that static
+    #: window -- otherwise a patient who begins standing in a pathological
+    #: or asymmetric pose silently shifts the whole cycle by that offset.
+    #: Ankle is myogait's default calibrated joint, so this is exactly what
+    #: separates a genuine measurement ceiling from a calibration artefact
+    #: when validating ankle angles: rule this out before concluding the
+    #: former.
+    calibration_dynamic_fallback: bool = True
+    calibration_min_std_deg: float = 1.0
     correct_ankle_sliding: bool = True
     apply_aspect_ratio: bool = True
     #: Frontal-plane angles, only meaningful when depth data is present.
@@ -141,22 +152,76 @@ class CyclesConfig:
     max_duration: float = 2.5
 
 
+#: myogait's own femur-to-height ratio (Drillis, Contini & Bluestein,
+#: Artif Limbs 1964), used internally by step_length()/walking_speed() to
+#: derive a femur length from height_m. calibration_height_m below solves
+#: this ratio in reverse, so passing it back into height_m makes myogait
+#: calibrate from the *measured* femur instead of the population estimate.
+FEMUR_TO_HEIGHT_RATIO = 0.245
+
+
 @dataclass(frozen=True)
 class SubjectConfig:
-    """Subject metadata. Height unlocks calibrated step length and speed."""
+    """Subject metadata. Height unlocks calibrated step length and speed.
+
+    The five ``*_length_mm`` fields are directly measured segment lengths,
+    not part of myogait's own subject schema. femur_length_mm doubles as
+    the app's preferred source for pixel/metre calibration -- see
+    ``calibration_height_m`` -- and all five feed the app's own
+    cross-check panel (``myogait_app.calibration``) against myogait's
+    figures.
+    """
 
     age: int | None = None
     sex: str | None = None
     height_m: float | None = None
     weight_kg: float | None = None
     pathology: str | None = None
+    femur_length_mm: float | None = None
+    tibia_length_mm: float | None = None
+    upper_arm_length_mm: float | None = None
+    forearm_length_mm: float | None = None
+    trunk_length_mm: float | None = None
 
     @property
     def is_empty(self) -> bool:
         return all(
             getattr(self, f) in (None, "")
-            for f in ("age", "sex", "height_m", "weight_kg", "pathology")
+            for f in (
+                "age", "sex", "height_m", "weight_kg", "pathology",
+                "femur_length_mm", "tibia_length_mm", "upper_arm_length_mm",
+                "forearm_length_mm", "trunk_length_mm",
+            )
         )
+
+    @property
+    def calibration_height_m(self) -> float | None:
+        """The height_m value the pipeline actually passes for calibration.
+
+        myogait's step_length()/walking_speed() derive their pixel/metre
+        scale from ``height_m x 0.245`` -- a population femur-to-height
+        ratio, not a per-subject measurement. When the femur was measured
+        directly, this returns the height that makes that same internal
+        formula reproduce the *real* femur instead of the population
+        estimate, so step length and stride length calibrate from actual
+        anatomy rather than an average. Falls back to the stated height
+        when no femur was measured, and to ``None`` when neither is.
+        """
+        if self.femur_length_mm:
+            return (self.femur_length_mm / 1000.0) / FEMUR_TO_HEIGHT_RATIO
+        return self.height_m
+
+    @property
+    def measured_segments_mm(self) -> dict[str, float]:
+        """App-facing segment key -> measured length (mm), only those set."""
+        mapping = {
+            "femur": self.femur_length_mm,
+            "tibia": self.tibia_length_mm,
+            "upper_arm": self.upper_arm_length_mm,
+            "forearm": self.forearm_length_mm,
+            "trunk": self.trunk_length_mm,
+        }
+        return {k: v for k, v in mapping.items() if v}
 
 
 @dataclass(frozen=True)
@@ -301,6 +366,8 @@ def _apply_angles(data: dict, cfg: AnglesConfig) -> dict:
         correction_factor=cfg.correction_factor,
         calibrate=cfg.calibrate,
         calibration_frames=cfg.calibration_frames,
+        calibration_dynamic_fallback=cfg.calibration_dynamic_fallback,
+        calibration_min_std_deg=cfg.calibration_min_std_deg,
         correct_ankle_sliding=cfg.correct_ankle_sliding,
         apply_aspect_ratio=cfg.apply_aspect_ratio,
     )
@@ -553,7 +620,10 @@ class PipelineRunner:
             return result
 
         # analysis ----------------------------------------------------
-        key_stats = key_final + ("analysis", config.subject.height_m)
+        # Keyed on calibration_height_m, not height_m directly: when a
+        # femur measurement is present it is what actually drives the
+        # scale, and it can change independently of the stated height.
+        key_stats = key_final + ("analysis", config.subject.calibration_height_m)
 
         def _run_analysis() -> dict:
             cached = self._cache[key_final]
@@ -575,7 +645,7 @@ class PipelineRunner:
         from myogait import analyze_gait
 
         return analyze_gait(
-            copy.deepcopy(data), cycles, height_m=config.subject.height_m
+            copy.deepcopy(data), cycles, height_m=config.subject.calibration_height_m
         )
 
     def _stage(

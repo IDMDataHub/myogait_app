@@ -39,17 +39,28 @@ def python_snippet(
     from_json: bool = False,
     with_depth: bool = False,
     with_seg: bool = False,
+    c3d_options: dict | None = None,
 ) -> str:
     """Return a runnable script reproducing the current state.
 
     Parameters
     ----------
     source
-        Video path, or JSON path when *from_json* is set.
+        Video path, JSON path, or C3D path, depending on *from_json* and
+        *c3d_options*.
     from_json
-        Start from an existing pivot file rather than re-extracting.
+        Start from already-extracted landmarks rather than re-extracting.
         Extraction is the expensive half, so a researcher reproducing a
-        parameter study almost always wants this form.
+        parameter study almost always wants this form. Also set when
+        *c3d_options* is given, since a C3D file is likewise not
+        re-extracted.
+    c3d_options
+        When given (with *from_json* also set), *source* is loaded with
+        ``load_c3d`` instead of ``load_json``, using the marker mapping,
+        axes and aspect-ratio fix recorded at load time. Keys:
+        ``marker_mapping``, ``ap_axis``, ``vertical_axis``,
+        ``fix_aspect_ratio``, and ``ranges`` (the ``(ap_range,
+        vertical_range)`` pair used for the fix, when applied).
     """
     norm = config.normalize
     ang = config.angles
@@ -90,7 +101,9 @@ def python_snippet(
         if flag
     ]
 
-    if from_json:
+    if from_json and c3d_options:
+        lines.append("from myogait import load_c3d, " + ", ".join(imports))
+    elif from_json:
         lines.append("from myogait import load_json, " + ", ".join(imports))
     else:
         lines.append("from myogait import " + ", ".join(imports))
@@ -99,7 +112,30 @@ def python_snippet(
             "from myogait.corrections import " + ", ".join(correction_imports)
         )
     lines.append("")
-    if from_json:
+    if from_json and c3d_options:
+        lines.append(f"data = load_c3d({source!r},")
+        lines.append(
+            _kwargs_block(
+                [
+                    ("marker_mapping", c3d_options.get("marker_mapping")),
+                    ("ap_axis", c3d_options.get("ap_axis", 1)),
+                    ("vertical_axis", c3d_options.get("vertical_axis", 2)),
+                ]
+            ).rstrip("\n")
+        )
+        lines.append(")")
+        ranges = c3d_options.get("ranges")
+        if c3d_options.get("fix_aspect_ratio") and ranges:
+            lines += [
+                "",
+                "# load_c3d normalises the AP and vertical axes independently",
+                "# but reports a square virtual canvas, so compute_angles'",
+                "# aspect-ratio fix never triggers for a C3D source. Restore",
+                "# the true range ratio, recovered from the file itself.",
+                f"data['meta']['width'] = {ranges[0]!r}",
+                f"data['meta']['height'] = {ranges[1]!r}",
+            ]
+    elif from_json:
         lines.append(f"data = load_json({source!r})")
     else:
         lines.append("# 1. Pose extraction")
@@ -157,6 +193,8 @@ def python_snippet(
                 ("correction_factor", ang.correction_factor),
                 ("calibrate", ang.calibrate),
                 ("calibration_frames", ang.calibration_frames),
+                ("calibration_dynamic_fallback", ang.calibration_dynamic_fallback),
+                ("calibration_min_std_deg", ang.calibration_min_std_deg),
                 ("correct_ankle_sliding", ang.correct_ankle_sliding),
                 ("apply_aspect_ratio", ang.apply_aspect_ratio),
             ]
@@ -252,7 +290,16 @@ def python_snippet(
         ]
         lines += segment_call[1:]
 
-    height = f"height_m={subj.height_m}" if subj.height_m else "height_m=None"
+    calibration_height = subj.calibration_height_m
+    if subj.femur_length_mm:
+        lines += [
+            "",
+            "# myogait derives its pixel/metre scale as height_m x 0.245 (a",
+            "# population femur-to-height ratio). Passing this value back",
+            "# makes that same formula reproduce the *measured* femur",
+            f"# ({subj.femur_length_mm:g} mm) instead of the population estimate.",
+        ]
+    height = f"height_m={calibration_height!r}"
     lines.append(f"stats = analyze_gait(data, cycles, {height})")
     lines += [
         "",
@@ -333,6 +380,9 @@ def yaml_config(
         f"  correction_factor: {ang.correction_factor}",
         f"  calibrate: {scalar(ang.calibrate)}",
         f"  calibration_frames: {ang.calibration_frames}",
+        "  # No config key -- pass directly to compute_angles():",
+        f"  #   calibration_dynamic_fallback={scalar(ang.calibration_dynamic_fallback)}",
+        f"  #   calibration_min_std_deg={ang.calibration_min_std_deg}",
     ]
     post_angles = [
         (ang.frontal, "compute_frontal_angles(data)"),

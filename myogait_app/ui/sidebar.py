@@ -10,8 +10,11 @@ a hidden one just looks like the feature does not exist.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import streamlit as st
 
+from ..glossary import find_one
 from ..pipeline import (
     AnglesConfig,
     BiasConfig,
@@ -22,6 +25,8 @@ from ..pipeline import (
     SubjectConfig,
 )
 from ..runtime import get_runtime
+
+_SEE_REFERENCE = " See the Reference page for what each option actually does."
 
 #: Smoothing steps from myogait.normalize.NORMALIZE_STEPS, with the
 #: optional dependency each one needs.
@@ -48,6 +53,11 @@ def _available_filters() -> list[str]:
     return available
 
 
+#: Session-state key tracking the last Subject femur value seen, so the
+#: sync into Events fires only on a real change (see _sync_femur below).
+_K_LAST_SUBJECT_FEMUR = "mg_last_subject_femur_mm"
+
+
 def render(config: PipelineConfig) -> PipelineConfig:
     """Draw the controls and return the configuration they describe."""
     runtime = get_runtime()
@@ -56,7 +66,7 @@ def render(config: PipelineConfig) -> PipelineConfig:
     normalize = _normalize_section(config.normalize)
     angles = _angles_section(config.angles, runtime)
     bias = _bias_section(config.bias, angles, runtime)
-    events = _events_section(config.events, runtime)
+    events = _events_section(_sync_femur_from_subject(config.events, subject), runtime)
     cycles = _cycles_section(config.cycles)
 
     return PipelineConfig(
@@ -72,8 +82,11 @@ def render(config: PipelineConfig) -> PipelineConfig:
 def _subject_section(cfg: SubjectConfig) -> SubjectConfig:
     with st.expander("Subject", expanded=False):
         st.caption(
-            "Height is the one that changes results: without it, step length and "
-            "walking speed stay in normalised units instead of metres."
+            "Height or measured femur length is what changes results: without "
+            "one of the two, step length and walking speed stay in normalised "
+            "units instead of metres. The femur below takes priority when both "
+            "are set - it calibrates from this subject's actual anatomy instead "
+            "of a population ratio."
         )
         height = st.number_input(
             "Height (m)",
@@ -98,13 +111,73 @@ def _subject_section(cfg: SubjectConfig) -> SubjectConfig:
         )
         pathology = st.text_input("Pathology", value=cfg.pathology or "")
 
+        st.divider()
+        st.markdown("**Measured segment lengths (mm) - optional**")
+        st.caption(
+            "myogait calibrates step length and speed from height alone by "
+            "default (a fixed 24.5% femur-to-height ratio) - a population "
+            "estimate that can be wrong for an individual, especially outside "
+            "typical adult proportions. Femur below takes priority over height "
+            "for that calibration whenever it is set: step length, stride "
+            "length and walking speed on the Spatio-temporal tab all use it. "
+            "The other segments (tibia, arms, trunk) do not replace anything - "
+            "they only feed the cross-check panel on that same tab, comparing "
+            "several independent scale estimates against each other. 0 leaves a "
+            "segment unmeasured. Femur also pre-fills the gk_* detector "
+            "reference below."
+        )
+        columns = st.columns(2)
+        femur = columns[0].number_input(
+            "Femur (hip-knee)", min_value=0.0, max_value=600.0,
+            value=float(cfg.femur_length_mm or 0.0), step=5.0, key="subj_femur",
+        )
+        tibia = columns[1].number_input(
+            "Tibia (knee-ankle)", min_value=0.0, max_value=600.0,
+            value=float(cfg.tibia_length_mm or 0.0), step=5.0, key="subj_tibia",
+        )
+        columns = st.columns(2)
+        upper_arm = columns[0].number_input(
+            "Upper arm (shoulder-elbow)", min_value=0.0, max_value=500.0,
+            value=float(cfg.upper_arm_length_mm or 0.0), step=5.0, key="subj_upper_arm",
+        )
+        forearm = columns[1].number_input(
+            "Forearm (elbow-wrist)", min_value=0.0, max_value=500.0,
+            value=float(cfg.forearm_length_mm or 0.0), step=5.0, key="subj_forearm",
+        )
+        trunk = st.number_input(
+            "Trunk (shoulder-hip)", min_value=0.0, max_value=800.0,
+            value=float(cfg.trunk_length_mm or 0.0), step=5.0, key="subj_trunk",
+        )
+
     return SubjectConfig(
         age=int(age) or None,
         sex=sex or None,
         height_m=float(height) or None,
         weight_kg=float(weight) or None,
         pathology=pathology or None,
+        femur_length_mm=float(femur) or None,
+        tibia_length_mm=float(tibia) or None,
+        upper_arm_length_mm=float(upper_arm) or None,
+        forearm_length_mm=float(forearm) or None,
+        trunk_length_mm=float(trunk) or None,
     )
+
+
+def _sync_femur_from_subject(cfg: EventsConfig, subject: SubjectConfig) -> EventsConfig:
+    """Push a *changed* Subject femur measurement into the Events reference.
+
+    Events keeps its own field -- it needs a plausible value even with no
+    subject data at all (400 mm default). The sync fires only when the
+    Subject value changes between reruns, so a manual override on the
+    Events slider is not fought back on a rerun where the Subject value
+    stayed the same.
+    """
+    last = st.session_state.get(_K_LAST_SUBJECT_FEMUR)
+    current = subject.femur_length_mm
+    st.session_state[_K_LAST_SUBJECT_FEMUR] = current
+    if current is not None and current != last:
+        return replace(cfg, femur_length_mm=float(current))
+    return cfg
 
 
 def _normalize_section(cfg: NormalizeConfig) -> NormalizeConfig:
@@ -114,7 +187,9 @@ def _normalize_section(cfg: NormalizeConfig) -> NormalizeConfig:
             "Filters (applied in order)",
             options=options,
             default=[f for f in cfg.filters if f in options],
-            help="Leave empty to work on the raw landmarks.",
+            help="Leave empty to work on the raw landmarks. Each one is a "
+                 "different smoothing/denoising method - butterworth is the "
+                 "default." + _SEE_REFERENCE,
         )
 
         cutoff = cfg.butterworth_cutoff
@@ -129,7 +204,8 @@ def _normalize_section(cfg: NormalizeConfig) -> NormalizeConfig:
         st.divider()
         st.caption("Quality gates, applied before filtering.")
         use_confidence = st.checkbox(
-            "Drop low-confidence landmarks", value=cfg.confidence_threshold is not None
+            "Drop low-confidence landmarks", value=cfg.confidence_threshold is not None,
+            help=(find_one("confidence_filter") or find_one("normalize")).summary,
         )
         confidence = (
             st.slider("Confidence threshold", 0.0, 1.0,
@@ -137,20 +213,37 @@ def _normalize_section(cfg: NormalizeConfig) -> NormalizeConfig:
             if use_confidence else None
         )
         use_outliers = st.checkbox(
-            "Interpolate outliers", value=cfg.outlier_z is not None
+            "Interpolate outliers", value=cfg.outlier_z is not None,
+            help=find_one("detect_outliers").summary,
         )
         outlier_z = (
             st.slider("Outlier threshold (SD)", 1.0, 6.0, float(cfg.outlier_z or 3.0), 0.5)
             if use_outliers else None
         )
-        gap = st.slider("Max interpolated gap (frames)", 0, 60, int(cfg.gap_max_frames))
+        gap = st.slider(
+            "Max interpolated gap (frames)", 0, 60, int(cfg.gap_max_frames),
+            help="Passed to normalize() - short runs of missing landmark data up "
+                 "to this many frames are interpolated rather than left as gaps.",
+        )
 
         st.divider()
         columns = st.columns(2)
-        center = columns[0].checkbox("Center on torso", value=cfg.center)
-        align = columns[1].checkbox("Align skeleton", value=cfg.align, disabled=center)
-        correct_limbs = st.checkbox("Correct bilateral swaps", value=cfg.correct_limbs)
-        coherence = st.checkbox("Score frame coherence", value=cfg.coherence)
+        center = columns[0].checkbox(
+            "Center on torso", value=cfg.center,
+            help=find_one("center_on_torso").summary,
+        )
+        align = columns[1].checkbox(
+            "Align skeleton", value=cfg.align, disabled=center,
+            help=find_one("center_on_torso").summary,
+        )
+        correct_limbs = st.checkbox(
+            "Correct bilateral swaps", value=cfg.correct_limbs,
+            help=find_one("correct_bilateral").summary,
+        )
+        coherence = st.checkbox(
+            "Score frame coherence", value=cfg.coherence,
+            help=find_one("frame_coherence_score").summary,
+        )
 
     return NormalizeConfig(
         filters=tuple(filters),
@@ -172,22 +265,56 @@ def _angles_section(cfg: AnglesConfig, runtime) -> AnglesConfig:
         method = st.selectbox(
             "Angle method", methods,
             index=methods.index(cfg.method) if cfg.method in methods else 0,
+            help=find_one("compute_angles").summary,
         )
         correction = st.slider(
             "2D ROM correction factor", 0.5, 1.2, float(cfg.correction_factor), 0.05,
             help="myogait suggests 0.8 for MediaPipe and 1.0 for 3D-capable models.",
         )
-        calibrate = st.checkbox("Neutral calibration", value=cfg.calibrate)
+        calibrate = st.checkbox(
+            "Neutral calibration", value=cfg.calibrate,
+            help="Uses the first calibration_frames frames as a neutral-pose "
+                 "reference, so angles read as flexion/extension from a "
+                 "standing baseline rather than from the raw geometric angle. "
+                 "Ankle is myogait's default calibrated joint.",
+        )
         calibration_frames = (
             st.slider("Calibration frames", 5, 120, int(cfg.calibration_frames))
             if calibrate else cfg.calibration_frames
         )
+        calibration_dynamic_fallback = (
+            st.checkbox(
+                "Dynamic calibration fallback", value=cfg.calibration_dynamic_fallback,
+                help="If those first calibration_frames show no meaningful motion "
+                     "(angle std below the threshold below), calibrate from the "
+                     "median of all valid frames instead - a patient who starts "
+                     "standing in a pathological or asymmetric pose would "
+                     "otherwise shift the whole cycle by that offset. Rule this "
+                     "out before reading a persistent ankle error as a hardware "
+                     "or measurement ceiling.",
+            )
+            if calibrate else cfg.calibration_dynamic_fallback
+        )
+        calibration_min_std_deg = (
+            st.slider(
+                "Static-window threshold (deg)", 0.1, 5.0,
+                float(cfg.calibration_min_std_deg), 0.1,
+                help="Below this angle std over the calibration window, the "
+                     "window is treated as static and the dynamic fallback "
+                     "above kicks in.",
+            )
+            if calibrate and calibration_dynamic_fallback else cfg.calibration_min_std_deg
+        )
 
         columns = st.columns(2)
         ankle_sliding = columns[0].checkbox(
-            "Ankle sliding fix", value=cfg.correct_ankle_sliding
+            "Ankle sliding fix", value=cfg.correct_ankle_sliding,
+            help=find_one("detect_ankle_swap").summary,
         )
-        aspect = columns[1].checkbox("Aspect ratio", value=cfg.apply_aspect_ratio)
+        aspect = columns[1].checkbox(
+            "Aspect ratio", value=cfg.apply_aspect_ratio,
+            help=find_one("apply_aspect_ratio").summary,
+        )
 
         frontal_ok = runtime.has("frontal_angles")
         frontal = st.checkbox(
@@ -224,6 +351,8 @@ def _angles_section(cfg: AnglesConfig, runtime) -> AnglesConfig:
         correction_factor=float(correction),
         calibrate=calibrate,
         calibration_frames=int(calibration_frames),
+        calibration_dynamic_fallback=calibration_dynamic_fallback,
+        calibration_min_std_deg=float(calibration_min_std_deg),
         correct_ankle_sliding=ankle_sliding,
         apply_aspect_ratio=aspect,
         frontal=frontal,
@@ -249,6 +378,14 @@ def _bias_section(cfg: BiasConfig, angles: AnglesConfig, runtime) -> BiasConfig:
             "flexion (DMD, CMT), ankle push-off (drop foot), end-stance hip "
             "extension. Use them to benchmark against a healthy reference. Do not "
             "use them to read a patient."
+        )
+        st.caption(
+            "myogait deprecated this family in 0.8.0, removal planned for 1.0: "
+            "its own validation campaign found the *uncorrected* pipeline already "
+            "at optical-reference level with a modern pose backbone, and that "
+            "these corrections degrade rather than improve accuracy there. Each "
+            "call now also emits a DeprecationWarning. `run_pipeline()`, "
+            "myogait's own recommended entry point, applies no bias correction."
         )
 
         available = all(
@@ -317,9 +454,11 @@ def _events_section(cfg: EventsConfig, runtime) -> EventsConfig:
             if len(consensus_methods) < 2:
                 st.caption("Select at least two methods, or turn consensus off.")
         else:
+            method_entry = find_one(cfg.method) or find_one("gk_") or find_one("detect_events")
             method = st.selectbox(
                 "Detection method", methods,
                 index=methods.index(cfg.method) if cfg.method in methods else 0,
+                help=method_entry.summary if method_entry else None,
             )
             if method.startswith("gk_") and not runtime.gaitkit_ok:
                 st.caption(
@@ -340,9 +479,11 @@ def _events_section(cfg: EventsConfig, runtime) -> EventsConfig:
             disabled=adaptive,
         )
         femur = st.slider(
-            "Reference femur length (mm)", 250, 550, int(cfg.femur_length_mm), 10,
+            "Reference femur length (mm)", 150, 600, int(cfg.femur_length_mm), 10,
             help="Used by the gk_* detectors to convert normalised positions to "
-                 "real-world units.",
+                 "real-world units. Auto-filled when the Subject panel's measured "
+                 "femur length changes - move this slider to override for this "
+                 "run only.",
         )
         trim = st.checkbox(
             "Trim standstill", value=cfg.trim_standstill,
@@ -364,7 +505,8 @@ def _events_section(cfg: EventsConfig, runtime) -> EventsConfig:
 def _cycles_section(cfg: CyclesConfig) -> CyclesConfig:
     with st.expander("4. Cycle segmentation", expanded=False):
         n_points = st.select_slider(
-            "Points per normalised cycle", [51, 101, 201], value=int(cfg.n_points)
+            "Points per normalised cycle", [51, 101, 201], value=int(cfg.n_points),
+            help=find_one("segment_cycles").summary,
         )
         bounds = st.slider(
             "Accepted cycle duration (s)", 0.2, 4.0,
