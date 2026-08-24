@@ -8,13 +8,13 @@ labels the same anatomical points differently, so the package default
 silently matches nothing and ``load_c3d`` raises ``ValueError``.
 
 This module builds an effective ``marker_mapping`` for an arbitrary file in
-two passes: known-alias lookup (the package default plus Plug-in Gait)
-first, then a side (L/R prefix or suffix) plus anatomical-keyword scan over
-whatever labels neither matched, so an unfamiliar convention still resolves
-as long as it follows the near-universal abbreviation style motion capture
-marker sets use. Presets are a fast path, not a boundary: any file gets both
-passes, so a hand-rolled lab convention is not stuck with manual mapping
-either.
+two passes: known-alias lookup (the package default, Plug-in Gait, and the
+ISB/CAST full-body variant below) first, then a side (L/R prefix or suffix)
+plus anatomical-keyword scan over whatever labels neither matched, so an
+unfamiliar convention still resolves as long as it follows the
+near-universal abbreviation style motion capture marker sets use. Presets
+are a fast path, not a boundary: any file gets both passes, so a
+hand-rolled lab convention is not stuck with manual mapping either.
 """
 
 from __future__ import annotations
@@ -43,6 +43,38 @@ PLUGINGAIT_ALIASES: dict[str, list[str]] = {
     "RIGHT_WRIST": ["RWRA", "RWRB"],
     "NOSE": ["LFHD", "RFHD"],
 }
+
+#: ISB/CAST full-body marker set (Cappozzo et al.) as used by the Nature
+#: Scientific Data "Multimodal Gait Dataset" -- underscore side prefix on
+#: two-letter anatomical codes (IAS/IPS = iliac spines, FLE/FME = femur
+#: epicondyles, FAL/TAM = malleoli, FCC = calcaneus, FM1/FM2/FM5 =
+#: metatarsal heads, CV7 = 7th cervical vertebra). Confirmed against a real
+#: file from that dataset: none of myogait's registered conventions nor
+#: the fuzzy fallback below resolve it (0/6 required landmarks) without
+#: this table, since its codes don't contain the ANK/KNE/HIP-style
+#: substrings the keyword scan looks for.
+NATURE_MULTIMODAL_ALIASES: dict[str, list[str]] = {
+    "LEFT_HIP": ["L_IAS", "L_IPS"],
+    "RIGHT_HIP": ["R_IAS", "R_IPS"],
+    "LEFT_KNEE": ["L_FLE", "L_FME"],
+    "RIGHT_KNEE": ["R_FLE", "R_FME"],
+    "LEFT_ANKLE": ["L_FAL", "L_TAM"],
+    "RIGHT_ANKLE": ["R_FAL", "R_TAM"],
+    "LEFT_HEEL": ["L_FCC"],
+    "RIGHT_HEEL": ["R_FCC"],
+    "LEFT_FOOT_INDEX": ["L_FM2", "L_FM1"],
+    "RIGHT_FOOT_INDEX": ["R_FM2", "R_FM1"],
+    "LEFT_SHOULDER": ["L_SIA"],
+    "RIGHT_SHOULDER": ["R_SIA"],
+    "NOSE": ["CV7"],
+}
+
+try:
+    from myogait.experimental_vicon import C3D_MARKER_CONVENTIONS as _MYOGAIT_C3D_CONVENTIONS
+
+    _MYOGAIT_C3D_CONVENTIONS.setdefault("nature_multimodal", NATURE_MULTIMODAL_ALIASES)
+except ImportError:
+    pass  # myogait < 0.7.0: no registry to extend, the alias-pool merge below still covers it.
 
 #: Anatomical keyword rules for the fuzzy fallback, applied to a label's
 #: remainder after its L/R side has been stripped. ``"eq"`` requires an
@@ -154,11 +186,12 @@ def auto_detect_mapping(
     alias_pool: dict[str, list[str]] = {}
     for landmark, candidates in base.items():
         alias_pool.setdefault(landmark, []).extend(candidates)
-    for landmark, candidates in PLUGINGAIT_ALIASES.items():
-        bucket = alias_pool.setdefault(landmark, [])
-        for candidate in candidates:
-            if candidate not in bucket:
-                bucket.append(candidate)
+    for extra_aliases in (PLUGINGAIT_ALIASES, NATURE_MULTIMODAL_ALIASES):
+        for landmark, candidates in extra_aliases.items():
+            bucket = alias_pool.setdefault(landmark, [])
+            for candidate in candidates:
+                if candidate not in bucket:
+                    bucket.append(candidate)
 
     mapping: dict[str, list[str]] = {}
     source: dict[str, str] = {}
