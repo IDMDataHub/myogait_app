@@ -22,6 +22,37 @@ from .pipeline import PipelineConfig
 _INDENT = "    "
 
 
+def _myogait_accepts(module: str, func_name: str, param_name: str) -> bool:
+    """True when the installed myogait's *func_name* in *module* declares
+    *param_name*.
+
+    Mirrors ``pipeline._accepts``: several myogait functions gained new
+    keyword arguments in later versions, and the snippet must reflect
+    what the pipeline that just ran actually did, not what an older or
+    newer install would do.
+    """
+    import importlib
+    import inspect
+
+    try:
+        resolved = importlib.import_module(module)
+        func = getattr(resolved, func_name)
+        return param_name in inspect.signature(func).parameters
+    except Exception:
+        return False
+
+
+def _myogait_has(module: str, attr_name: str) -> bool:
+    """True when *attr_name* exists in *module* of the installed myogait."""
+    import importlib
+
+    try:
+        resolved = importlib.import_module(module)
+        return hasattr(resolved, attr_name)
+    except Exception:
+        return False
+
+
 def _py_repr(value) -> str:
     if isinstance(value, tuple):
         return repr(list(value))
@@ -71,7 +102,17 @@ def python_snippet(
 
     lines: list[str] = ['"""Reproduces the current workbench state."""', ""]
 
+    signs_available = _myogait_has("myogait.angles", "canonicalize_angle_signs")
+    use_signs = ang.canonicalize_signs and signs_available
+    max_offset_available = _myogait_accepts(
+        "myogait", "compute_angles", "calibration_max_offset_deg"
+    )
+    native_calibration = _myogait_accepts("myogait", "analyze_gait", "femur_mm")
+    quality_gates_available = _myogait_accepts("myogait", "segment_cycles", "min_confidence")
+
     imports = ["normalize", "compute_angles", "segment_cycles", "analyze_gait"]
+    if use_signs:
+        imports.append("canonicalize_angle_signs")
     imports.append("event_consensus" if ev.is_consensus else "detect_events")
     if not from_json:
         imports.insert(0, "extract")
@@ -185,22 +226,27 @@ def python_snippet(
         lines.append("data = frame_coherence_score(data)")
 
     lines += ["", "# 3. Joint kinematics"]
+    angles_args = [
+        ("method", ang.method),
+        ("correction_factor", ang.correction_factor),
+        ("calibrate", ang.calibrate),
+        ("calibration_frames", ang.calibration_frames),
+        ("calibration_dynamic_fallback", ang.calibration_dynamic_fallback),
+        ("calibration_min_std_deg", ang.calibration_min_std_deg),
+        ("correct_ankle_sliding", ang.correct_ankle_sliding),
+        ("apply_aspect_ratio", ang.apply_aspect_ratio),
+    ]
+    if max_offset_available:
+        angles_args.append(("calibration_max_offset_deg", ang.calibration_max_offset_deg))
     lines.append("data = compute_angles(data,")
-    lines.append(
-        _kwargs_block(
-            [
-                ("method", ang.method),
-                ("correction_factor", ang.correction_factor),
-                ("calibrate", ang.calibrate),
-                ("calibration_frames", ang.calibration_frames),
-                ("calibration_dynamic_fallback", ang.calibration_dynamic_fallback),
-                ("calibration_min_std_deg", ang.calibration_min_std_deg),
-                ("correct_ankle_sliding", ang.correct_ankle_sliding),
-                ("apply_aspect_ratio", ang.apply_aspect_ratio),
-            ]
-        ).rstrip("\n")
-    )
+    lines.append(_kwargs_block(angles_args).rstrip("\n"))
     lines.append(")")
+
+    if use_signs:
+        lines.append("")
+        lines.append("# Flexion-positive convention, independent of walking direction")
+        lines.append("data = canonicalize_angle_signs(data)")
+
     if ang.frontal:
         lines.append("data = compute_frontal_angles(data)")
 
@@ -244,15 +290,29 @@ def python_snippet(
         lines.append(")")
 
     lines += ["", "# 5. Cycles and analysis"]
+    cycles_args = [
+        ("n_points", cyc.n_points),
+        ("min_duration", cyc.min_duration),
+        ("max_duration", cyc.max_duration),
+    ]
+    if cyc.min_confidence is not None and quality_gates_available:
+        cycles_args.append(("min_confidence", cyc.min_confidence))
+    if cyc.min_coherence is not None and quality_gates_available:
+        cycles_args.append(("min_coherence", cyc.min_coherence))
+        if norm.coherence:
+            lines += [
+                "",
+                "# segment_cycles(min_coherence=) expects frame['coherence'] as a",
+                "# plain float, but frame_coherence_score() above attaches the",
+                "# breakdown dict {'score', 'segment_stability', ...} there instead",
+                "# -- flatten to the scalar score before segmenting.",
+                "for frame in data['frames']:",
+                "    if isinstance(frame.get('coherence'), dict):",
+                "        frame['coherence'] = frame['coherence'].get('score')",
+            ]
     segment_call = [
         "segment_cycles(data,",
-        _kwargs_block(
-            [
-                ("n_points", cyc.n_points),
-                ("min_duration", cyc.min_duration),
-                ("max_duration", cyc.max_duration),
-            ]
-        ).rstrip("\n"),
+        _kwargs_block(cycles_args).rstrip("\n"),
         ")",
     ]
     lines.append("cycles = " + segment_call[0])
@@ -290,17 +350,38 @@ def python_snippet(
         ]
         lines += segment_call[1:]
 
-    calibration_height = subj.calibration_height_m
-    if subj.femur_length_mm:
-        lines += [
-            "",
-            "# myogait derives its pixel/metre scale as height_m x 0.245 (a",
-            "# population femur-to-height ratio). Passing this value back",
-            "# makes that same formula reproduce the *measured* femur",
-            f"# ({subj.femur_length_mm:g} mm) instead of the population estimate.",
+    if native_calibration:
+        analyze_args = [
+            (name, value)
+            for name, value in (
+                ("height_m", subj.height_m),
+                ("femur_mm", subj.femur_length_mm),
+                ("foot_mm", subj.foot_length_mm),
+            )
+            if value
         ]
-    height = f"height_m={calibration_height!r}"
-    lines.append(f"stats = analyze_gait(data, cycles, {height})")
+        if analyze_args:
+            lines += [
+                "",
+                "# Measured segments passed directly (myogait >= 0.7.0) --",
+                "# femur+foot together give the tightest calibration; either",
+                "# alone, or height_m, are accepted fallbacks.",
+            ]
+        analyze_call = "analyze_gait(data, cycles, " + ", ".join(
+            f"{name}={value!r}" for name, value in analyze_args
+        ) + ")"
+    else:
+        calibration_height = subj.calibration_height_m
+        if subj.femur_length_mm:
+            lines += [
+                "",
+                "# myogait derives its pixel/metre scale as height_m x 0.245 (a",
+                "# population femur-to-height ratio). Passing this value back",
+                "# makes that same formula reproduce the *measured* femur",
+                f"# ({subj.femur_length_mm:g} mm) instead of the population estimate.",
+            ]
+        analyze_call = f"analyze_gait(data, cycles, height_m={calibration_height!r})"
+    lines.append(f"stats = {analyze_call}")
     lines += [
         "",
         'print(f"Cycles: {len(cycles[\'cycles\'])}")',
@@ -383,7 +464,13 @@ def yaml_config(
         "  # No config key -- pass directly to compute_angles():",
         f"  #   calibration_dynamic_fallback={scalar(ang.calibration_dynamic_fallback)}",
         f"  #   calibration_min_std_deg={ang.calibration_min_std_deg}",
+        f"  #   calibration_max_offset_deg={ang.calibration_max_offset_deg}  # myogait >= 0.8.0",
     ]
+    if ang.canonicalize_signs:
+        lines.append(
+            "  # No config key -- apply after compute_angles(): "
+            "canonicalize_angle_signs(data)  # myogait >= 0.8.0"
+        )
     post_angles = [
         (ang.frontal, "compute_frontal_angles(data)"),
         (ang.perspective, "apply_perspective_correction(data)"),
@@ -432,6 +519,18 @@ def yaml_config(
         f"  n_points: {cyc.n_points}",
         f"  min_duration: {cyc.min_duration}",
         f"  max_duration: {cyc.max_duration}",
+    ]
+    if cyc.min_confidence is not None or cyc.min_coherence is not None:
+        lines.append(
+            "  # No config key -- pass directly to segment_cycles() (myogait "
+            ">= 0.8.1):"
+        )
+        if cyc.min_confidence is not None:
+            lines.append(f"  #   min_confidence={cyc.min_confidence}")
+        if cyc.min_coherence is not None:
+            lines.append(f"  #   min_coherence={cyc.min_coherence}")
+
+    lines += [
         "",
         "subject:",
         f"  age: {scalar(subj.age)}",
@@ -439,6 +538,17 @@ def yaml_config(
         f"  height_m: {scalar(subj.height_m)}",
         f"  weight_kg: {scalar(subj.weight_kg)}",
         f"  pathology: {scalar(subj.pathology) if subj.pathology else 'null'}",
+    ]
+    if subj.femur_length_mm or subj.foot_length_mm:
+        lines.append(
+            "  # No config key -- pass directly to analyze_gait() (myogait "
+            ">= 0.7.0):"
+        )
+        if subj.femur_length_mm:
+            lines.append(f"  #   femur_mm={subj.femur_length_mm}")
+        if subj.foot_length_mm:
+            lines.append(f"  #   foot_mm={subj.foot_length_mm}")
+    lines += [
         "",
     ]
     return "\n".join(lines)

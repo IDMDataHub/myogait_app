@@ -67,7 +67,7 @@ def render(config: PipelineConfig) -> PipelineConfig:
     angles = _angles_section(config.angles, runtime)
     bias = _bias_section(config.bias, angles, runtime)
     events = _events_section(_sync_femur_from_subject(config.events, subject), runtime)
-    cycles = _cycles_section(config.cycles)
+    cycles = _cycles_section(config.cycles, runtime)
 
     return PipelineConfig(
         normalize=normalize,
@@ -144,9 +144,17 @@ def _subject_section(cfg: SubjectConfig) -> SubjectConfig:
             "Forearm (elbow-wrist)", min_value=0.0, max_value=500.0,
             value=float(cfg.forearm_length_mm or 0.0), step=5.0, key="subj_forearm",
         )
-        trunk = st.number_input(
+        columns = st.columns(2)
+        trunk = columns[0].number_input(
             "Trunk (shoulder-hip)", min_value=0.0, max_value=800.0,
             value=float(cfg.trunk_length_mm or 0.0), step=5.0, key="subj_trunk",
+        )
+        foot = columns[1].number_input(
+            "Foot (heel-toe)", min_value=0.0, max_value=400.0,
+            value=float(cfg.foot_length_mm or 0.0), step=5.0, key="subj_foot",
+            help="Averaged with femur for the tightest calibration myogait "
+                 "documents (myogait >= 0.7.0). Does not feed the cross-check "
+                 "panel below (segment_lengths() has no foot entry).",
         )
 
     return SubjectConfig(
@@ -160,6 +168,7 @@ def _subject_section(cfg: SubjectConfig) -> SubjectConfig:
         upper_arm_length_mm=float(upper_arm) or None,
         forearm_length_mm=float(forearm) or None,
         trunk_length_mm=float(trunk) or None,
+        foot_length_mm=float(foot) or None,
     )
 
 
@@ -305,6 +314,23 @@ def _angles_section(cfg: AnglesConfig, runtime) -> AnglesConfig:
             )
             if calibrate and calibration_dynamic_fallback else cfg.calibration_min_std_deg
         )
+        max_offset_ok = runtime.calibration_guard_supported
+        calibration_max_offset_deg = (
+            st.slider(
+                "Max plausible calibration offset (deg)", 5.0, 60.0,
+                float(cfg.calibration_max_offset_deg), 1.0,
+                disabled=not max_offset_ok,
+                help="Skips calibration for a joint (with a warning, instead of "
+                     "shifting the whole cycle) when the estimated neutral-pose "
+                     "offset exceeds this - the guard against a clip whose "
+                     "'neutral' window actually caught mid-gait motion."
+                if max_offset_ok
+                else f"compute_angles(calibration_max_offset_deg=) is not "
+                     f"available in myogait {runtime.myogait_version or 'unknown'} "
+                     "(needs 0.8.0+).",
+            )
+            if calibrate else cfg.calibration_max_offset_deg
+        )
 
         columns = st.columns(2)
         ankle_sliding = columns[0].checkbox(
@@ -314,6 +340,18 @@ def _angles_section(cfg: AnglesConfig, runtime) -> AnglesConfig:
         aspect = columns[1].checkbox(
             "Aspect ratio", value=cfg.apply_aspect_ratio,
             help=find_one("apply_aspect_ratio").summary,
+        )
+
+        signs_ok = runtime.has("canonicalize_signs")
+        canonicalize_signs = st.checkbox(
+            "Canonical flexion-positive signs", value=cfg.canonicalize_signs and signs_ok,
+            disabled=not signs_ok,
+            help="Enforces a flexion-positive sagittal convention independent of "
+                 "walking direction, so two passes in opposite directions - or a "
+                 "video compared against its C3D reference - cannot disagree in "
+                 "sign. A correctness fix: leave this on unless you specifically "
+                 "need myogait's raw, direction-dependent sign."
+            if signs_ok else runtime.missing_feature_hint("canonicalize_signs"),
         )
 
         frontal_ok = runtime.has("frontal_angles")
@@ -353,6 +391,8 @@ def _angles_section(cfg: AnglesConfig, runtime) -> AnglesConfig:
         calibration_frames=int(calibration_frames),
         calibration_dynamic_fallback=calibration_dynamic_fallback,
         calibration_min_std_deg=float(calibration_min_std_deg),
+        calibration_max_offset_deg=float(calibration_max_offset_deg),
+        canonicalize_signs=canonicalize_signs,
         correct_ankle_sliding=ankle_sliding,
         apply_aspect_ratio=aspect,
         frontal=frontal,
@@ -502,7 +542,7 @@ def _events_section(cfg: EventsConfig, runtime) -> EventsConfig:
     )
 
 
-def _cycles_section(cfg: CyclesConfig) -> CyclesConfig:
+def _cycles_section(cfg: CyclesConfig, runtime) -> CyclesConfig:
     with st.expander("4. Cycle segmentation", expanded=False):
         n_points = st.select_slider(
             "Points per normalised cycle", [51, 101, 201], value=int(cfg.n_points),
@@ -514,8 +554,38 @@ def _cycles_section(cfg: CyclesConfig) -> CyclesConfig:
             help="Cycles outside this window are discarded as detection errors.",
         )
 
+        st.divider()
+        gates_ok = runtime.cycle_quality_gates_supported
+        st.caption(
+            "Quality gates, applied per cycle before it is kept."
+            + ("" if gates_ok else f" Needs myogait 0.8.1+ (installed: "
+                                    f"{runtime.myogait_version or 'unknown'}).")
+        )
+        columns = st.columns(2)
+        use_confidence = columns[0].checkbox(
+            "Reject low-confidence cycles", value=cfg.min_confidence is not None,
+            disabled=not gates_ok,
+        )
+        min_confidence = (
+            st.slider("Min mean confidence", 0.0, 1.0, float(cfg.min_confidence or 0.3), 0.05)
+            if use_confidence and gates_ok else None
+        )
+        use_coherence = columns[1].checkbox(
+            "Reject low-coherence cycles", value=cfg.min_coherence is not None,
+            disabled=not gates_ok,
+            help="Needs 'Score frame coherence' enabled in Signal conditioning "
+                 "above, or every cycle's mean coherence is undefined and none "
+                 "are rejected.",
+        )
+        min_coherence = (
+            st.slider("Min mean coherence", 0.0, 1.0, float(cfg.min_coherence or 0.3), 0.05)
+            if use_coherence and gates_ok else None
+        )
+
     return CyclesConfig(
         n_points=int(n_points),
         min_duration=float(bounds[0]),
         max_duration=float(bounds[1]),
+        min_confidence=min_confidence,
+        min_coherence=min_coherence,
     )
