@@ -6,7 +6,16 @@ markerless gait analysis toolkit.
 It exists to answer one kind of question well: *what does this parameter
 actually change?* Every lever myogait exposes downstream of extraction is a
 control here, the figures redraw against the same recording, and each screen can
-hand back the exact Python, YAML and CLI that produced what is on it.
+hand back the exact Python, YAML and CLI that produced what is on it. It reads
+from a video, a pre-extracted pivot JSON, or a marker-based `.c3d` motion-capture
+trial (with automatic marker-convention detection across labs and protocols),
+and drives myogait's own functions throughout — this repository contains no
+gait-analysis algorithms of its own.
+
+**Research and screening tool, not a diagnostic device.** The pathology
+screens, clinical scores and normative comparisons throughout the app are
+heuristic and explicitly labelled as such at the point of use; read them
+alongside the kinematic curves, never as a standalone diagnosis.
 
 ---
 
@@ -30,12 +39,24 @@ version cannot do, rather than failing at click time. Two versions matter:
 | `myogait` | **0.6.1** | Below it, `apply_linear_detrend` does not exist, and Sapiens 2, the clinical scores and the VICON block are missing or behave differently. |
 | `gaitkit` | **1.4.8** | The `gk_*` event detectors the comparator puts in competition come from here. 1.3.x does not provide them. |
 
+That floor is a *minimum*, not a recommendation: **0.8.0 fixed a critical
+`load_c3d` bug** (each axis was normalised by its own range instead of
+isotropically, distorting every angle computed from a non-square recording)
+and a hip-sign inversion, benchmarked against marker-based optical motion
+capture. Everything below this app degrades gracefully on an older install,
+but a C3D-heavy workflow specifically wants 0.8.0 or newer.
+
 Below **0.8.0**, `load_c3d` normalises the antero-posterior and vertical axes
 independently, distorting angles on any non-square recording; the C3D tab's
 "Correct the aspect ratio" control (`myogait_app/c3d_utils.py`) compensates
 for it. From 0.8.0 on the fix is native (isotropic normalisation) and the app
 detects this (`runtime.c3d_isotropic_native`) to stop offering that control,
-so it never double-corrects.
+so it never double-corrects. From **0.7.0**, `load_c3d`/`detect_c3d_convention`
+can autodetect the marker-naming convention a C3D file uses across five
+registered conventions (Plug-in Gait, ISB, Helen Hayes, BioCV, and this app's
+own addition for the Nature Scientific Data "Multimodal Gait Dataset") — the
+C3D tab tries this first and shows which one it picked, falling back to its
+own alias-and-keyword scan only when that cannot resolve enough landmarks.
 
 ```bash
 pip install --upgrade \
@@ -87,6 +108,14 @@ The palette is the validated reference set — it passes the lightness band, chr
 floor, protan/deutan separation, normal-vision floor and contrast checks in both
 light and dark mode. Do not substitute hex values without re-running that check.
 
+**Correctness fixes default on, feature toggles default off.** A flexion-positive
+sign convention independent of walking direction, and (for a C3D source) an
+ankle recomputed from the 3-D marker positions rather than the 2-D sagittal
+projection that collapses it, are both on by default — myogait 0.8.0
+correctness fixes with no legitimate reason to disable them. The bias
+corrections below are the opposite case, and stay off by default for the
+reason described next.
+
 **Nothing is kept.** A browser session gets a scratch directory; the only thing
 that outlives it is a job ticket, and both are purged on a fixed clock
 (`MYOGAIT_APP_RETENTION_HOURS`, default 24). Purging runs at startup and on the
@@ -111,8 +140,8 @@ the lab server.
 
 ## Deployment
 
-`deploy/` holds an nginx location block and a systemd unit modelled on the
-existing `physioevalab-emg-streamlit` deployment. The one thing that differs:
+`deploy/` holds an nginx location block and a systemd unit for running this
+behind a reverse proxy. The one thing that needs raising from the defaults:
 2 GB uploads need `client_max_body_size 2048m` and raised timeouts — left at the
 nginx default, every video upload fails with a 413 before Streamlit sees it.
 
@@ -140,8 +169,17 @@ myogait_app/
   jobs.py                  background extraction pool (Streamlit-free, testable)
   pipeline.py              staged engine with per-stage memoisation
   codegen.py               Python / YAML / CLI generation
+  marker_presets.py        C3D marker-convention detection and fallback
+  c3d_utils.py             pre-0.8.0 C3D aspect-ratio compatibility shim
+  calibration.py           multi-segment pixel/mm calibration cross-check
+  glossary.py              myogait function reference for tooltips and the Reference page
   demo.py                  synthetic dataset (dev/test fixture, not wired into the UI)
   charts/                  Plotly theme and figures
   ui/                      Streamlit pages
 deploy/                    nginx + systemd
 ```
+
+## License
+
+[MIT](LICENSE). myogait itself is developed separately at
+[IDMDataHub/myogait](https://github.com/IDMDataHub/myogait), also MIT.
