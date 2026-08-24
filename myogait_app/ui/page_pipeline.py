@@ -95,8 +95,11 @@ def _kinematics_tab(result: PipelineResult) -> None:
     )
     columns = st.columns([2, 1, 1])
     joints = columns[0].multiselect(
-        "Joints", list(K.SAGITTAL_JOINTS) + ["trunk"],
+        "Joints", list(K.SAGITTAL_JOINTS) + ["trunk", "pelvis_obliquity"],
         default=list(K.SAGITTAL_JOINTS), key="kin_joints",
+        help="Trunk and pelvis obliquity are once-per-frame values, not "
+             "per-side -- shown as a single trace regardless of the Sides "
+             "selection below.",
     )
     sides = columns[1].multiselect(
         "Sides", ["left", "right"], default=["left", "right"], key="kin_sides"

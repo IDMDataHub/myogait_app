@@ -23,6 +23,7 @@ JOINT_LABELS = {
     "knee": "Knee",
     "ankle": "Ankle",
     "trunk": "Trunk",
+    "pelvis_obliquity": "Pelvis obliquity",
     "pelvis_list": "Pelvis list",
     "hip_adduction": "Hip adduction",
     "knee_valgus": "Knee valgus",
@@ -30,6 +31,17 @@ JOINT_LABELS = {
 
 #: myogait stores per-frame angles under these keys.
 _SIDE_SUFFIX = {"left": "L", "right": "R"}
+
+#: Angles myogait stores once per frame rather than once per side --
+#: "trunk" and "pelvis_obliquity" are not suffixed _L/_R the way
+#: hip/knee/ankle are, so a plain f"{joint}_{side}" lookup silently finds
+#: nothing for either. pelvis_obliquity only exists from myogait 0.8.0
+#: (an honest rename of the frontal-plane value the historical
+#: "pelvis_tilt" key already carried); the fallback covers older installs.
+_GLOBAL_KEYS = {
+    "trunk": ("trunk_angle",),
+    "pelvis_obliquity": ("pelvis_obliquity", "pelvis_tilt"),
+}
 
 
 def _angle_series(data: dict, joint: str, side: str) -> tuple[np.ndarray, np.ndarray]:
@@ -42,6 +54,21 @@ def _angle_series(data: dict, joint: str, side: str) -> tuple[np.ndarray, np.nda
     times, values = [], []
     for frame in frames:
         raw = frame.get(key)
+        times.append(float(frame.get("frame_idx", 0)) / fps)
+        values.append(np.nan if raw is None else float(raw))
+    return np.asarray(times), np.asarray(values)
+
+
+def _global_angle_series(data: dict, joint: str) -> tuple[np.ndarray, np.ndarray]:
+    """Return (time_s, degrees) for a once-per-frame joint (see _GLOBAL_KEYS)."""
+    angles = (data or {}).get("angles") or {}
+    frames = angles.get("frames") or []
+    fps = float((data.get("meta") or {}).get("fps") or 30.0)
+    keys = _GLOBAL_KEYS.get(joint, (joint,))
+
+    times, values = [], []
+    for frame in frames:
+        raw = next((frame.get(k) for k in keys if frame.get(k) is not None), None)
         times.append(float(frame.get("frame_idx", 0)) / fps)
         values.append(np.nan if raw is None else float(raw))
     return np.asarray(times), np.asarray(values)
@@ -83,24 +110,48 @@ def angle_timeline(
     )
 
     for row, joint in enumerate(joints, start=1):
-        for side in sides:
-            times, values = _angle_series(data, joint, side)
-            if not len(times) or np.all(np.isnan(values)):
-                continue
-            fig.add_trace(
-                go.Scatter(
-                    x=times,
-                    y=values,
-                    name=side.title(),
-                    legendgroup=side,
-                    showlegend=(row == 1),
-                    mode="lines",
-                    line=dict(color=side_color(side, dark), width=2),
-                    hovertemplate="%{y:.1f}&deg;<extra>" + side.title() + "</extra>",
-                ),
-                row=row,
-                col=1,
-            )
+        if joint in _GLOBAL_KEYS:
+            # One value per frame, not per side (trunk_angle,
+            # pelvis_obliquity) -- a side-coloured trace per side would
+            # draw two identical overlapping lines and, worse, imply a
+            # left/right difference that does not exist for this joint.
+            times, values = _global_angle_series(data, joint)
+            if len(times) and not np.all(np.isnan(values)):
+                fig.add_trace(
+                    go.Scatter(
+                        x=times,
+                        y=values,
+                        name=JOINT_LABELS.get(joint, joint.title()),
+                        legendgroup=joint,
+                        showlegend=(row == 1),
+                        mode="lines",
+                        line=dict(color=BRANDING.accent, width=2),
+                        hovertemplate="%{y:.1f}&deg;<extra>"
+                        + JOINT_LABELS.get(joint, joint.title())
+                        + "</extra>",
+                    ),
+                    row=row,
+                    col=1,
+                )
+        else:
+            for side in sides:
+                times, values = _angle_series(data, joint, side)
+                if not len(times) or np.all(np.isnan(values)):
+                    continue
+                fig.add_trace(
+                    go.Scatter(
+                        x=times,
+                        y=values,
+                        name=side.title(),
+                        legendgroup=side,
+                        showlegend=(row == 1),
+                        mode="lines",
+                        line=dict(color=side_color(side, dark), width=2),
+                        hovertemplate="%{y:.1f}&deg;<extra>" + side.title() + "</extra>",
+                    ),
+                    row=row,
+                    col=1,
+                )
         fig.update_yaxes(title_text="deg", row=row, col=1)
 
     if show_events:
