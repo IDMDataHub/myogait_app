@@ -83,9 +83,40 @@ component layout, spacing, and interaction model were preserved
 throughout: this is a token-level identity change (colour, type, radius),
 not a rebuild of the interface's structure.
 
+## Layout (follow-up pass)
+
+A second pass, scoped to `myogait_app/ui/sidebar.py` per a `layout`-command
+request: the identity pass above deliberately left structure untouched,
+but the sidebar's **2. Joint kinematics** section had grown to 13
+controls across the earlier pipeline commits (`canonicalize_signs`,
+`calibration_max_offset_deg`, `c3d_reference_ankle` all landed there) with
+no internal grouping — the density problem the squint test caught, not a
+spacing one. Split into two nested `st.tabs()`: **Calibration** (method,
+correction factor, and the four calibration-window controls) and
+**Corrections** (the myogait 0.8.x correctness fixes, on by default and
+captioned as such, then the opt-in projection/drift/frontal corrections
+below a divider). Restructuring was explicitly authorized for this pass;
+every other section's expander and control order is unchanged.
+
+A per-section "modified from default" marker in the expander label was
+attempted and reverted: Streamlit fixes an `st.expander` label before its
+body runs, so the marker could only ever reflect the *previous*
+interaction, not the one that just happened — a trust signal that lies
+for one click is worse than no signal. Fixing it properly needs an
+explicit `key=` on every widget plus session-state peek-ahead logic
+(Streamlit resolves a keyed widget's pending value before the script
+reruns), which is real additional scope, not this pass's.
+
+Verification: `streamlit.testing.v1.AppTest` across all 7 pages, cold and
+with a loaded C3D recording, plus toggling controls in both new tabs
+together in one rerun and confirming the resulting `PipelineConfig`
+carried every change correctly; a live `streamlit run` launch (HTTP 200,
+clean log). No screenshot review — still no browser tool available.
+
 ## What this redesign did not touch
 
-- Component layout, page structure, and interaction flows — unchanged.
+- Page structure and interaction flows outside the sidebar — unchanged.
+- Every sidebar section besides Joint kinematics — unchanged.
 - The categorical/side/status data-viz palette (see above).
 - `myogait_app/ui/components.py::is_dark()`'s detection logic — still
   correct against the new `base = "dark"` default.

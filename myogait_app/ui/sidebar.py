@@ -280,122 +280,137 @@ def _angles_section(cfg: AnglesConfig, runtime) -> AnglesConfig:
             "2D ROM correction factor", 0.5, 1.2, float(cfg.correction_factor), 0.05,
             help="myogait suggests 0.8 for MediaPipe and 1.0 for 3D-capable models.",
         )
-        calibrate = st.checkbox(
-            "Neutral calibration", value=cfg.calibrate,
-            help="Uses the first calibration_frames frames as a neutral-pose "
-                 "reference, so angles read as flexion/extension from a "
-                 "standing baseline rather than from the raw geometric angle. "
-                 "Ankle is myogait's default calibrated joint.",
-        )
-        calibration_frames = (
-            st.slider("Calibration frames", 5, 120, int(cfg.calibration_frames))
-            if calibrate else cfg.calibration_frames
-        )
-        calibration_dynamic_fallback = (
-            st.checkbox(
-                "Dynamic calibration fallback", value=cfg.calibration_dynamic_fallback,
-                help="If those first calibration_frames show no meaningful motion "
-                     "(angle std below the threshold below), calibrate from the "
-                     "median of all valid frames instead - a patient who starts "
-                     "standing in a pathological or asymmetric pose would "
-                     "otherwise shift the whole cycle by that offset. Rule this "
-                     "out before reading a persistent ankle error as a hardware "
-                     "or measurement ceiling.",
+
+        # Split at 13 controls: what you are here to explore (calibration
+        # method and its thresholds) against what you almost never touch
+        # (correctness fixes myogait 0.8.x ships on by default, plus the
+        # opt-in projection/drift corrections). Density was the actual
+        # problem this tab split fixes, not spacing -- see DESIGN.md.
+        tab_calibration, tab_corrections = st.tabs(["Calibration", "Corrections"])
+
+        with tab_calibration:
+            calibrate = st.checkbox(
+                "Neutral calibration", value=cfg.calibrate,
+                help="Uses the first calibration_frames frames as a neutral-pose "
+                     "reference, so angles read as flexion/extension from a "
+                     "standing baseline rather than from the raw geometric angle. "
+                     "Ankle is myogait's default calibrated joint.",
             )
-            if calibrate else cfg.calibration_dynamic_fallback
-        )
-        calibration_min_std_deg = (
-            st.slider(
-                "Static-window threshold (deg)", 0.1, 5.0,
-                float(cfg.calibration_min_std_deg), 0.1,
-                help="Below this angle std over the calibration window, the "
-                     "window is treated as static and the dynamic fallback "
-                     "above kicks in.",
+            calibration_frames = (
+                st.slider("Calibration frames", 5, 120, int(cfg.calibration_frames))
+                if calibrate else cfg.calibration_frames
             )
-            if calibrate and calibration_dynamic_fallback else cfg.calibration_min_std_deg
-        )
-        max_offset_ok = runtime.calibration_guard_supported
-        calibration_max_offset_deg = (
-            st.slider(
-                "Max plausible calibration offset (deg)", 5.0, 60.0,
-                float(cfg.calibration_max_offset_deg), 1.0,
-                disabled=not max_offset_ok,
-                help="Skips calibration for a joint (with a warning, instead of "
-                     "shifting the whole cycle) when the estimated neutral-pose "
-                     "offset exceeds this - the guard against a clip whose "
-                     "'neutral' window actually caught mid-gait motion."
-                if max_offset_ok
-                else f"compute_angles(calibration_max_offset_deg=) is not "
-                     f"available in myogait {runtime.myogait_version or 'unknown'} "
-                     "(needs 0.8.0+).",
+            calibration_dynamic_fallback = (
+                st.checkbox(
+                    "Dynamic calibration fallback", value=cfg.calibration_dynamic_fallback,
+                    help="If those first calibration_frames show no meaningful motion "
+                         "(angle std below the threshold below), calibrate from the "
+                         "median of all valid frames instead - a patient who starts "
+                         "standing in a pathological or asymmetric pose would "
+                         "otherwise shift the whole cycle by that offset. Rule this "
+                         "out before reading a persistent ankle error as a hardware "
+                         "or measurement ceiling.",
+                )
+                if calibrate else cfg.calibration_dynamic_fallback
             )
-            if calibrate else cfg.calibration_max_offset_deg
-        )
+            calibration_min_std_deg = (
+                st.slider(
+                    "Static-window threshold (deg)", 0.1, 5.0,
+                    float(cfg.calibration_min_std_deg), 0.1,
+                    help="Below this angle std over the calibration window, the "
+                         "window is treated as static and the dynamic fallback "
+                         "above kicks in.",
+                )
+                if calibrate and calibration_dynamic_fallback else cfg.calibration_min_std_deg
+            )
+            max_offset_ok = runtime.calibration_guard_supported
+            calibration_max_offset_deg = (
+                st.slider(
+                    "Max plausible calibration offset (deg)", 5.0, 60.0,
+                    float(cfg.calibration_max_offset_deg), 1.0,
+                    disabled=not max_offset_ok,
+                    help="Skips calibration for a joint (with a warning, instead of "
+                         "shifting the whole cycle) when the estimated neutral-pose "
+                         "offset exceeds this - the guard against a clip whose "
+                         "'neutral' window actually caught mid-gait motion."
+                    if max_offset_ok
+                    else f"compute_angles(calibration_max_offset_deg=) is not "
+                         f"available in myogait {runtime.myogait_version or 'unknown'} "
+                         "(needs 0.8.0+).",
+                )
+                if calibrate else cfg.calibration_max_offset_deg
+            )
 
-        columns = st.columns(2)
-        ankle_sliding = columns[0].checkbox(
-            "Ankle sliding fix", value=cfg.correct_ankle_sliding,
-            help=find_one("detect_ankle_swap").summary,
-        )
-        aspect = columns[1].checkbox(
-            "Aspect ratio", value=cfg.apply_aspect_ratio,
-            help=find_one("apply_aspect_ratio").summary,
-        )
+        with tab_corrections:
+            st.caption(
+                "canonicalize_signs and the C3D ankle reference are myogait "
+                "0.8.x correctness fixes, on by default - leave them alone "
+                "unless you have a specific reason not to. Everything below "
+                "that divider is opt-in and off by default."
+            )
+            columns = st.columns(2)
+            ankle_sliding = columns[0].checkbox(
+                "Ankle sliding fix", value=cfg.correct_ankle_sliding,
+                help=find_one("detect_ankle_swap").summary,
+            )
+            aspect = columns[1].checkbox(
+                "Aspect ratio", value=cfg.apply_aspect_ratio,
+                help=find_one("apply_aspect_ratio").summary,
+            )
 
-        signs_ok = runtime.has("canonicalize_signs")
-        canonicalize_signs = st.checkbox(
-            "Canonical flexion-positive signs", value=cfg.canonicalize_signs and signs_ok,
-            disabled=not signs_ok,
-            help="Enforces a flexion-positive sagittal convention independent of "
-                 "walking direction, so two passes in opposite directions - or a "
-                 "video compared against its C3D reference - cannot disagree in "
-                 "sign. A correctness fix: leave this on unless you specifically "
-                 "need myogait's raw, direction-dependent sign."
-            if signs_ok else runtime.missing_feature_hint("canonicalize_signs"),
-        )
+            signs_ok = runtime.has("canonicalize_signs")
+            canonicalize_signs = st.checkbox(
+                "Canonical flexion-positive signs", value=cfg.canonicalize_signs and signs_ok,
+                disabled=not signs_ok,
+                help="Enforces a flexion-positive sagittal convention independent of "
+                     "walking direction, so two passes in opposite directions - or a "
+                     "video compared against its C3D reference - cannot disagree in "
+                     "sign. A correctness fix: leave this on unless you specifically "
+                     "need myogait's raw, direction-dependent sign."
+                if signs_ok else runtime.missing_feature_hint("canonicalize_signs"),
+            )
 
-        c3d_ref_ok = runtime.has("c3d_reference_angles")
-        c3d_reference_ankle = st.checkbox(
-            "3-D ankle reference for C3D sources",
-            value=cfg.c3d_reference_ankle and c3d_ref_ok,
-            disabled=not c3d_ref_ok,
-            help="The 2-D sagittal projection is faithful for hip/knee (r >= "
-                 "0.99 vs a Vicon 3-D reference) but collapses the ankle (r ~ "
-                 "0.4, ROM halved) - recomputes it from load_c3d's 3-D marker "
-                 "positions instead. A no-op on a video or JSON source (no 3-D "
-                 "markers to recompute from), so safe to leave on."
-            if c3d_ref_ok else runtime.missing_feature_hint("c3d_reference_angles"),
-        )
+            c3d_ref_ok = runtime.has("c3d_reference_angles")
+            c3d_reference_ankle = st.checkbox(
+                "3-D ankle reference for C3D sources",
+                value=cfg.c3d_reference_ankle and c3d_ref_ok,
+                disabled=not c3d_ref_ok,
+                help="The 2-D sagittal projection is faithful for hip/knee (r >= "
+                     "0.99 vs a Vicon 3-D reference) but collapses the ankle (r ~ "
+                     "0.4, ROM halved) - recomputes it from load_c3d's 3-D marker "
+                     "positions instead. A no-op on a video or JSON source (no 3-D "
+                     "markers to recompute from), so safe to leave on."
+                if c3d_ref_ok else runtime.missing_feature_hint("c3d_reference_angles"),
+            )
 
-        frontal_ok = runtime.has("frontal_angles")
-        frontal = st.checkbox(
-            "Frontal-plane angles",
-            value=cfg.frontal and frontal_ok,
-            disabled=not frontal_ok,
-            help="Needs depth data to be meaningful."
-            if frontal_ok else runtime.missing_feature_hint("frontal_angles"),
-        )
-
-        st.divider()
-        perspective_ok = runtime.has("perspective")
-        perspective = st.checkbox(
-            "M1 perspective correction",
-            value=cfg.perspective and perspective_ok,
-            disabled=not perspective_ok,
-            help="Zero-parameter geometry, computed from this recording's own "
-                 "segment lengths. Adds no population assumption, so it is safe "
-                 "on any gait."
-            if perspective_ok else runtime.missing_feature_hint("perspective"),
-        )
-        detrend_ok = runtime.has("detrend")
-        detrend = st.checkbox(
-            "Remove linear drift",
-            value=cfg.detrend and detrend_ok,
-            disabled=not detrend_ok,
-            help="Removes the slow angular drift a fixed camera introduces over a "
-                 "long walk, preserving the anatomical mean and per-cycle ROM."
-            if detrend_ok else runtime.missing_feature_hint("detrend"),
-        )
+            st.divider()
+            frontal_ok = runtime.has("frontal_angles")
+            frontal = st.checkbox(
+                "Frontal-plane angles",
+                value=cfg.frontal and frontal_ok,
+                disabled=not frontal_ok,
+                help="Needs depth data to be meaningful."
+                if frontal_ok else runtime.missing_feature_hint("frontal_angles"),
+            )
+            perspective_ok = runtime.has("perspective")
+            perspective = st.checkbox(
+                "M1 perspective correction",
+                value=cfg.perspective and perspective_ok,
+                disabled=not perspective_ok,
+                help="Zero-parameter geometry, computed from this recording's own "
+                     "segment lengths. Adds no population assumption, so it is safe "
+                     "on any gait."
+                if perspective_ok else runtime.missing_feature_hint("perspective"),
+            )
+            detrend_ok = runtime.has("detrend")
+            detrend = st.checkbox(
+                "Remove linear drift",
+                value=cfg.detrend and detrend_ok,
+                disabled=not detrend_ok,
+                help="Removes the slow angular drift a fixed camera introduces over a "
+                     "long walk, preserving the anatomical mean and per-cycle ROM."
+                if detrend_ok else runtime.missing_feature_hint("detrend"),
+            )
 
     return AnglesConfig(
         method=method,
