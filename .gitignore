@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Pose-backend weights, downloaded on first use (ultralytics, Sapiens,
+# ONNX runtimes...) -- never source, and some are hundreds of MB.
+*.pt
+*.pth
+*.onnx
+*.h5
+
+# Streamlit / local secrets -- SETTINGS.workspace_root defaults to a
+# temp directory outside this tree, but guard against a local override.
+.streamlit/secrets.toml
+.env
+.env.*
+
+# Research sandbox: benchmark scripts and datasets, not part of the app.
+# Never contains only source either -- results/, results_temporal/ and
+# any downloaded corpus live under here too.
+arch/
+
+# Editor / OS cruft
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Claude Code local settings (plugin enablement etc.) -- machine-local,
+# not app config. .claude/launch.json (the preview-server config) stays
+# tracked; it is a legitimate part of this repo.
+.claude/settings.json
+.claude/settings.local.json
