@@ -27,7 +27,10 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Then open the **Data** page and load a pivot JSON or a video.
+Then open the **Data** page and load a pivot JSON or a video — or follow
+[**TUTORIAL.md**](TUTORIAL.md) for a five-minute walkthrough from an
+uploaded video to the first kinematic curves and everything else the app
+can measure.
 
 ## Environment requirements
 
