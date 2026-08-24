@@ -63,7 +63,7 @@ own alias-and-keyword scan only when that cannot resolve enough landmarks.
 
 ```bash
 pip install --upgrade \
-  "myogait[mediapipe,yolo,excel,yaml] @ git+https://github.com/IDMDataHub/myogait.git@master" \
+  "myogait[mediapipe,yolo,excel,yaml,loess,wavelet] @ git+https://github.com/IDMDataHub/myogait.git@master" \
   "gaitkit>=1.4.8" ezc3d "c3d>=0.5"
 ```
 
