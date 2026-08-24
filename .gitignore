@@ -39,3 +39,9 @@ Thumbs.db
 # tracked; it is a legitimate part of this repo.
 .claude/settings.json
 .claude/settings.local.json
+
+# Internal AI-assistant guidance, kept private ahead of this repo going
+# public. Still loaded automatically every session from disk regardless
+# of git tracking status -- only its presence in the repo is what this
+# excludes.
+CLAUDE.md
