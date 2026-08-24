@@ -109,8 +109,18 @@ def python_snippet(
     )
     native_calibration = _myogait_accepts("myogait", "analyze_gait", "femur_mm")
     quality_gates_available = _myogait_accepts("myogait", "segment_cycles", "min_confidence")
+    # A no-op on anything but a C3D source at runtime (gated on
+    # "c3d_markers_3d" being in the data) -- c3d_options is this
+    # function's own signal that *source* is one.
+    use_c3d_reference = (
+        ang.c3d_reference_ankle
+        and c3d_options is not None
+        and _myogait_has("myogait.experimental_vicon", "compute_c3d_reference_angles")
+    )
 
     imports = ["normalize", "compute_angles", "segment_cycles", "analyze_gait"]
+    if use_c3d_reference:
+        imports.append("compute_c3d_reference_angles")
     if use_signs:
         imports.append("canonicalize_angle_signs")
     imports.append("event_consensus" if ev.is_consensus else "detect_events")
@@ -242,6 +252,12 @@ def python_snippet(
     lines.append(_kwargs_block(angles_args).rstrip("\n"))
     lines.append(")")
 
+    if use_c3d_reference:
+        lines.append("")
+        lines.append("# 2-D sagittal projection collapses the ankle (r ~ 0.4 vs a")
+        lines.append("# Vicon 3-D reference); recompute it from the 3-D markers.")
+        lines.append('data = compute_c3d_reference_angles(data, joints=("ankle",))')
+
     if use_signs:
         lines.append("")
         lines.append("# Flexion-positive convention, independent of walking direction")
@@ -367,9 +383,8 @@ def python_snippet(
                 "# femur+foot together give the tightest calibration; either",
                 "# alone, or height_m, are accepted fallbacks.",
             ]
-        analyze_call = "analyze_gait(data, cycles, " + ", ".join(
-            f"{name}={value!r}" for name, value in analyze_args
-        ) + ")"
+        extra = ", ".join(f"{name}={value!r}" for name, value in analyze_args)
+        analyze_call = f"analyze_gait(data, cycles, {extra})" if extra else "analyze_gait(data, cycles)"
     else:
         calibration_height = subj.calibration_height_m
         if subj.femur_length_mm:
@@ -470,6 +485,11 @@ def yaml_config(
         lines.append(
             "  # No config key -- apply after compute_angles(): "
             "canonicalize_angle_signs(data)  # myogait >= 0.8.0"
+        )
+    if ang.c3d_reference_ankle:
+        lines.append(
+            "  # No config key -- for a C3D source only, after compute_angles(): "
+            'compute_c3d_reference_angles(data, joints=("ankle",))  # myogait >= 0.8.0'
         )
     post_angles = [
         (ang.frontal, "compute_frontal_angles(data)"),

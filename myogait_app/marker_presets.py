@@ -20,6 +20,7 @@ hand-rolled lab convention is not stuck with manual mapping either.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 #: Vicon Plug-in Gait: the other marker set in wide clinical use, alongside
@@ -239,5 +240,70 @@ def auto_detect_mapping(
         if fallback:
             mapping["NOSE"] = fallback
             source["NOSE"] = "fallback"
+
+    return mapping, source
+
+
+#: The six lower-limb landmarks load_c3d needs at least 4 of, mirroring
+#: myogait.experimental_vicon.detect_c3d_convention's own threshold
+#: (kept as a local constant rather than importing that module's
+#: underscore-prefixed one, which is private API).
+REQUIRED_LANDMARKS = (
+    "LEFT_HIP", "RIGHT_HIP",
+    "LEFT_KNEE", "RIGHT_KNEE",
+    "LEFT_ANKLE", "RIGHT_ANKLE",
+)
+
+
+@dataclass
+class MappingDiagnostics:
+    """How :func:`resolve_c3d_mapping` arrived at its mapping, for display.
+
+    ``method`` is ``"native"`` when myogait's own ``detect_c3d_convention``
+    resolved enough landmarks on its own, ``"fuzzy"`` when this module's
+    alias-plus-keyword scan had to be tried instead (older myogait, or an
+    exotic convention neither detector's registry covers).
+    """
+
+    method: str
+    n_resolved: int
+    convention: str | None = None
+    scores: dict[str, int] | None = None
+    source: dict[str, str] | None = None
+
+
+def resolve_c3d_mapping(labels: list[str]) -> tuple[dict[str, list[str]], MappingDiagnostics]:
+    """Best-effort ``marker_mapping`` for *labels*, myogait's own detector first.
+
+    Tries :func:`myogait.detect_c3d_convention` first (myogait >= 0.7.0):
+    it scores five registered conventions plus a regex fallback, and its
+    result is the more transparent, better-maintained one whenever it
+    resolves at least 4 of the 6 :data:`REQUIRED_LANDMARKS` -- that
+    threshold matches ``load_c3d``'s own. Falls back to
+    :func:`auto_detect_mapping` (this module's own alias-plus-keyword
+    scan, which additionally knows the ``nature_multimodal`` convention
+    myogait does not yet) when the installed myogait predates
+    ``detect_c3d_convention``, or when neither its best registered
+    convention nor its own fallback clears that bar.
+    """
+    try:
+        from myogait import detect_c3d_convention
+    except ImportError:
+        detect_c3d_convention = None  # myogait < 0.7.0
+
+    if detect_c3d_convention is not None:
+        convention, mapping, scores = detect_c3d_convention(labels)
+        n_resolved = scores.get(convention, 0)
+        if n_resolved >= 4:
+            return mapping, MappingDiagnostics(
+                method="native",
+                n_resolved=n_resolved,
+                convention=convention,
+                scores=scores,
+            )
+
+    mapping, source = auto_detect_mapping(labels)
+    n_resolved = sum(1 for lm in REQUIRED_LANDMARKS if lm in mapping)
+    return mapping, MappingDiagnostics(method="fuzzy", n_resolved=n_resolved, source=source)
 
     return mapping, source

@@ -87,6 +87,15 @@ class AnglesConfig:
     #: compared against its C3D reference -- can disagree in sign. On by
     #: default: this is a correctness fix, not a stylistic choice.
     canonicalize_signs: bool = True
+    #: Recomputes the ankle from the 3-D marker positions load_c3d keeps
+    #: (myogait >= 0.8.0), instead of the 2-D sagittal projection everything
+    #: else uses. The projection is faithful for hip/knee (r >= 0.99 vs a
+    #: Vicon 3-D reference) but collapses the ankle (r ~ 0.4, ROM halved) --
+    #: the foot segment rotates partly out of the sagittal plane. A no-op
+    #: on any non-C3D source: gated on "c3d_markers_3d" actually being in
+    #: the data, not on a source-kind flag, so the toggle is safe to leave
+    #: on regardless of what is currently loaded.
+    c3d_reference_ankle: bool = True
     #: Frontal-plane angles, only meaningful when depth data is present.
     frontal: bool = False
     #: M1 projection correction for hip and knee. Zero-parameter pure
@@ -404,9 +413,18 @@ def _apply_angles(data: dict, cfg: AnglesConfig) -> dict:
         angles_kwargs["calibration_max_offset_deg"] = cfg.calibration_max_offset_deg
     data = compute_angles(data, **angles_kwargs)
 
-    # Sign convention first: every correction below (perspective, drift,
-    # bias) assumes a flexion-positive signal, and canonicalize_angle_signs
-    # is what makes that true regardless of walking direction.
+    # C3D 3-D ankle reference, before the sign convention step: this is
+    # myogait's own run_pipeline() ordering (compute_angles -> C3D ankle
+    # -> canonicalize_angle_signs). "c3d_markers_3d" only exists on data
+    # load_c3d produced, so this is a no-op for any other source.
+    if cfg.c3d_reference_ankle and "c3d_markers_3d" in data:
+        data = _correction(
+            "compute_c3d_reference_angles", "myogait.experimental_vicon"
+        )(data, joints=("ankle",))
+
+    # Sign convention: every correction below (perspective, drift, bias)
+    # assumes a flexion-positive signal, and canonicalize_angle_signs is
+    # what makes that true regardless of walking direction.
     if cfg.canonicalize_signs:
         data = _correction("canonicalize_angle_signs", "myogait.angles")(data)
 

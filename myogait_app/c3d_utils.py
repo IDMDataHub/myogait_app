@@ -16,6 +16,7 @@ them before ``compute_angles`` runs, restoring a correct aspect ratio.
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -46,8 +47,20 @@ def marker_axis_ranges(
         found = [label_idx[mk] for mk in candidates if mk in label_idx]
         if not found:
             continue
-        pts = points[:3, found, :]  # (3, n_found, n_frames)
-        with np.errstate(invalid="ignore"):
+        pts = points[:3, found, :].astype(float, copy=True)  # (3, n_found, n_frames)
+        # ezc3d encodes an occluded sample as exact (0, 0, 0) rather than
+        # NaN (same quirk load_c3d itself works around). Left alone, those
+        # zeros drag the min this function returns down towards 0 on any
+        # file with occlusion, understating the true range and therefore
+        # the aspect-ratio correction this function exists to compute.
+        missing = (pts == 0.0).all(axis=0)  # (n_found, n_frames)
+        pts[:, missing] = np.nan
+        with np.errstate(invalid="ignore"), warnings.catch_warnings():
+            # A candidate marker that is occluded on every frame produces
+            # an all-NaN row here; harmless (nanmax/nanmin below simply
+            # ignore it), but numpy warns on the mean of an empty slice.
+            # load_c3d silences the same warning for the same reason.
+            warnings.simplefilter("ignore", RuntimeWarning)
             avg = np.nanmean(pts, axis=1)  # (3, n_frames)
         ap_values.append(avg[ap_axis])
         vert_values.append(avg[vertical_axis])

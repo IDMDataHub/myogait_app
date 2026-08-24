@@ -183,35 +183,35 @@ def _c3d_tab() -> None:
     target: Path | None = None
     labels: list[str] = []
     detected_mapping: dict[str, list[str]] = {}
-    detected_source: dict[str, str] = {}
+    diagnostics = None
     if uploaded is not None:
         workspace = state.workspace()
         target = workspace.path_for(uploaded.name)
         if not target.exists() or target.stat().st_size != uploaded.size:
             target.write_bytes(uploaded.getbuffer())
         try:
-            from ..marker_presets import auto_detect_mapping, read_c3d_labels
+            from ..marker_presets import read_c3d_labels, resolve_c3d_mapping
 
             labels = read_c3d_labels(target)
-            detected_mapping, detected_source = auto_detect_mapping(labels)
+            detected_mapping, diagnostics = resolve_c3d_mapping(labels)
         except Exception as exc:
             st.caption(f"Could not pre-scan marker labels: {type(exc).__name__}: {exc}")
 
     with st.expander("Marker mapping and axes", expanded=False):
-        if uploaded is not None:
-            n_found = sum(1 for lm in MEDIAPIPE_LANDMARKS if lm in detected_mapping)
-            st.caption(
-                f"Auto-detected {n_found}/{len(MEDIAPIPE_LANDMARKS)} tracked "
-                f"landmarks from {len(labels)} markers in the file (package "
-                "default and Plug-in Gait aliases, then a side/keyword scan "
-                "for anything left over)."
-            )
+        if uploaded is not None and diagnostics is not None:
+            _c3d_diagnostics(diagnostics, len(labels))
             st.dataframe(
                 [
                     {
                         "Landmark": lm,
                         "Matched marker(s)": ", ".join(detected_mapping.get(lm, [])) or "—",
-                        "Via": detected_source.get(lm, "—"),
+                        "Via": (
+                            f"native: {diagnostics.convention}"
+                            if diagnostics.method == "native" and lm in detected_mapping
+                            else (diagnostics.source or {}).get(lm, "—")
+                            if diagnostics.method == "fuzzy"
+                            else "—"
+                        ),
                     }
                     for lm in MEDIAPIPE_LANDMARKS
                 ],
@@ -224,21 +224,31 @@ def _c3d_tab() -> None:
             "Marker mapping",
             [
                 "Auto-detect (recommended)",
-                "Package default (myogait's built-in set)",
+                "Force myogait default (iso_biomechanics only)",
                 "Structured fields",
                 "Raw JSON",
             ],
             horizontal=True,
             key="c3d_map_mode",
-            help="Auto-detect scans the uploaded file's own labels against "
-                 "known conventions (the package default, Vicon Plug-in Gait) "
-                 "plus a fuzzy side/keyword fallback, so files from different "
-                 "projects or labs do not need a hand-written mapping. "
-                 "Package default has no elbow or wrist, so arm-swing "
-                 "analysis needs auto-detect or a custom mapping.",
+            help="Auto-detect tries myogait's own detect_c3d_convention first "
+                 "(5 registered conventions, scored) and falls back to this "
+                 "app's own alias-plus-keyword scan only when that cannot "
+                 "resolve enough landmarks -- see the diagnostics above once "
+                 "a file is uploaded. 'Force myogait default' pins the "
+                 "package's original CAST-style set regardless of what "
+                 "auto-detect finds, useful to sanity-check a file you know "
+                 "uses it. Neither has elbow or wrist by default, so "
+                 "arm-swing analysis needs Structured fields or Raw JSON.",
         )
         mapping = _c3d_marker_mapping(
             mapping_mode, DEFAULT_C3D_MARKER_MAP, detected_mapping or None
+        )
+
+        st.caption(
+            "3-D ankle reference (recovers the ankle from load_c3d's 3-D "
+            "marker positions instead of the 2-D sagittal projection) is a "
+            "pipeline setting, not a load-time one -- see 'Joint kinematics' "
+            "in the sidebar once this trial is loaded."
         )
 
         st.divider()
@@ -277,24 +287,50 @@ def _c3d_tab() -> None:
     if uploaded is not None and target is not None and st.button(
         "Load C3D", type="primary", use_container_width=True, key="c3d_load"
     ):
-        if mapping is None and mapping_mode != "Package default (myogait's built-in set)":
+        if not mapping:
             st.error("Fix the marker mapping above before loading.")
             return
         _load_c3d(target, uploaded.name, mapping, int(ap_axis), int(vertical_axis), fix_aspect)
 
 
+def _c3d_diagnostics(diagnostics, n_labels: int) -> None:
+    """Explain how the marker mapping was resolved, for the file just uploaded."""
+    from ..marker_presets import REQUIRED_LANDMARKS
+
+    n_required = len(REQUIRED_LANDMARKS)
+    if diagnostics.method == "native":
+        st.caption(
+            f"myogait's own detect_c3d_convention picked **{diagnostics.convention}** "
+            f"({diagnostics.n_resolved}/{n_required} required landmarks) from "
+            f"{n_labels} markers in the file."
+        )
+        scored = sorted((diagnostics.scores or {}).items(), key=lambda kv: -kv[1])
+        st.caption(
+            "Convention scores: "
+            + ", ".join(f"{name} {score}/{n_required}" for name, score in scored)
+        )
+    else:
+        st.caption(
+            f"myogait's own detect_c3d_convention could not resolve enough "
+            f"landmarks on its own (or predates 0.7.0) - falling back to this "
+            f"app's alias-plus-keyword scan, which resolved "
+            f"{diagnostics.n_resolved}/{n_required} required landmarks from "
+            f"{n_labels} markers."
+        )
+    if diagnostics.n_resolved < 4:
+        st.warning(
+            f"Only {diagnostics.n_resolved}/{n_required} required lower-limb "
+            "landmarks resolved - loading will likely fail. Check the table "
+            "below, or switch to Structured fields / Raw JSON to map manually."
+        )
+
+
 def _c3d_marker_mapping(
     mode: str, defaults: dict, detected: dict[str, list[str]] | None
 ) -> dict | None:
-    """Return the mapping for *mode*, or ``None`` for the package default.
-
-    ``None`` is meaningful for the package-default mode: it tells
-    ``load_c3d`` to use its own ``DEFAULT_C3D_MARKER_MAP`` rather than a
-    copy of it built here, so the two stay in sync automatically if the
-    package's default ever changes.
-    """
-    if mode == "Package default (myogait's built-in set)":
-        return None
+    """Return the mapping for *mode*."""
+    if mode == "Force myogait default (iso_biomechanics only)":
+        return defaults
 
     if mode == "Auto-detect (recommended)":
         if not detected:
@@ -355,7 +391,20 @@ def _load_c3d(
             str(path), marker_mapping=mapping, ap_axis=ap_axis, vertical_axis=vertical_axis
         )
     except Exception as exc:
-        st.error(f"Could not read the C3D file: {type(exc).__name__}: {exc}")
+        # InvalidC3DError (myogait >= 0.8.1) is raised specifically for an
+        # unresolved marker mapping -- point back at the controls that fix
+        # it rather than just the generic message every other failure gets.
+        try:
+            from myogait.exceptions import InvalidC3DError
+        except ImportError:
+            InvalidC3DError = ()  # myogait < 0.8.1: no dedicated type to check
+        if InvalidC3DError and isinstance(exc, InvalidC3DError):
+            st.error(
+                f"{exc}\n\nTry Structured fields or Raw JSON above to map the "
+                "unmatched landmarks by hand."
+            )
+        else:
+            st.error(f"Could not read the C3D file: {type(exc).__name__}: {exc}")
         return
 
     if not data.get("frames"):

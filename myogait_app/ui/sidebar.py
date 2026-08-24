@@ -354,6 +354,19 @@ def _angles_section(cfg: AnglesConfig, runtime) -> AnglesConfig:
             if signs_ok else runtime.missing_feature_hint("canonicalize_signs"),
         )
 
+        c3d_ref_ok = runtime.has("c3d_reference_angles")
+        c3d_reference_ankle = st.checkbox(
+            "3-D ankle reference for C3D sources",
+            value=cfg.c3d_reference_ankle and c3d_ref_ok,
+            disabled=not c3d_ref_ok,
+            help="The 2-D sagittal projection is faithful for hip/knee (r >= "
+                 "0.99 vs a Vicon 3-D reference) but collapses the ankle (r ~ "
+                 "0.4, ROM halved) - recomputes it from load_c3d's 3-D marker "
+                 "positions instead. A no-op on a video or JSON source (no 3-D "
+                 "markers to recompute from), so safe to leave on."
+            if c3d_ref_ok else runtime.missing_feature_hint("c3d_reference_angles"),
+        )
+
         frontal_ok = runtime.has("frontal_angles")
         frontal = st.checkbox(
             "Frontal-plane angles",
@@ -393,6 +406,7 @@ def _angles_section(cfg: AnglesConfig, runtime) -> AnglesConfig:
         calibration_min_std_deg=float(calibration_min_std_deg),
         calibration_max_offset_deg=float(calibration_max_offset_deg),
         canonicalize_signs=canonicalize_signs,
+        c3d_reference_ankle=c3d_reference_ankle,
         correct_ankle_sliding=ankle_sliding,
         apply_aspect_ratio=aspect,
         frontal=frontal,
