@@ -75,6 +75,18 @@ class AnglesConfig:
     calibration_min_std_deg: float = 1.0
     correct_ankle_sliding: bool = True
     apply_aspect_ratio: bool = True
+    #: Maximum plausible magnitude (degrees) for a neutral-calibration
+    #: offset (myogait >= 0.8.0). Above this, compute_angles skips
+    #: calibration for that joint with a warning instead of shifting the
+    #: whole cycle by an implausible amount -- the guard against a clip
+    #: whose "neutral" window actually caught mid-gait motion.
+    calibration_max_offset_deg: float = 25.0
+    #: Enforces a flexion-positive sagittal convention independent of
+    #: walking direction (myogait >= 0.8.0). Without it, two recordings of
+    #: the same subject walking in opposite directions -- or a video
+    #: compared against its C3D reference -- can disagree in sign. On by
+    #: default: this is a correctness fix, not a stylistic choice.
+    canonicalize_signs: bool = True
     #: Frontal-plane angles, only meaningful when depth data is present.
     frontal: bool = False
     #: M1 projection correction for hip and knee. Zero-parameter pure
@@ -150,6 +162,14 @@ class CyclesConfig:
     n_points: int = 101
     min_duration: float = 0.4
     max_duration: float = 2.5
+    #: Reject a cycle whose mean landmark confidence falls below this
+    #: (myogait >= 0.8.1). None disables the gate. Rejections are counted
+    #: in cycles["summary"]["n_rejected_quality"].
+    min_confidence: float | None = None
+    #: Reject a cycle whose mean frame-coherence score falls below this
+    #: (myogait >= 0.8.1, needs NormalizeConfig.coherence enabled upstream
+    #: for a coherence score to exist at all). None disables the gate.
+    min_coherence: float | None = None
 
 
 #: myogait's own femur-to-height ratio (Drillis, Contini & Bluestein,
@@ -182,6 +202,12 @@ class SubjectConfig:
     upper_arm_length_mm: float | None = None
     forearm_length_mm: float | None = None
     trunk_length_mm: float | None = None
+    #: Heel to longest toe. Feeds analyze_gait's native foot_mm parameter
+    #: (myogait >= 0.7.0) -- averaged with femur_length_mm when both are
+    #: set, for the tightest calibration myogait documents. Not part of
+    #: the calibration.py cross-check panel (that compares against
+    #: myogait.segment_lengths(), which has no foot entry).
+    foot_length_mm: float | None = None
 
     @property
     def is_empty(self) -> bool:
@@ -190,22 +216,23 @@ class SubjectConfig:
             for f in (
                 "age", "sex", "height_m", "weight_kg", "pathology",
                 "femur_length_mm", "tibia_length_mm", "upper_arm_length_mm",
-                "forearm_length_mm", "trunk_length_mm",
+                "forearm_length_mm", "trunk_length_mm", "foot_length_mm",
             )
         )
 
     @property
     def calibration_height_m(self) -> float | None:
-        """The height_m value the pipeline actually passes for calibration.
+        """The height_m fallback for myogait < 0.7.0 (no native femur_mm/foot_mm).
 
-        myogait's step_length()/walking_speed() derive their pixel/metre
-        scale from ``height_m x 0.245`` -- a population femur-to-height
-        ratio, not a per-subject measurement. When the femur was measured
-        directly, this returns the height that makes that same internal
-        formula reproduce the *real* femur instead of the population
-        estimate, so step length and stride length calibrate from actual
-        anatomy rather than an average. Falls back to the stated height
-        when no femur was measured, and to ``None`` when neither is.
+        Older myogait's step_length()/walking_speed() derive their
+        pixel/metre scale from ``height_m x 0.245`` alone -- a population
+        femur-to-height ratio, not a per-subject measurement. When the
+        femur was measured directly, this returns the height that makes
+        that same internal formula reproduce the *real* femur instead of
+        the population estimate. From myogait 0.7.0, ``PipelineRunner.
+        _analyze`` calls ``analyze_gait`` with ``femur_mm``/``foot_mm``
+        directly instead and this property is not used for that path --
+        see ``Runtime.native_anthropometric_calibration``.
         """
         if self.femur_length_mm:
             return (self.femur_length_mm / 1000.0) / FEMUR_TO_HEIGHT_RATIO
@@ -337,22 +364,22 @@ def _apply_normalize(data: dict, cfg: NormalizeConfig) -> dict:
     return data
 
 
-def _correction(name: str):
-    """Resolve a correction from ``myogait.corrections``.
+def _correction(name: str, module: str = "myogait.corrections"):
+    """Resolve *name* from *module* by path rather than the package root.
 
-    Imported by module path rather than from the package root: these
-    functions were promoted to the top-level namespace at different
-    versions (``apply_linear_detrend`` only from 0.6.1), and the module
-    path is the form the myogait documentation itself uses.
+    These functions were promoted to the top-level namespace at different
+    versions (``apply_linear_detrend`` only from 0.6.1, ``canonicalize_
+    angle_signs`` only from 0.8.0), and the module path is the form the
+    myogait documentation itself uses.
     """
     import importlib
 
-    module = importlib.import_module("myogait.corrections")
-    func = getattr(module, name, None)
+    resolved = importlib.import_module(module)
+    func = getattr(resolved, name, None)
     if func is None:
         raise RuntimeError(
-            f"myogait.corrections.{name} does not exist in the installed "
-            "myogait. Upgrade to 0.6.1 or later, or turn this correction off."
+            f"{module}.{name} does not exist in the installed myogait. "
+            "Upgrade, or turn this correction off."
         )
     return func
 
@@ -360,8 +387,7 @@ def _correction(name: str):
 def _apply_angles(data: dict, cfg: AnglesConfig) -> dict:
     from myogait import compute_angles
 
-    data = compute_angles(
-        data,
+    angles_kwargs = dict(
         method=cfg.method,
         correction_factor=cfg.correction_factor,
         calibrate=cfg.calibrate,
@@ -371,6 +397,18 @@ def _apply_angles(data: dict, cfg: AnglesConfig) -> dict:
         correct_ankle_sliding=cfg.correct_ankle_sliding,
         apply_aspect_ratio=cfg.apply_aspect_ratio,
     )
+    # calibration_max_offset_deg only exists from myogait 0.8.0 -- passing
+    # it to an older compute_angles would raise TypeError, so it is added
+    # conditionally rather than gating the whole call on runtime.has().
+    if _accepts(compute_angles, "calibration_max_offset_deg"):
+        angles_kwargs["calibration_max_offset_deg"] = cfg.calibration_max_offset_deg
+    data = compute_angles(data, **angles_kwargs)
+
+    # Sign convention first: every correction below (perspective, drift,
+    # bias) assumes a flexion-positive signal, and canonicalize_angle_signs
+    # is what makes that true regardless of walking direction.
+    if cfg.canonicalize_signs:
+        data = _correction("canonicalize_angle_signs", "myogait.angles")(data)
 
     if cfg.frontal:
         from myogait.angles import compute_frontal_angles
@@ -384,6 +422,21 @@ def _apply_angles(data: dict, cfg: AnglesConfig) -> dict:
     if cfg.detrend:
         data = _correction("apply_linear_detrend")(data)
     return data
+
+
+def _accepts(func, param_name: str) -> bool:
+    """True when *func* declares a parameter named *param_name*.
+
+    Several myogait functions gained new keyword arguments in later
+    versions (``compute_angles(calibration_max_offset_deg=)`` in 0.8.0,
+    ``segment_cycles(min_confidence=, min_coherence=)`` in 0.8.1). Passing
+    one to an older installation raises ``TypeError``, so each is added to
+    the call conditionally instead of gating the whole call on a version
+    check the way ``OPTIONAL_FEATURES`` gates a missing *function*.
+    """
+    import inspect
+
+    return param_name in inspect.signature(func).parameters
 
 
 def _apply_bias(
@@ -440,12 +493,31 @@ def _apply_events(data: dict, cfg: EventsConfig) -> dict:
 def _apply_cycles(data: dict, cfg: CyclesConfig) -> dict:
     from myogait import segment_cycles
 
-    return segment_cycles(
-        data,
+    cycles_kwargs = dict(
         n_points=cfg.n_points,
         min_duration=cfg.min_duration,
         max_duration=cfg.max_duration,
     )
+    if cfg.min_confidence is not None and _accepts(segment_cycles, "min_confidence"):
+        cycles_kwargs["min_confidence"] = cfg.min_confidence
+
+    source = data
+    if cfg.min_coherence is not None and _accepts(segment_cycles, "min_coherence"):
+        cycles_kwargs["min_coherence"] = cfg.min_coherence
+        # segment_cycles(min_coherence=) does float(frame["coherence"]),
+        # but frame_coherence_score() (NormalizeConfig.coherence, run
+        # upstream in _apply_normalize) attaches the breakdown dict
+        # {"score", "segment_stability", "velocity", "angular_continuity"}
+        # there instead -- a shape mismatch between two myogait functions,
+        # not this app. Flatten to the scalar score on a copy so the gate
+        # can run instead of raising TypeError.
+        source = copy.deepcopy(data)
+        for frame in source.get("frames", []):
+            coherence = frame.get("coherence")
+            if isinstance(coherence, dict):
+                frame["coherence"] = coherence.get("score")
+
+    return segment_cycles(source, **cycles_kwargs)
 
 
 def _apply_subject(data: dict, cfg: SubjectConfig) -> dict:
@@ -620,10 +692,16 @@ class PipelineRunner:
             return result
 
         # analysis ----------------------------------------------------
-        # Keyed on calibration_height_m, not height_m directly: when a
-        # femur measurement is present it is what actually drives the
-        # scale, and it can change independently of the stated height.
-        key_stats = key_final + ("analysis", config.subject.calibration_height_m)
+        # config.subject as a whole is already part of every key above
+        # (it seeds `base`), so this is a documentation key, not what
+        # makes a subject change invalidate the cache: it names exactly
+        # the three fields analyze_gait's calibration actually reads,
+        # whichever of the two calibration paths below is taken.
+        subj = config.subject
+        key_stats = key_final + (
+            "analysis",
+            (subj.height_m, subj.femur_length_mm, subj.foot_length_mm),
+        )
 
         def _run_analysis() -> dict:
             cached = self._cache[key_final]
@@ -644,9 +722,26 @@ class PipelineRunner:
     def _analyze(data: dict, cycles: dict, config: PipelineConfig) -> dict:
         from myogait import analyze_gait
 
-        return analyze_gait(
-            copy.deepcopy(data), cycles, height_m=config.subject.calibration_height_m
-        )
+        subj = config.subject
+        kwargs: dict[str, float] = {}
+        if _accepts(analyze_gait, "femur_mm"):
+            # Native anthropometric calibration (myogait >= 0.7.0): pass
+            # the measured segments directly. myogait's own priority order
+            # (femur+foot > femur alone > foot alone > height_m fallback)
+            # decides which one actually drives the scale, so all three
+            # can be passed together.
+            if subj.height_m:
+                kwargs["height_m"] = subj.height_m
+            if subj.femur_length_mm:
+                kwargs["femur_mm"] = subj.femur_length_mm
+            if subj.foot_length_mm:
+                kwargs["foot_mm"] = subj.foot_length_mm
+        else:
+            # Older myogait: invert the population femur-to-height ratio
+            # so height_m x 0.245 reproduces the measured femur instead.
+            kwargs["height_m"] = subj.calibration_height_m
+
+        return analyze_gait(copy.deepcopy(data), cycles, **kwargs)
 
     def _stage(
         self, name: str, key: tuple, produce: Callable[[], Any]

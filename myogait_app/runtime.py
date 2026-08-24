@@ -35,6 +35,27 @@ REQUIRED_GAITKIT = (1, 4, 8)
 #: way. See Runtime.c3d_isotropic_native.
 C3D_ISOTROPIC_NATIVE_VERSION = (0, 8, 0)
 
+#: Below this version, ``load_c3d`` used exactly one marker convention
+#: (its own ``DEFAULT_C3D_MARKER_MAP``) and raised ``ValueError`` on
+#: anything else. 0.7.0 added ``detect_c3d_convention`` -- autodetection
+#: across several registered conventions, with per-convention scoring.
+C3D_CONVENTION_AUTODETECT_VERSION = (0, 7, 0)
+
+#: Below this version, ``compute_angles`` has no ``calibration_max_offset_
+#: deg`` parameter and ``segment_cycles`` has no ``min_confidence``/
+#: ``min_coherence`` parameters -- both new quality guards added in the
+#: 0.8.x line. See Runtime.calibration_guard_supported and
+#: Runtime.cycle_quality_gates_supported.
+CALIBRATION_MAX_OFFSET_VERSION = (0, 8, 0)
+CYCLE_QUALITY_GATES_VERSION = (0, 8, 1)
+
+#: Below this version, ``analyze_gait``/``step_length``/``walking_speed``
+#: only accept ``height_m`` -- a measured femur or foot length had to be
+#: smuggled in by inverting myogait's own population femur-to-height
+#: ratio (see ``pipeline.SubjectConfig.calibration_height_m``). 0.7.0
+#: added native ``femur_mm``/``foot_mm``/``femur_ratio`` parameters.
+NATIVE_ANTHROPOMETRIC_CALIBRATION_VERSION = (0, 7, 0)
+
 
 def _version_tuple(raw: str) -> tuple[int, ...]:
     parts: list[int] = []
@@ -183,6 +204,9 @@ OPTIONAL_FEATURES: dict[str, tuple[str, str]] = {
     "degradation": ("myogait.experimental", "apply_video_degradation"),
     "c3d": ("myogait.export", "export_c3d"),
     "c3d_import": ("myogait.experimental_vicon", "load_c3d"),
+    "c3d_convention": ("myogait.experimental_vicon", "detect_c3d_convention"),
+    "c3d_reference_angles": ("myogait.experimental_vicon", "compute_c3d_reference_angles"),
+    "canonicalize_signs": ("myogait.angles", "canonicalize_angle_signs"),
     "opensim": ("myogait.opensim", "export_opensim_scale_setup"),
     "report": ("myogait.report", "generate_report"),
     "longitudinal": ("myogait.plotting", "plot_longitudinal"),
@@ -274,6 +298,37 @@ class Runtime:
         if not self.myogait_version:
             return False
         return _version_tuple(self.myogait_version) >= C3D_ISOTROPIC_NATIVE_VERSION
+
+    @property
+    def c3d_convention_autodetect(self) -> bool:
+        """True when ``load_c3d`` can autodetect the marker convention itself."""
+        if not self.myogait_version:
+            return False
+        return _version_tuple(self.myogait_version) >= C3D_CONVENTION_AUTODETECT_VERSION
+
+    @property
+    def calibration_guard_supported(self) -> bool:
+        """True when ``compute_angles`` accepts ``calibration_max_offset_deg``."""
+        if not self.myogait_version:
+            return False
+        return _version_tuple(self.myogait_version) >= CALIBRATION_MAX_OFFSET_VERSION
+
+    @property
+    def cycle_quality_gates_supported(self) -> bool:
+        """True when ``segment_cycles`` accepts ``min_confidence``/``min_coherence``."""
+        if not self.myogait_version:
+            return False
+        return _version_tuple(self.myogait_version) >= CYCLE_QUALITY_GATES_VERSION
+
+    @property
+    def native_anthropometric_calibration(self) -> bool:
+        """True when ``analyze_gait`` accepts ``femur_mm``/``foot_mm`` directly."""
+        if not self.myogait_version:
+            return False
+        return (
+            _version_tuple(self.myogait_version)
+            >= NATIVE_ANTHROPOMETRIC_CALIBRATION_VERSION
+        )
 
     @property
     def available_backends(self) -> tuple[BackendInfo, ...]:
