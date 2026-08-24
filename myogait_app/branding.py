@@ -1,9 +1,16 @@
 """Visual identity.
 
-Deliberately neutral for now. Everything a future rebrand needs to touch
-lives in this file: swap the values in ``BRANDING`` (or point the two
-environment variables at your own assets) and the whole app follows.
-No colour or label is hardcoded anywhere else.
+Reconfigurable by design, not neutral by default: swap the values in
+``BRANDING`` (or point the two environment variables at your own assets)
+and the whole app follows. No colour or label is hardcoded anywhere else.
+
+The default identity draws on chronophotography (Étienne-Jules Marey): a
+walking figure decomposed into a sequence of luminous marker positions
+against a controlled ground. Colour is restrained on purpose -- one
+accent, reserved for the active/interactive element; everything else
+achromatic -- because colour is what *encodes information* here, on
+charts and in the UI alike, and an identity that spent it on page
+texture would compete with that job instead of serving it.
 """
 
 from __future__ import annotations
@@ -25,14 +32,43 @@ class Branding:
     #: Optional link target for the logo / title.
     home_url: str | None = None
 
-    # ── Palette ──────────────────────────────────────────────────────
+    # ── Identity: ground, ink and accent ────────────────────────────
     #
-    # These values are not chosen by eye. They are the validated
-    # reference palette, checked with the six computable data-viz tests
-    # (OKLCH lightness band, chroma floor, protan/deutan separation in
-    # OKLab, normal-vision floor, contrast against the surface) in both
-    # light and dark mode. An earlier hand-picked set failed four of
-    # them, so do not substitute hexes here without re-running the check.
+    # The one part of the palette this redesign actually changed. Every
+    # value is validated the same way as the categorical palette below
+    # (WCAG contrast ratio, OKLab deltaE under simulated protanopia and
+    # deuteranopia) by scripts/validate_palette.py -- run it before
+    # substituting any of these hexes. surface_dark/ink_dark are the
+    # glass-plate/velvet negative (Marey's original apparatus); surface_
+    # light/ink_light are its published-engraving counterpart. accent is
+    # the one saturated colour in the interface chrome, reserved for the
+    # active/interactive element only -- never scattered as page texture.
+
+    surface_light: str = "#eff1f0"
+    surface_light_secondary: str = "#e2e6e3"
+    ink_light: str = "#12161a"
+    ink_muted_light: str = "#5b6461"
+    border_light: str = "#c7cdc9"
+
+    surface_dark: str = "#0d1012"
+    surface_dark_secondary: str = "#181c1f"
+    ink_dark: str = "#eef1f0"
+    ink_muted_dark: str = "#9aa39f"
+    border_dark: str = "#2a3033"
+
+    accent: str = "#8a5a12"
+    accent_dark: str = "#e0a24f"
+    accent_soft: str = "#c69a5c"
+
+    # ── Data-viz palette: unchanged by this redesign ────────────────
+    #
+    # These were not touched: they are validated against the same six
+    # computable tests (OKLCH lightness band, chroma floor, protan/deutan
+    # separation in OKLab, normal-vision floor, contrast) in both light
+    # and dark mode, and re-deriving eight categorical hues plus the
+    # side/status pairs is a colour-design exercise independent of the
+    # ground/accent identity above -- see scripts/validate_palette.py
+    # before ever substituting a hex below.
     #
     # One encoding rule holds everywhere in the app:
     #
@@ -43,9 +79,6 @@ class Branding:
     # the *model or method*, so those take the categorical slots in fixed
     # order and the side moves to a facet instead. A chart never asks
     # colour to mean both at once.
-
-    accent: str = "#2a78d6"
-    accent_soft: str = "#86b6ef"
 
     #: Categorical slots, assigned in fixed order and never cycled.
     #: A ninth series folds into a facet, not a generated hue.
@@ -77,12 +110,15 @@ class Branding:
     #: not a series, and must never compete with the patient curve.
     normative: str = "#898781"
 
-    #: Chart chrome.
-    grid: str = "#e1e0d9"
-    grid_dark: str = "#2c2c2a"
-    axis: str = "#c3c2b7"
-    axis_dark: str = "#383835"
-    ink_muted: str = "#898781"
+    #: Chart chrome, retuned to the new cool-graphite ground family
+    #: (was a warm gray unrelated to any surface colour in the app).
+    grid: str = "#e4e7e5"
+    grid_dark: str = "#20262a"
+    axis: str = "#c7cdc9"
+    axis_dark: str = "#2a3033"
+    #: Kept for call sites that do not (yet) branch on ``dark`` -- prefer
+    #: ``ink_muted_light``/``ink_muted_dark`` in any new code.
+    ink_muted: str = "#6b716d"
 
     #: Status colours, reserved. Never reused as a series colour.
     status: dict = field(
@@ -109,6 +145,24 @@ class Branding:
 
     def color_for_side(self, side: str) -> str:
         return self.side_colors.get(str(side).lower(), self.accent)
+
+    def accent_for(self, dark: bool) -> str:
+        return self.accent_dark if dark else self.accent
+
+    def surface_for(self, dark: bool) -> str:
+        return self.surface_dark if dark else self.surface_light
+
+    def surface_secondary_for(self, dark: bool) -> str:
+        return self.surface_dark_secondary if dark else self.surface_light_secondary
+
+    def ink_for(self, dark: bool) -> str:
+        return self.ink_dark if dark else self.ink_light
+
+    def ink_muted_for(self, dark: bool) -> str:
+        return self.ink_muted_dark if dark else self.ink_muted_light
+
+    def border_for(self, dark: bool) -> str:
+        return self.border_dark if dark else self.border_light
 
 
 BRANDING = Branding.from_env()

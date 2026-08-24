@@ -16,24 +16,20 @@ import plotly.io as pio
 
 from ..branding import BRANDING
 
-LIGHT_SURFACE = "#fcfcfb"
-DARK_SURFACE = "#1a1a19"
-LIGHT_INK = "#0b0b0b"
-DARK_INK = "#ffffff"
-
 #: Registered template names.
 TEMPLATE_LIGHT = "myogait_light"
 TEMPLATE_DARK = "myogait_dark"
 
-_FONT = (
-    "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, "
-    "'Helvetica Neue', Arial, sans-serif"
-)
+#: Archivo: a grotesk with a technical, engineering character rather than
+#: a friendly-app one -- the same instrument-panel register as the rest
+#: of the identity (see .streamlit/config.toml, which loads it for the
+#: whole UI too, so charts and chrome read as one typeface, not two).
+_FONT = "Archivo, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif"
 
 
 def _build(dark: bool) -> go.layout.Template:
-    surface = DARK_SURFACE if dark else LIGHT_SURFACE
-    ink = DARK_INK if dark else LIGHT_INK
+    surface = BRANDING.surface_for(dark)
+    ink = BRANDING.ink_for(dark)
     grid = BRANDING.grid_dark if dark else BRANDING.grid
     axis = BRANDING.axis_dark if dark else BRANDING.axis
     colorway = BRANDING.categorical_dark if dark else BRANDING.categorical
@@ -48,8 +44,8 @@ def _build(dark: bool) -> go.layout.Template:
         ticks="outside",
         ticklen=4,
         tickcolor=axis,
-        tickfont=dict(color=BRANDING.ink_muted, size=11),
-        title=dict(font=dict(color=BRANDING.ink_muted, size=12)),
+        tickfont=dict(color=BRANDING.ink_muted_for(dark), size=11),
+        title=dict(font=dict(color=BRANDING.ink_muted_for(dark), size=12)),
         automargin=True,
     )
 

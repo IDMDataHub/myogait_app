@@ -89,7 +89,7 @@ def compare_cycles(
     fig.update_yaxes(title_text="Angle (deg)", row=1, col=1)
     for annotation in fig.layout.annotations:
         annotation.font.size = 12
-        annotation.font.color = BRANDING.ink_muted
+        annotation.font.color = BRANDING.ink_muted_for(dark)
 
     return apply(fig, dark, height=height)
 
@@ -222,7 +222,7 @@ def metric_bars(
             hovertemplate="%{y:.2f}" + (f" {unit}" if unit else "") + "<extra>%{x}</extra>",
             text=[f"{values[n]:.2f}" for n in names],
             textposition="outside",
-            textfont=dict(color=BRANDING.ink_muted, size=11),
+            textfont=dict(color=BRANDING.ink_muted_for(dark), size=11),
             showlegend=False,
         )
     )
@@ -233,7 +233,7 @@ def metric_bars(
             line=dict(color=BRANDING.normative, width=1.5, dash="dash"),
             annotation_text=f"{reference}",
             annotation_position="top right",
-            annotation_font=dict(color=BRANDING.ink_muted, size=11),
+            annotation_font=dict(color=BRANDING.ink_muted_for(dark), size=11),
         )
 
     fig.update_yaxes(title_text=f"{label} ({unit})" if unit else label)
@@ -269,8 +269,8 @@ def agreement_heatmap(
             colorscale=scale,
             hovertemplate="%{y} vs %{x}: %{z:.2f}&deg;<extra></extra>",
             colorbar=dict(
-                title=dict(text="deg", font=dict(size=11, color=BRANDING.ink_muted)),
-                tickfont=dict(size=10, color=BRANDING.ink_muted),
+                title=dict(text="deg", font=dict(size=11, color=BRANDING.ink_muted_for(dark))),
+                tickfont=dict(size=10, color=BRANDING.ink_muted_for(dark)),
                 thickness=12,
                 outlinewidth=0,
             ),

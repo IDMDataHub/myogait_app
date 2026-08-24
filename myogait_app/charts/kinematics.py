@@ -125,7 +125,7 @@ def angle_timeline(
                         legendgroup=joint,
                         showlegend=(row == 1),
                         mode="lines",
-                        line=dict(color=BRANDING.accent, width=2),
+                        line=dict(color=BRANDING.accent_for(dark), width=2),
                         hovertemplate="%{y:.1f}&deg;<extra>"
                         + JOINT_LABELS.get(joint, joint.title())
                         + "</extra>",
@@ -160,7 +160,7 @@ def angle_timeline(
     fig.update_xaxes(title_text="Time (s)", row=len(joints), col=1)
     for annotation in fig.layout.annotations:
         annotation.font.size = 12
-        annotation.font.color = BRANDING.ink_muted
+        annotation.font.color = BRANDING.ink_muted_for(dark)
         annotation.x = 0
         annotation.xanchor = "left"
 
@@ -339,7 +339,7 @@ def rom_summary(cycles: dict, dark: bool = False, height: int = 340) -> go.Figur
                 hovertemplate="%{y:.1f}&deg;<extra>" + side.title() + "</extra>",
                 text=[f"{v:.0f}&deg;" if np.isfinite(v) else "" for v in values],
                 textposition="outside",
-                textfont=dict(color=BRANDING.ink_muted, size=11),
+                textfont=dict(color=BRANDING.ink_muted_for(dark), size=11),
             )
         )
 
@@ -459,7 +459,7 @@ def stance_swing_bar(cycles: dict, dark: bool = False, height: int = 200) -> go.
         return apply(go.Figure(), dark, height=height)
 
     for label, values, colour in (
-        ("Stance", stance, BRANDING.accent),
+        ("Stance", stance, BRANDING.accent_for(dark)),
         ("Swing", swing, BRANDING.accent_soft),
     ):
         fig.add_trace(
@@ -468,7 +468,7 @@ def stance_swing_bar(cycles: dict, dark: bool = False, height: int = 200) -> go.
                 x=values,
                 name=label,
                 orientation="h",
-                marker=dict(color=colour, line=dict(width=2, color="#fcfcfb" if not dark else "#1a1a19")),
+                marker=dict(color=colour, line=dict(width=2, color=BRANDING.surface_for(dark))),
                 hovertemplate="%{x:.1f}%<extra>" + label + "</extra>",
                 text=[f"{v:.1f}%" for v in values],
                 textposition="inside",

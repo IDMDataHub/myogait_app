@@ -10,9 +10,45 @@ headless = true
 gatherUsageStats = false
 
 [theme]
-# Neutral identity. Colours are mirrored in myogait_app/branding.py;
-# change both together when the lab identity is applied.
-primaryColor = "#2F6FEB"
+# Chronophotography (Marey) identity -- see myogait_app/branding.py for
+# the full rationale and the validated hex values these mirror. Keep the
+# two files in sync when either changes; branding.py is the source of
+# truth for anything Plotly-rendered, this file for Streamlit's own
+# chrome. base picks the default shown before a user's own OS/browser
+# preference or in-app choice overrides it: dark is deliberate, not a
+# category default -- the chosen world's source material (the glass
+# plate / velvet backdrop of Marey's own apparatus) is inherently a
+# dark-ground medium, and the light theme is its secondary, derived
+# translation, not the other way round.
+base = "dark"
+baseRadius = "none"
+buttonRadius = "none"
+font = "Archivo:https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap"
+codeFont = "JetBrains Mono:https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
+
+[theme.light]
+primaryColor = "#8a5a12"
+backgroundColor = "#eff1f0"
+secondaryBackgroundColor = "#e2e6e3"
+textColor = "#12161a"
+borderColor = "#c7cdc9"
+linkColor = "#8a5a12"
+
+[theme.dark]
+primaryColor = "#e0a24f"
+backgroundColor = "#0d1012"
+secondaryBackgroundColor = "#181c1f"
+textColor = "#eef1f0"
+borderColor = "#2a3033"
+linkColor = "#e0a24f"
+
+[theme.light.sidebar]
+backgroundColor = "#e2e6e3"
+borderColor = "#c7cdc9"
+
+[theme.dark.sidebar]
+backgroundColor = "#181c1f"
+borderColor = "#2a3033"
 
 [runner]
 fastReruns = true
