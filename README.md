@@ -179,7 +179,13 @@ myogait_app/
 deploy/                    nginx + systemd
 ```
 
+## Author
+
+Developed by Romain Feigean, lead researcher at Assistmyo · NeuPEL · Institut
+de Myologie. Built on [myogait](https://github.com/IDMDataHub/myogait) and
+[gaitkit](https://github.com/IDMDataHub/gaitkit) by Frédéric Fer, developed
+separately from this application.
+
 ## License
 
-[MIT](LICENSE). myogait itself is developed separately at
-[IDMDataHub/myogait](https://github.com/IDMDataHub/myogait), also MIT.
+[MIT](LICENSE), also matching myogait's and gaitkit's own licensing.
