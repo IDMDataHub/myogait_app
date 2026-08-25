@@ -168,9 +168,21 @@ class JobManager:
     def _state_file(self, ticket: str) -> Path:
         return job_dir(ticket, self.settings) / "job.json"
 
-    def _write(self, job: Job) -> None:
+    def _write(self, job: Job) -> bool:
+        """Persist a state update without reviving an already terminal job.
+
+        A stale worker can still return after the UI has marked its on-disk job
+        failed. Reading the current record first prevents that late worker from
+        overwriting ``failed`` or ``cancelled`` with ``done``.
+        """
+        state_file = self._state_file(job.ticket)
+        existing = read_json(state_file) or {}
+        existing_status = existing.get("status")
+        if existing_status in _TERMINAL and existing_status != job.status:
+            return False
         job.updated_at = time.time()
-        write_json_atomic(self._state_file(job.ticket), job.to_dict())
+        write_json_atomic(state_file, job.to_dict())
+        return True
 
     def get(self, ticket: str) -> Job | None:
         """Read a job record, reconciling states the process cannot honour.
