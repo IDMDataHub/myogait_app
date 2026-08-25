@@ -165,6 +165,11 @@ def store_uploaded_file(
     return target
 
 
+def exceeds_in_memory_warning(size_bytes: int, threshold_mb: int) -> bool:
+    """Whether an upload should be directed to the local watch directory."""
+    return size_bytes > max(0, threshold_mb) * 1024 * 1024
+
+
 def path_is_within_root(path: Path, root: Path) -> bool:
     """Return whether ``path`` resolves inside ``root`` (symlink-safe)."""
     try:

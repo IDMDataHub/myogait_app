@@ -17,7 +17,7 @@ import streamlit as st
 from ..jobs import DONE, FAILED, JobManager, RUNNING
 from ..runtime import SAPIENS_BACKENDS, get_runtime
 from ..settings import SETTINGS
-from ..storage import is_ticket, store_uploaded_file
+from ..storage import exceeds_in_memory_warning, is_ticket, store_uploaded_file
 from . import state
 from .components import (
     empty_state,
@@ -34,6 +34,22 @@ VIDEO_TYPES = ["mp4", "mov", "avi", "mkv", "m4v"]
 #: marker mapping rarely covers all of them (the package default has no
 #: elbow or wrist, for instance), so this is the reference used to report
 #: what a loaded file actually matched.
+def _warn_large_browser_upload(upload, label: str) -> None:
+    """Point large local files to the watch directory before processing."""
+    if not exceeds_in_memory_warning(upload.size, SETTINGS.in_memory_warn_mb):
+        return
+    size_mb = upload.size / (1024 * 1024)
+    message = (
+        f"{label} is {size_mb:.0f} MB, above the local browser-upload guidance "
+        f"of {SETTINGS.in_memory_warn_mb} MB."
+    )
+    if SETTINGS.watch_dir:
+        message += " Copy it to the configured watch directory to avoid browser-memory pressure."
+    else:
+        message += " Configure MYOGAIT_APP_WATCH_DIR to load large local files directly."
+    st.warning(message)
+
+
 MEDIAPIPE_LANDMARKS = (
     "NOSE", "LEFT_EYE", "RIGHT_EYE", "LEFT_EAR", "RIGHT_EAR",
     "LEFT_SHOULDER", "RIGHT_SHOULDER", "LEFT_ELBOW", "RIGHT_ELBOW",
@@ -93,6 +109,8 @@ def _json_tab() -> None:
     )
     uploaded = st.file_uploader("myogait pivot JSON", type=["json"], key="json_upload")
 
+    if uploaded is not None:
+        _warn_large_browser_upload(uploaded, "This JSON")
     if uploaded is not None and st.button(
         "Load JSON", type="primary", use_container_width=True
     ):
@@ -183,6 +201,7 @@ def _c3d_tab() -> None:
     detected_mapping: dict[str, list[str]] = {}
     diagnostics = None
     if uploaded is not None:
+        _warn_large_browser_upload(uploaded, "This C3D file")
         target = store_uploaded_file(state.workspace(), uploaded, uploaded.name)
         try:
             from ..marker_presets import read_c3d_labels, resolve_c3d_mapping
@@ -550,11 +569,7 @@ def _pick_video() -> Path | None:
             return None
         size_mb = uploaded.size / (1024 * 1024)
         st.caption(f"{uploaded.name} - {size_mb:.0f} MB")
-        if size_mb > 500:
-            st.info(
-                "Large upload. If this is slow or drops, copy the file to the "
-                "server's drop folder instead and use the other option."
-            )
+        _warn_large_browser_upload(uploaded, "This video")
         return store_uploaded_file(state.workspace(), uploaded, uploaded.name)
 
     directory = SETTINGS.watch_dir

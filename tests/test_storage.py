@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import io
 
-from myogait_app.storage import Workspace, path_is_within_root, store_uploaded_file
+from myogait_app.storage import (
+    Workspace,
+    exceeds_in_memory_warning,
+    path_is_within_root,
+    store_uploaded_file,
+)
 
 
 def test_content_addressed_uploads_do_not_collide_on_name_and_size(tmp_path):
@@ -32,3 +37,9 @@ def test_path_is_within_root_rejects_a_sibling_directory(tmp_path):
 
     assert path_is_within_root(trial, root)
     assert not path_is_within_root(sibling, root)
+
+
+def test_in_memory_upload_warning_uses_a_strict_size_threshold():
+    threshold_mb = 2
+    assert not exceeds_in_memory_warning(2 * 1024 * 1024, threshold_mb)
+    assert exceeds_in_memory_warning(2 * 1024 * 1024 + 1, threshold_mb)

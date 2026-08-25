@@ -53,6 +53,9 @@ class Settings:
     #: Largest accepted upload, in megabytes. Must stay in sync with
     #: ``.streamlit/config.toml`` and with nginx ``client_max_body_size``.
     max_upload_mb: int = 2048
+    #: Suggest the local watch directory above this browser-upload size.
+    #: This is guidance, not a second hard upload limit.
+    in_memory_warn_mb: int = 512
 
     # ── Jobs ─────────────────────────────────────────────────────────
     #: Concurrent extraction jobs. One today; raise when the server can
@@ -87,6 +90,7 @@ class Settings:
             ),
             retention_hours=_env_int("MYOGAIT_APP_RETENTION_HOURS", 24),
             max_upload_mb=_env_int("MYOGAIT_APP_MAX_UPLOAD_MB", 2048),
+            in_memory_warn_mb=_env_int("MYOGAIT_APP_INMEMORY_WARN_MB", 512),
             max_concurrent_jobs=_env_int("MYOGAIT_APP_MAX_JOBS", 1),
             job_stale_minutes=_env_int("MYOGAIT_APP_JOB_STALE_MINUTES", 120),
             watch_dir=Path(watch_raw) if watch_raw else None,
