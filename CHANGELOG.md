@@ -1,0 +1,165 @@
+# Changelog
+
+All notable changes to this project, grouped by date. This project does not
+yet tag releases, so entries are dated rather than versioned. Newest first.
+Every entry below is attributed to its actual author; where that is not
+stated, it is Romain Feigean.
+
+## 2026-08-25
+
+- **Backend accessibility + GPU setup.** The Data page's model picker used
+  to show only pose backends whose package was already importable. Now every
+  backend myogait implements (mediapipe, yolo, openpose, vitpose ×3, rtmw,
+  hrnet, mmpose, alphapose, detectron2, sapiens ×3, sapiens2 ×4) is always
+  listed, with an install-status suffix and, for an uninstalled one, the
+  exact pip command — sourced from `myogait.models.available_models()`
+  directly rather than a hand-maintained copy, which had already drifted
+  (`hrnet` was wrongly gated on `mmpose`; myogait needs only `torch`).
+  Sapiens 2's multi-gigabyte weights now fetch automatically inside the
+  extraction job itself the first time a size is picked, with no separate
+  setup button. Two real bugs found by clicking through the app and fixed:
+  the readiness check only looked at the *pose* model file, missing that
+  the Sapiens segmentation checkbox loads a second, independently-cached
+  file; and the weight-fetch/trace step ran outside the device-override
+  block, so forcing CPU didn't apply to it — a real problem on Intel XPU,
+  where tracing hit a missing kernel with no way to route around it. The
+  "Sapiens depth" checkbox is now disabled for every `sapiens2-*` model:
+  myogait still requests a HuggingFace repo Meta never published for v2
+  (verified directly against HuggingFace); Sapiens v1's depth repos are
+  real and unaffected. New `scripts/setup_gpu.py`: one command, run once
+  after installing requirements, that detects the machine (NVIDIA via
+  `nvidia-smi`, Intel via a pinned `torch==2.6.0+xpu` — not "latest":
+  2.13.0's XPU wheel ships nested license paths deep enough to overflow
+  Windows' 260-character `MAX_PATH`; 2.6.0 does not, confirmed on real
+  Intel Arc hardware without needing any registry change) and installs the
+  matching build. `requirements.txt` now requests every backend extra that
+  installs cleanly via plain pip instead of just mediapipe/yolo. README
+  gained a GPU acceleration section and a Model licenses section (Sapiens
+  v1 is CC-BY-NC-4.0 non-commercial; Sapiens 2 excludes biometric
+  processing and unlicensed medical/health practice).
+
+- **Bauhaus / international-typographic-style redesign.** Replaces the
+  chronophotography identity below, not a refinement of it — implemented
+  from a concrete mockup built in Claude Design against this app's own real
+  sidebar/page structure. Light-only by deliberate choice (Bauhaus print is
+  inherently light-ground); `.streamlit/config.toml` drops the
+  `[theme.dark]` section entirely. Palette: warm paper ground (`#e8e8e2`),
+  near-black ink, one yellow accent (`#e0a80f`). The accent needed two
+  tokens, not one, caught by `scripts/validate_palette.py` rather than
+  assumed: measured at 1.75:1 against the paper ground (needs 3:1 even for
+  non-text marks), the bright yellow is too light-valued to work as a
+  standalone mark the way the mockup's other three primaries (red/blue/
+  black) do — `accent_mark` (`#7f4c00`, same hue, darkened) is the fix for
+  every line/rule/small numeral use. Side colour (left/right limb, on
+  analysis charts) is re-specified to blue/ink, the one part of the
+  categorical/side palette the mockup explicitly redraws; this surfaced a
+  real bug in `charts/theme.py`'s `side_color()`, which used to re-derive
+  left/right from categorical slots that only *happened* to match the old
+  side colours and would have silently gone stale against the new ones —
+  it now reads `Branding.side_colors` directly. Typography moves to
+  Helvetica Neue for UI/headings. Also removed roughly 2,400 files (real
+  per-subject gait trial data, internal strategy notes, a licensed
+  third-party dataset) that had been uploaded wholesale into the source
+  Claude Design project, discovered while reading the mockup and removed
+  at the project owner's request.
+
+- **Calibration: mirror myogait 0.8.2's isotropic step-length scaling**
+  (Frédéric Fer). myogait 0.8.2 de-normalises `step_length`/`walking_speed`
+  distances to source pixels before scaling, fixing an aspect-ratio
+  under-estimation of step and stride length on non-square frames (roughly
+  1.78× on 16:9 video). The app's official numbers pick this up
+  automatically through `analyze_gait`, but the segment-based calibration
+  cross-check (`myogait_app/calibration.py`) re-implements the geometry
+  independently to compare calibration sources, so it silently kept the
+  old anisotropic result. Adds `Runtime.step_length_isotropic_native`
+  (gated at myogait 0.8.2) and applies the same de-normalisation there so
+  the two panels stay comparable on any install; unchanged on older
+  myogait or when frame dimensions are unavailable.
+
+- Fixed the README's upgrade command, which was missing `loess,wavelet`
+  and would have left a reader without the smoothing-filter options those
+  extras enable.
+
+## 2026-08-24
+
+The main development session: the working tree's accumulated uncommitted
+feature set was captured as a foundation commit, then extended and prepared
+for a public GitHub release.
+
+- **Foundation commit** capturing the app's actual working feature set that
+  had accumulated on top of the initial skeleton: C3D import with
+  multi-convention marker auto-detection, the independent multi-segment
+  calibration cross-check, the myogait function-reference glossary, and the
+  Pipeline explorer / Longitudinal / Reference pages with their charts.
+- Added the **`nature_multimodal` C3D marker convention**: neither
+  myogait's own registered conventions nor this app's fuzzy fallback could
+  resolve a Nature Scientific Data "Multimodal Gait Dataset" file (0/6
+  landmarks) because its ISB/CAST labels don't contain the substrings
+  either detector looks for. Registered both in this app's own alias pool
+  and directly into myogait's own convention registry, so native
+  autodetection recognises it too.
+- **Adopted myogait 0.7–0.8.1's calibration and signal-correctness
+  parameters**: flexion-positive sign canonicalization (on by default —
+  without it, two passes walked in opposite directions can disagree in
+  sign), a calibration-offset guard, per-cycle confidence/coherence quality
+  gates, and native femur/foot-length calibration instead of inverting a
+  population height ratio. Added `pipeline._accepts()` (signature
+  introspection) to gate new *keyword arguments* on existing functions,
+  distinct from the existing whole-function-presence gating. Exposed all
+  of it in the sidebar and in the generated Python/YAML/CLI reproducibility
+  panel.
+- **Stopped bypassing myogait's own C3D convention autodetection.** The
+  C3D tab always built an explicit marker mapping first, which meant
+  myogait's own (more complete) `detect_c3d_convention` never ran, and
+  "Package default" silently triggered that same autodetection instead of
+  the literal default its label promised. `marker_presets.resolve_c3d_
+  mapping()` now tries myogait's own detector first, falling back to this
+  app's fuzzy scan only when fewer than 4/6 required landmarks resolve, and
+  surfaces which path fired. Also added 3-D ankle reference correction for
+  C3D sources (the 2-D sagittal projection is faithful for hip/knee but
+  collapses the ankle) and fixed a real occlusion-masking gap in the
+  aspect-ratio recovery for pre-0.8.0 myogait installs.
+- **Fixed a real chart bug**: `trunk` and `pelvis_obliquity` are stored
+  once per frame in myogait's angle data, not once per side, but the
+  kinematics chart always looked them up with a per-side key and silently
+  drew an empty trace. Fixed the lookup and made `pelvis_obliquity`
+  selectable in the Kinematics tab.
+- **Prepared the repository for a public GitHub release**: added
+  `.gitignore` and untracked committed `__pycache__` files and stray
+  downloaded model weights that predated it; added the MIT license,
+  matching myogait's own; rewrote the README for a public audience (what
+  the app actually reads, a research/screening-tool disclaimer up front,
+  environment-requirement rationale, a license section); credited
+  Assistmyo · NeuPEL · Institut de Myologie in the license and a new
+  README Author section; untracked `CLAUDE.md` (internal AI-assistant
+  guidance) to keep it local-only.
+- Added `PRODUCT.md` (product context for a visual-identity redesign) and
+  then the **chronophotography (Étienne-Jules Marey) redesign** itself: a
+  walking figure decomposed into luminous marker positions against a
+  controlled ground, chosen by explicit user pick over a dice-assigned
+  candidate. New `scripts/validate_palette.py` (WCAG contrast + simulated
+  protanopia/deuteranopia in OKLab) validates every colour token — a
+  script the code had promised in a comment for some time without actually
+  existing. Fixed several colour call sites that read a single value
+  without branching on light/dark, which cannot hit correct contrast
+  against both grounds.
+- Added `TUTORIAL.md`, a five-minute getting-started guide, with every UI
+  claim checked against the actual source rather than written from memory.
+- **Sidebar layout pass**: split the "Joint kinematics" section (grown to
+  13 controls with no internal grouping) into Calibration / Corrections
+  tabs. A "modified from default" marker for section labels was attempted
+  and reverted after `AppTest` showed it lagging by exactly one
+  interaction — a structural Streamlit ordering constraint (an expander's
+  label is fixed before its body runs), not a bug fixable within that
+  pass's scope; documented in `DESIGN.md` so it is not re-attempted blind.
+
+## 2026-08-19
+
+- **Project start.**
+
+---
+
+*Full technical detail — the exact bugs found, why a fix takes the shape
+it does, and how each change was verified — lives in the individual git
+commit messages (`git log`), which this file summarises rather than
+replaces.*

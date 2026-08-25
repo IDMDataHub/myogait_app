@@ -295,7 +295,8 @@ deploy/                    nginx + systemd
 Developed by Romain Feigean, lead researcher at Assistmyo · NeuPEL · Institut
 de Myologie. Built on [myogait](https://github.com/IDMDataHub/myogait) and
 [gaitkit](https://github.com/IDMDataHub/gaitkit) by Frédéric Fer, developed
-separately from this application.
+separately from this application. See [**CHANGELOG.md**](CHANGELOG.md) for
+what changed and why, credited by contributor.
 
 ## License
 
