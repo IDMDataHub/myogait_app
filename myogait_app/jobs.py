@@ -278,6 +278,11 @@ class JobManager:
                 **extract_kwargs,
             )
 
+            # Study identifiers travel with the pivot so a pooled,
+            # multi-recording analysis can group and label each output JSON.
+            if job.study:
+                data["study"] = dict(job.study)
+
             result_file = "result.json"
             save_json(data, str(job_dir(ticket, self.settings) / result_file))
 

@@ -523,6 +523,8 @@ def _video_tab() -> None:
     if source_path is None:
         return
 
+    study = _study_form(source_path)
+
     active = job_manager().active_count()
     if active >= SETTINGS.max_concurrent_jobs:
         st.warning(
@@ -541,13 +543,45 @@ def _video_tab() -> None:
             kwargs["max_frames"] = int(max_frames)
 
         ticket = job_manager().submit(
-            source_path, model, kwargs, video_name=source_path.name
+            source_path, model, kwargs, video_name=source_path.name, study=study
         )
         state.remember_ticket(ticket)
         st.success(f"Started. Your ticket is **{ticket}** - keep it.")
         st.rerun()
 
     _live_jobs()
+
+
+def _study_form(source_path: Path) -> dict:
+    """Study identifiers written into the output JSON for pooled analysis.
+
+    Every field carries a default so a quick run needs no typing. The values
+    are stored under ``data["study"]`` in the extracted pivot, so that when
+    many recordings are later pooled, each output can be grouped and
+    labelled for the statistical analysis (by patient, run, group and
+    experiment). The run defaults to the video's own name.
+    """
+    stem = Path(source_path).stem
+    with st.expander("Study identifiers (saved in the output)", expanded=True):
+        st.caption(
+            "Stored under `study` in the exported JSON, so several pooled "
+            "recordings can be grouped and labelled for statistical analysis."
+        )
+        c1, c2 = st.columns(2)
+        patient_id = c1.text_input("Patient ID", value="P001", key="study_patient")
+        # Keyed on the video stem so a different video resets the default.
+        run = c2.text_input("Run", value=stem, key=f"study_run::{stem}")
+        c3, c4 = st.columns(2)
+        group = c3.text_input("Group", value="control", key="study_group")
+        experiment = c4.text_input(
+            "Experiment", value="baseline", key="study_experiment"
+        )
+    return {
+        "patient_id": patient_id.strip(),
+        "run": run.strip(),
+        "group": group.strip(),
+        "experiment": experiment.strip(),
+    }
 
 
 def _pick_video() -> Path | None:
