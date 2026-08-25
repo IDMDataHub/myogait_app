@@ -21,6 +21,10 @@ def test_page_renders_without_an_exception(page):
 
     app = AppTest.from_file(str(APP_PY))
     app.run()
-    app.radio[0].set_value(page).run()
+    # The Data page also renders radios of its own (e.g. "Video source"),
+    # so select the sidebar navigation radio by its options rather than by
+    # position in the element tree.
+    nav = next(r for r in app.radio if "Data" in r.options)
+    nav.set_value(page).run()
 
     assert not app.exception
