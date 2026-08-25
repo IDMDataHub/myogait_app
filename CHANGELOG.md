@@ -5,6 +5,15 @@ yet tag releases, so entries are dated rather than versioned. Newest first.
 Every entry below is attributed to its actual author; where that is not
 stated, it is Romain Feigean.
 
+## 0.2.1 — 2026-08-25 (Frédéric Fer)
+
+- **Persistent extraction status.** A running extraction now shows in a banner
+  at the top of every page (live progress + Stop), so it can be launched, left
+  to run while working elsewhere, and picked back up — a finished one loads
+  with a single Analyse button from anywhere. Start is disabled while an
+  extraction runs (one at a time), and orphaned jobs from a server restart are
+  reconciled at startup instead of blocking a new run with an eternal bar.
+
 ## 0.2.0 — 2026-08-25 (Frédéric Fer)
 
 - **Cohort tab (analysis by condition).** Load many exported pivots at once
