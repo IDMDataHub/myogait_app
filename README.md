@@ -61,6 +61,21 @@ myogait-app --server.address 127.0.0.1
 `myogait@master`; it is not the recommended installation for a reproducible
 study.
 
+### Reproducible study environment
+
+`constraints-study-linux-py312.txt` records the exact dependency graph verified
+for Linux and CPython 3.12. Use it to create a stable study environment:
+
+```bash
+python3 -m venv .venv-study
+source .venv-study/bin/activate
+pip install -c constraints-study-linux-py312.txt .
+```
+
+It is intentionally platform-specific. Regenerate an equivalent lock file in a
+fresh virtual environment when using Windows/macOS or when deliberately updating
+the app or `myogait`.
+
 ### Windows: long paths for GPU/XPU environments
 
 Intel XPU wheels can exceed Windows' legacy `MAX_PATH` limit when the virtual
