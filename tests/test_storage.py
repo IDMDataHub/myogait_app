@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import io
 
-from myogait_app.storage import Workspace, store_uploaded_file
+from myogait_app.storage import Workspace, path_is_within_root, store_uploaded_file
 
 
 def test_content_addressed_uploads_do_not_collide_on_name_and_size(tmp_path):
@@ -21,3 +21,14 @@ def test_content_addressed_uploads_do_not_collide_on_name_and_size(tmp_path):
     assert first.read_bytes() == b"ABCD"
     assert second.read_bytes() == b"WXYZ"
     assert repeated == first
+
+
+def test_path_is_within_root_rejects_a_sibling_directory(tmp_path):
+    root = tmp_path / "vicon"
+    trial = root / "trial_01"
+    sibling = tmp_path / "other_trial"
+    trial.mkdir(parents=True)
+    sibling.mkdir()
+
+    assert path_is_within_root(trial, root)
+    assert not path_is_within_root(sibling, root)

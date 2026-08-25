@@ -67,6 +67,9 @@ class Settings:
     #: 2 GB file be dropped over SMB or scp instead of pushed through
     #: the browser uploader, which is fragile at that size.
     watch_dir: Path | None = None
+    #: Optional root containing local VICON trial directories. The standard
+    #: experimental UI only lets the researcher select folders below it.
+    vicon_root: Path | None = None
 
     # ── Behaviour ────────────────────────────────────────────────────
     #: Show the experimental VICON / AIM benchmark section.
@@ -77,6 +80,7 @@ class Settings:
     @classmethod
     def from_env(cls) -> "Settings":
         watch_raw = _env_str("MYOGAIT_APP_WATCH_DIR", "")
+        vicon_raw = _env_str("MYOGAIT_APP_VICON_ROOT", "")
         return cls(
             workspace_root=Path(
                 _env_str("MYOGAIT_APP_WORKSPACE", str(_default_workspace_root()))
@@ -86,6 +90,7 @@ class Settings:
             max_concurrent_jobs=_env_int("MYOGAIT_APP_MAX_JOBS", 1),
             job_stale_minutes=_env_int("MYOGAIT_APP_JOB_STALE_MINUTES", 120),
             watch_dir=Path(watch_raw) if watch_raw else None,
+            vicon_root=Path(vicon_raw) if vicon_raw else None,
             enable_experimental=_env_bool("MYOGAIT_APP_EXPERIMENTAL", True),
             show_reproducibility=_env_bool("MYOGAIT_APP_SHOW_CODE", True),
         )

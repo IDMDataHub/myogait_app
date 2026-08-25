@@ -165,6 +165,15 @@ def store_uploaded_file(
     return target
 
 
+def path_is_within_root(path: Path, root: Path) -> bool:
+    """Return whether ``path`` resolves inside ``root`` (symlink-safe)."""
+    try:
+        Path(path).resolve().relative_to(Path(root).resolve())
+    except (OSError, ValueError):
+        return False
+    return True
+
+
 def get_workspace(session_id: str, settings: Settings = SETTINGS) -> Workspace:
     """Return (and create) the workspace for *session_id*."""
     safe = re.sub(r"[^A-Za-z0-9_-]", "", str(session_id))[:64] or "anonymous"

@@ -22,6 +22,7 @@ import streamlit as st
 
 from ..runtime import get_runtime
 from ..settings import SETTINGS
+from ..storage import path_is_within_root
 from . import state
 from .components import empty_state, page_header
 
@@ -84,11 +85,35 @@ def _vicon_tab(runtime) -> None:
         "`.mat` files."
     )
 
-    trial_dir = st.text_input(
-        "VICON trial directory (server path)",
-        value=str(SETTINGS.watch_dir) if SETTINGS.watch_dir else "",
-        placeholder="/data/vicon/trial_01_1",
-    )
+    root = SETTINGS.vicon_root
+    trial_path: Path | None = None
+    advanced_path = False
+    if root and root.is_dir():
+        candidates = [root, *sorted(p for p in root.iterdir() if p.is_dir())]
+        choice = st.selectbox(
+            "VICON trial directory",
+            candidates,
+            format_func=lambda p: str(p.relative_to(root)) if p != root else ".",
+        )
+        trial_path = Path(choice)
+        st.caption(f"Standard selection is limited to: `{root}`")
+    else:
+        st.info(
+            "Set `MYOGAIT_APP_VICON_ROOT` to select a trial from a local "
+            "project directory."
+        )
+
+    with st.expander("Advanced path", expanded=trial_path is None):
+        advanced_path = st.checkbox("Use a path outside the configured VICON root")
+        raw_path = st.text_input(
+            "VICON trial directory (local path)",
+            value="",
+            placeholder="/data/vicon/trial_01_1",
+            disabled=not advanced_path,
+        )
+        if advanced_path and raw_path.strip():
+            trial_path = Path(raw_path.strip())
+
     columns = st.columns(2)
     vicon_fps = columns[0].number_input("VICON frame rate (Hz)", 20.0, 2000.0, 200.0, 10.0)
     max_lag = columns[1].number_input("Max search lag (s)", 0.5, 60.0, 10.0, 0.5)
@@ -96,9 +121,11 @@ def _vicon_tab(runtime) -> None:
     if not st.button("Run alignment", type="primary", use_container_width=True):
         return
 
-    path = Path(trial_dir.strip()) if trial_dir.strip() else None
-    if path is None or not path.is_dir():
-        st.error(f"Not a directory on this server: {trial_dir!r}")
+    if trial_path is None or not trial_path.is_dir():
+        st.error("Select a local VICON trial directory before running alignment.")
+        return
+    if root and not advanced_path and not path_is_within_root(trial_path, root):
+        st.error("The selected directory must be inside the configured VICON root.")
         return
 
     config = state.get_config()
@@ -113,7 +140,7 @@ def _vicon_tab(runtime) -> None:
         with st.spinner("Aligning against VICON..."):
             enriched = run_single_trial_vicon_benchmark(
                 result.data,
-                trial_dir=str(path),
+                trial_dir=str(trial_path),
                 vicon_fps=float(vicon_fps),
                 max_lag_seconds=float(max_lag),
             )
