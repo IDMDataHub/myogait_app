@@ -68,6 +68,12 @@ Issues = "https://github.com/IDMDataHub/myogait_app/issues"
 [project.scripts]
 myogait-app = "myogait_app.cli:main"
 
+[tool.pytest.ini_options]
+# Import the package straight from the source tree, so `pytest` works
+# without an editable install (CI installs only requirements-dev.txt).
+pythonpath = ["."]
+testpaths = ["tests"]
+
 [tool.hatch.version]
 path = "myogait_app/__init__.py"
 
