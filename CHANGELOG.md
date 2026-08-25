@@ -5,6 +5,21 @@ yet tag releases, so entries are dated rather than versioned. Newest first.
 Every entry below is attributed to its actual author; where that is not
 stated, it is Romain Feigean.
 
+## 0.2.0 — 2026-08-25 (Frédéric Fer)
+
+- **Cohort tab (analysis by condition).** Load many exported pivots at once
+  and read a study by condition: pooled mean±SD kinematic curves with an
+  age-matched normative band, ROM, stance/swing, cadence, duration, and —
+  when a subject height is provided — step length in metres. GPS-2D / GDI-2D
+  screening scores and a per-parameter validity note accompany the curves.
+  When a condition also holds a marker (C3D) reference, an accuracy section
+  reports RMSE / centred RMSE / waveform-r / ROM / peak-timing error per
+  joint against it. New Streamlit-free modules `pooling`, `agreement`,
+  `clinical`, `mdc`.
+- **Study identifiers** written into each output JSON (patient, run, group,
+  condition, optional height/age) so a pooled analysis can group and label
+  every recording.
+
 ## 2026-08-25
 
 - **Backend accessibility + GPU setup.** The Data page's model picker used
