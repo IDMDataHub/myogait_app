@@ -21,13 +21,28 @@ alongside the kinematic curves, never as a standalone diagnosis.
 
 ## Quick start
 
+Choose one installation profile:
+
+```bash
+# Base application: pivots, C3D and installed pose backends.
+pip install .
+
+# Standard pose backends available through PyPI.
+pip install ".[backends]"
+
+# Tests, build and dependency-audit tools.
+pip install ".[dev]"
+```
+
+Then start the application.
+
 ```bash
 # Windows PowerShell
 py -3.12 -m venv .venv
 .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install ".[backends]"
 python scripts/setup_gpu.py   # optional: NVIDIA/Intel GPU acceleration, see below
-streamlit run app.py
+myogait-app
 ```
 
 On Linux/macOS:
@@ -35,9 +50,13 @@ On Linux/macOS:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-streamlit run app.py --server.address 127.0.0.1
+pip install ".[backends]"
+myogait-app --server.address 127.0.0.1
 ```
+
+`requirements.txt` remains a development/experimental profile that follows
+`myogait@master`; it is not the recommended installation for a reproducible
+study.
 
 ### Windows: long paths for GPU/XPU environments
 
