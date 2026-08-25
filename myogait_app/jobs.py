@@ -51,6 +51,10 @@ class Job:
     video_name: str = ""
     model: str = ""
     params: dict = field(default_factory=dict)
+    #: Free-form study identifiers (patient ID, run, group, experiment)
+    #: written into the extracted pivot under ``data["study"]`` so a pooled
+    #: multi-recording analysis can group and label every output JSON.
+    study: dict = field(default_factory=dict)
     created_at: float = 0.0
     updated_at: float = 0.0
     error: str = ""
@@ -73,9 +77,16 @@ class Job:
         return max(0.0, time.time() - self.updated_at)
 
     def result_path(self, settings: Settings = SETTINGS) -> Path | None:
+        """Return a result only when it is a direct file of this job directory."""
         if not self.result_file:
             return None
-        candidate = job_dir(self.ticket, settings) / self.result_file
+        root = job_dir(self.ticket, settings).resolve()
+        try:
+            candidate = (root / self.result_file).resolve()
+        except OSError:
+            return None
+        if candidate.parent != root:
+            return None
         return candidate if candidate.is_file() else None
 
     @classmethod
@@ -92,6 +103,7 @@ class Job:
             "video_name": self.video_name,
             "model": self.model,
             "params": self.params,
+            "study": self.study,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "error": self.error,
@@ -193,6 +205,7 @@ class JobManager:
         model: str,
         extract_kwargs: dict[str, Any] | None = None,
         video_name: str = "",
+        study: dict[str, Any] | None = None,
     ) -> str:
         """Queue an extraction and return its ticket."""
         ticket = new_ticket()
@@ -205,6 +218,7 @@ class JobManager:
             video_name=video_name or Path(video_path).name,
             model=model,
             params=dict(extract_kwargs or {}),
+            study={k: v for k, v in (study or {}).items() if v not in (None, "")},
             created_at=time.time(),
             message="Waiting for a free worker...",
         )
