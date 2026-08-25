@@ -92,12 +92,16 @@ def render() -> None:
             st.rerun()
         st.divider()
 
-    tab_json, tab_c3d, tab_video, tab_ticket = st.tabs(
-        ["Pivot JSON", "C3D", "Video -> extraction", "Recover a job"]
+    tab_json, tab_cohort, tab_c3d, tab_video, tab_ticket = st.tabs(
+        ["Pivot JSON", "Cohort", "C3D", "Video -> extraction", "Recover a job"]
     )
 
     with tab_json:
         _json_tab()
+    with tab_cohort:
+        from . import page_pool
+
+        page_pool.render(show_header=False)
     with tab_c3d:
         _c3d_tab()
     with tab_video:
