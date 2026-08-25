@@ -40,6 +40,8 @@ class RunResult:
     name: str
     study: dict
     ok: bool
+    kind: str = "video"           # "video" | "vicon" (marker-based reference)
+    duration_s: float | None = None
     cycles: dict | None = None
     stats: dict | None = None
     error: str = ""
@@ -65,8 +67,46 @@ class RunResult:
         return self._s("group")
 
     @property
+    def is_reference(self) -> bool:
+        """True for a marker-based (Vicon) trial that can ground truth."""
+        return self.kind == "vicon"
+
+    @property
+    def pair_key(self) -> tuple[str, str]:
+        """Identity a video run and its marker reference share."""
+        return (self.patient, self.run)
+
+    @property
     def n_cycles(self) -> int:
         return len((self.cycles or {}).get("cycles", []))
+
+
+def _detect_kind(data: dict) -> str:
+    """A pivot carrying 3-D marker trajectories is a marker-based reference.
+
+    ``load_c3d`` keeps the raw 3-D markers under ``c3d_markers_3d``; a video
+    extraction never has them. The study block may also state it explicitly.
+    """
+    if data.get("c3d_markers_3d"):
+        return "vicon"
+    source = str((data.get("study") or {}).get("source") or "").lower()
+    if source in ("c3d", "vicon"):
+        return "vicon"
+    if str((data.get("meta") or {}).get("source") or "").lower() == "c3d":
+        return "vicon"
+    return "video"
+
+
+def _duration_s(data: dict) -> float | None:
+    """Recording duration in seconds, from the frame count and fps."""
+    meta = data.get("meta") or {}
+    frames = data.get("frames") or []
+    fps = meta.get("fps")
+    if isinstance(meta.get("duration_s"), (int, float)):
+        return float(meta["duration_s"])
+    if isinstance(fps, (int, float)) and fps > 0 and frames:
+        return len(frames) / float(fps)
+    return None
 
 
 def load_run(path, config: PipelineConfig | None = None) -> RunResult:
