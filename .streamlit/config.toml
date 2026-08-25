@@ -10,45 +10,35 @@ headless = true
 gatherUsageStats = false
 
 [theme]
-# Chronophotography (Marey) identity -- see myogait_app/branding.py for
-# the full rationale and the validated hex values these mirror. Keep the
-# two files in sync when either changes; branding.py is the source of
-# truth for anything Plotly-rendered, this file for Streamlit's own
-# chrome. base picks the default shown before a user's own OS/browser
-# preference or in-app choice overrides it: dark is deliberate, not a
-# category default -- the chosen world's source material (the glass
-# plate / velvet backdrop of Marey's own apparatus) is inherently a
-# dark-ground medium, and the light theme is its secondary, derived
-# translation, not the other way round.
-base = "dark"
+# Bauhaus / ~1960s international-typographic-style identity -- see
+# myogait_app/branding.py for the full rationale and the validated hex
+# values these mirror. Keep the two files in sync when either changes;
+# branding.py is the source of truth for anything Plotly-rendered, this
+# file for Streamlit's own chrome. Light-only, deliberately: Bauhaus
+# print is inherently a light-ground medium, and only one world (the
+# paper-toned one below) was ever art-directed -- no [theme.dark]
+# section, so there is nothing here for a dark OS preference to pick up
+# a half-finished counterpart from. baseRadius/buttonRadius stay "none"
+# for the sharp geometric edges this world runs on throughout.
+base = "light"
 baseRadius = "none"
 buttonRadius = "none"
-font = "Archivo:https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap"
+primaryColor = "#e0a80f"
+backgroundColor = "#e8e8e2"
+secondaryBackgroundColor = "#dedcd4"
+textColor = "#16181a"
+borderColor = "#b9b6ac"
+# Bright yellow primaryColor reads fine on Streamlit's own filled widget
+# chrome (buttons, sliders, checkboxes), but as plain link text directly
+# on the paper background it fails contrast (1.75:1, needs 3:1) -- see
+# branding.py's accent_mark. linkColor uses that darker value instead.
+linkColor = "#7f4c00"
+font = "Helvetica Neue, Helvetica, Arial, sans-serif"
 codeFont = "JetBrains Mono:https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
 
-[theme.light]
-primaryColor = "#8a5a12"
-backgroundColor = "#eff1f0"
-secondaryBackgroundColor = "#e2e6e3"
-textColor = "#12161a"
-borderColor = "#c7cdc9"
-linkColor = "#8a5a12"
-
-[theme.dark]
-primaryColor = "#e0a24f"
-backgroundColor = "#0d1012"
-secondaryBackgroundColor = "#181c1f"
-textColor = "#eef1f0"
-borderColor = "#2a3033"
-linkColor = "#e0a24f"
-
-[theme.light.sidebar]
-backgroundColor = "#e2e6e3"
-borderColor = "#c7cdc9"
-
-[theme.dark.sidebar]
-backgroundColor = "#181c1f"
-borderColor = "#2a3033"
+[theme.sidebar]
+backgroundColor = "#dedcd4"
+borderColor = "#b9b6ac"
 
 [runner]
 fastReruns = true
