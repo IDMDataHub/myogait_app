@@ -22,10 +22,39 @@ alongside the kinematic curves, never as a standalone diagnosis.
 ## Quick start
 
 ```bash
-python -m venv .venv && .venv/Scripts/activate
+# Windows PowerShell
+py -3.12 -m venv .venv
+.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 streamlit run app.py
 ```
+
+On Linux/macOS:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+streamlit run app.py --server.address 127.0.0.1
+```
+
+### Windows: long paths for GPU/XPU environments
+
+Intel XPU wheels can exceed Windows' legacy `MAX_PATH` limit when the virtual
+environment lives deep in a project directory. The simplest solution needs no
+administrator access: create a short virtual environment such as `C:\mg\venv`.
+
+```powershell
+py -3.12 -m venv C:\mg\venv
+C:\mg\venv\Scripts\Activate.ps1
+python scripts/setup_gpu.py --venv C:\mg\venv
+pip install -r requirements.txt
+```
+
+Alternatively, an administrator may enable `LongPathsEnabled` once for the
+machine and restart their session. Do not use the `\\?\` path prefix with pip:
+it conflicts with relative paths created internally by package installers. For
+Git on Windows, also run `git config --global core.longpaths true`.
 
 Then open the **Data** page and load a pivot JSON or a video — or follow
 [**TUTORIAL.md**](TUTORIAL.md) for a five-minute walkthrough from an
@@ -132,6 +161,14 @@ that outlives it is a job ticket, and both are purged on a fixed clock
 Data page, and the retention rule is stated in the interface rather than applied
 silently.
 
+## Reproducibility for a study
+
+The default dependency uses the current `myogait` development branch. That is
+useful for app development, but a study should pin the exact myogait tag or Git
+commit it used and retain its virtual environment (or a lock file). Every export
+also includes a `*.provenance.json` sidecar, or `provenance.json` in a ZIP bundle,
+recording Python/package versions and the complete pipeline configuration.
+
 ## Configuration
 
 All settings are environment variables, so the same code runs on a laptop and on
@@ -142,6 +179,8 @@ the lab server.
 | `MYOGAIT_APP_WORKSPACE` | system temp | Where uploads, jobs and outputs live. |
 | `MYOGAIT_APP_RETENTION_HOURS` | `24` | Purge window. |
 | `MYOGAIT_APP_MAX_UPLOAD_MB` | `2048` | Must match `.streamlit/config.toml` and nginx. |
+| `MYOGAIT_APP_INMEMORY_WARN_MB` | `512` | Suggest the local watch directory above this browser-upload size. |
+| `MYOGAIT_APP_VICON_ROOT` | unset | Local root for standard VICON trial selection. |
 | `MYOGAIT_APP_MAX_JOBS` | `1` | Concurrent extractions. Raising it needs no code change. |
 | `MYOGAIT_APP_WATCH_DIR` | unset | Server-side drop folder, so a 2 GB file can arrive over SMB/scp instead of the browser uploader. |
 | `MYOGAIT_APP_EXPERIMENTAL` | `true` | Show the VICON/AIM page. |
