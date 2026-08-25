@@ -27,6 +27,7 @@ from ..runtime import (
     xpu_upgrade_hint,
 )
 from ..settings import SETTINGS
+from ..validation import validate_pivot
 from ..storage import exceeds_in_memory_warning, is_ticket, store_uploaded_file
 from . import state
 from .components import (
@@ -151,8 +152,9 @@ def _load_pivot(path: Path, name: str) -> None:
         st.error(f"Could not read the pivot file: {type(exc).__name__}: {exc}")
         return
 
-    if not data.get("frames"):
-        st.error("This file has no frames - it is not a myogait pivot JSON.")
+    errors = validate_pivot(data)
+    if errors:
+        st.error("Invalid myogait pivot: " + " ".join(errors))
         return
 
     model = str((data.get("extraction") or {}).get("model") or "unknown")
@@ -631,7 +633,7 @@ def _study_form(source_path: Path) -> dict:
     are stored under ``data["study"]`` in the extracted pivot, so that when
     many recordings are later pooled, each output can be grouped and
     labelled for the statistical analysis (by patient, run, group and
-    experiment). The run defaults to the video's own name.
+    condition). The run defaults to the video's own name.
     """
     stem = Path(source_path).stem
     with st.expander("Study identifiers (saved in the output)", expanded=True):
@@ -645,14 +647,14 @@ def _study_form(source_path: Path) -> dict:
         run = c2.text_input("Run", value=stem, key=f"study_run::{stem}")
         c3, c4 = st.columns(2)
         group = c3.text_input("Group", value="control", key="study_group")
-        experiment = c4.text_input(
-            "Experiment", value="baseline", key="study_experiment"
+        condition = c4.text_input(
+            "Condition", value="baseline", key="study_condition"
         )
     return {
         "patient_id": patient_id.strip(),
         "run": run.strip(),
         "group": group.strip(),
-        "experiment": experiment.strip(),
+        "condition": condition.strip(),
     }
 
 
