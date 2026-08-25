@@ -125,7 +125,7 @@ def angle_timeline(
                         legendgroup=joint,
                         showlegend=(row == 1),
                         mode="lines",
-                        line=dict(color=BRANDING.accent_for(dark), width=2),
+                        line=dict(color=BRANDING.accent_mark_for(dark), width=2),
                         hovertemplate="%{y:.1f}&deg;<extra>"
                         + JOINT_LABELS.get(joint, joint.title())
                         + "</extra>",
@@ -459,7 +459,7 @@ def stance_swing_bar(cycles: dict, dark: bool = False, height: int = 200) -> go.
         return apply(go.Figure(), dark, height=height)
 
     for label, values, colour in (
-        ("Stance", stance, BRANDING.accent_for(dark)),
+        ("Stance", stance, BRANDING.accent_mark_for(dark)),
         ("Swing", swing, BRANDING.accent_soft),
     ):
         fig.add_trace(

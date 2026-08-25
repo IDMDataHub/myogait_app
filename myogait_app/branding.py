@@ -4,13 +4,17 @@ Reconfigurable by design, not neutral by default: swap the values in
 ``BRANDING`` (or point the two environment variables at your own assets)
 and the whole app follows. No colour or label is hardcoded anywhere else.
 
-The default identity draws on chronophotography (Étienne-Jules Marey): a
-walking figure decomposed into a sequence of luminous marker positions
-against a controlled ground. Colour is restrained on purpose -- one
-accent, reserved for the active/interactive element; everything else
+The identity draws on Bauhaus, ~1960s international-typographic-style
+print: sharp geometric edges (no radius anywhere), a warm paper ground,
+Helvetica Neue set in tracked-out uppercase, and one saturated primary
+reserved for the active/interactive element -- everything else
 achromatic -- because colour is what *encodes information* here, on
 charts and in the UI alike, and an identity that spent it on page
-texture would compete with that job instead of serving it.
+texture would compete with that job instead of serving it. Committed to
+a single light, paper-toned world on purpose (not a token-swap dark
+counterpart): Bauhaus's own print language is inherently light-ground,
+and inventing an undemonstrated dark variant would dilute a deliberate,
+single visual world into a generic one. See DESIGN.md.
 """
 
 from __future__ import annotations
@@ -38,27 +42,43 @@ class Branding:
     # value is validated the same way as the categorical palette below
     # (WCAG contrast ratio, OKLab deltaE under simulated protanopia and
     # deuteranopia) by scripts/validate_palette.py -- run it before
-    # substituting any of these hexes. surface_dark/ink_dark are the
-    # glass-plate/velvet negative (Marey's original apparatus); surface_
-    # light/ink_light are its published-engraving counterpart. accent is
-    # the one saturated colour in the interface chrome, reserved for the
-    # active/interactive element only -- never scattered as page texture.
+    # substituting any of these hexes. Light-only by deliberate choice
+    # (see the module docstring): the _dark fields below are kept, equal
+    # to their light counterparts, purely so call sites that still branch
+    # on ``dark`` (Streamlit's own OS-preference escape hatch) render the
+    # same correct Bauhaus look rather than a stale mix of the previous
+    # identity's dark tokens with this one's light structure.
 
-    surface_light: str = "#eff1f0"
-    surface_light_secondary: str = "#e2e6e3"
-    ink_light: str = "#12161a"
+    surface_light: str = "#e8e8e2"
+    surface_light_secondary: str = "#dedcd4"
+    ink_light: str = "#16181a"
     ink_muted_light: str = "#5b6461"
-    border_light: str = "#c7cdc9"
+    border_light: str = "#b9b6ac"
 
-    surface_dark: str = "#0d1012"
-    surface_dark_secondary: str = "#181c1f"
-    ink_dark: str = "#eef1f0"
-    ink_muted_dark: str = "#9aa39f"
-    border_dark: str = "#2a3033"
+    surface_dark: str = "#e8e8e2"
+    surface_dark_secondary: str = "#dedcd4"
+    ink_dark: str = "#16181a"
+    ink_muted_dark: str = "#5b6461"
+    border_dark: str = "#b9b6ac"
 
-    accent: str = "#8a5a12"
-    accent_dark: str = "#e0a24f"
-    accent_soft: str = "#c69a5c"
+    #: The one saturated colour in the interface chrome, reserved for the
+    #: active/interactive element only -- never scattered as page texture.
+    #: Yellow needs dark text on fill, unlike the mockup's other three
+    #: primaries (red/blue/black all pair with near-white) -- see
+    #: ``accent_ink_for`` below and its call sites.
+    accent: str = "#e0a80f"
+    accent_dark: str = "#e0a80f"
+    accent_soft: str = "#f0d386"
+    #: Same hue as ``accent``, darkened (OKLCH L 0.763 -> 0.465) for any
+    #: use as a *mark on the paper ground itself* rather than a filled
+    #: block -- thin rules, small numerals, chart lines, focus outlines.
+    #: Measured, not guessed: the bright accent is only 1.75:1 against
+    #: `surface_light` (needs 3:1 even for non-text marks; both colours
+    #: sit at the light end), so it reads as a legible gold rather than
+    #: vanishing into the paper. 5.8:1 on surface_light, 5.2:1 on
+    #: surface_light_secondary -- see scripts/validate_palette.py.
+    accent_mark: str = "#7f4c00"
+    accent_mark_dark: str = "#7f4c00"
 
     # ── Data-viz palette: unchanged by this redesign ────────────────
     #
@@ -100,25 +120,28 @@ class Branding:
         "#d55181", "#008300", "#9085e9", "#e66767",
     )
 
-    #: Left / right limb. Slot 8 against slot 1 -- the widest separation
-    #: available in the palette (CVD deltaE 21.6, normal 32.3).
+    #: Left / right limb. Blue against ink -- re-specified by this
+    #: redesign (was red/blue): the source mockup hardcodes left as its
+    #: own blue constant, distinct from the accent, with right as plain
+    #: ink rather than a second saturated hue. Large lightness *and* hue
+    #: separation, so it survives protan/deutan simulation same as the
+    #: pair it replaces -- reconfirm with scripts/validate_palette.py.
     side_colors: dict = field(
-        default_factory=lambda: {"left": "#e34948", "right": "#2a78d6"}
+        default_factory=lambda: {"left": "#1c4fb0", "right": "#16181a"}
     )
 
     #: Normative band. Deliberately achromatic: the reference is context,
     #: not a series, and must never compete with the patient curve.
     normative: str = "#898781"
 
-    #: Chart chrome, retuned to the new cool-graphite ground family
-    #: (was a warm gray unrelated to any surface colour in the app).
-    grid: str = "#e4e7e5"
-    grid_dark: str = "#20262a"
-    axis: str = "#c7cdc9"
-    axis_dark: str = "#2a3033"
+    #: Chart chrome, matched to this redesign's warm paper ground.
+    grid: str = "#c9c7bf"
+    grid_dark: str = "#c9c7bf"
+    axis: str = "#b9b6ac"
+    axis_dark: str = "#b9b6ac"
     #: Kept for call sites that do not (yet) branch on ``dark`` -- prefer
     #: ``ink_muted_light``/``ink_muted_dark`` in any new code.
-    ink_muted: str = "#6b716d"
+    ink_muted: str = "#5b6461"
 
     #: Status colours, reserved. Never reused as a series colour.
     status: dict = field(
@@ -148,6 +171,21 @@ class Branding:
 
     def accent_for(self, dark: bool) -> str:
         return self.accent_dark if dark else self.accent
+
+    def accent_mark_for(self, dark: bool) -> str:
+        return self.accent_mark_dark if dark else self.accent_mark
+
+    def accent_ink_for(self, dark: bool) -> str:
+        """Text/icon colour to place *on top of* a solid accent fill.
+
+        Not simply ``ink_for``'s opposite: the source mockup's other three
+        primaries (red/blue/black) all pair with near-white text at
+        WCAG AA, but this yellow accent is too light-valued for that --
+        white-on-yellow lands under 2:1. Dark ink on yellow clears 13:1,
+        so every "on" chip/button/fill state in the UI must call this
+        instead of hardcoding a light text colour.
+        """
+        return self.ink_for(dark)
 
     def surface_for(self, dark: bool) -> str:
         return self.surface_dark if dark else self.surface_light

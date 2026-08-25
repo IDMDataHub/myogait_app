@@ -15,7 +15,17 @@ from pathlib import Path
 import streamlit as st
 
 from ..jobs import DONE, FAILED, JobManager, RUNNING
-from ..runtime import SAPIENS_BACKENDS, get_runtime
+from ..runtime import (
+    BACKENDS,
+    DEVICE_CHOICES,
+    DEVICE_LABELS,
+    SAPIENS2_SIZES,
+    SAPIENS_BACKENDS,
+    get_runtime,
+    sapiens2_seg_weights_ready,
+    sapiens2_weights_ready,
+    xpu_upgrade_hint,
+)
 from ..settings import SETTINGS
 from ..storage import exceeds_in_memory_warning, is_ticket, store_uploaded_file
 from . import state
@@ -476,23 +486,25 @@ def _video_tab() -> None:
     runtime = get_runtime()
     runtime_badge(runtime)
 
-    backends = runtime.available_backends
-    if not backends:
-        st.error(
-            "No pose backend is installed. Install at least one, for example: "
-            "`pip install \"myogait[mediapipe]\"`."
+    if not runtime.available_backends:
+        st.warning(
+            "No pose backend's package is installed yet -- pick one below and "
+            "install it, for example: `pip install \"myogait[mediapipe]\"`."
         )
-        return
 
     labels = {
         b.name: f"{b.label} - {b.keypoints} kp"
         + (f" [{b.weight}]" if b.weight != "light" else "")
-        for b in backends
+        + ("" if b.available else " (not installed)")
+        for b in BACKENDS
     }
     model = st.selectbox(
         "Pose model",
-        [b.name for b in backends],
+        [b.name for b in BACKENDS],
         format_func=lambda name: labels.get(name, name),
+        help="Every backend myogait implements, whether or not it is installed "
+             "on this machine yet. Picking an uninstalled one shows what to run "
+             "next instead of hiding it.",
     )
     chosen = runtime.backend(model)
 
@@ -500,18 +512,73 @@ def _video_tab() -> None:
         st.warning(
             f"{chosen.label} on CPU will take a very long time on anything but a "
             "short clip. Consider MediaPipe or YOLO here, and run the heavy model "
-            "from the CLI on a GPU machine."
+            "from the CLI on a GPU machine, or force GPU below if this "
+            "machine has one that was not auto-detected."
         )
     if chosen and chosen.note:
         st.caption(chosen.note)
 
+    if chosen and not chosen.available:
+        st.warning(f"**{chosen.label}** is not installed. {chosen.install_hint}")
+
+    device_choice = st.selectbox(
+        "Compute device",
+        DEVICE_CHOICES,
+        format_func=lambda c: DEVICE_LABELS[c],
+        help=(
+            f"Auto-detected on this machine: {runtime.device} "
+            f"({runtime.device_detail}). Override forces a backend's device "
+            "pick for this extraction, for a GPU the auto-detection missed "
+            "or to keep a heavy model off one it should not touch. Known "
+            "limit: once this server has run one GPU extraction, forcing CPU "
+            "on a later job can require restarting the app to take effect -- "
+            "PyTorch caches CUDA availability per process; this app cannot "
+            "override that from the outside."
+        ),
+    )
+    xpu_hint = xpu_upgrade_hint()
+    if xpu_hint:
+        st.info(
+            "An Intel GPU looks present, but the installed PyTorch is the "
+            "CPU-only build. Stop this app, then run `python scripts/setup_gpu.py` "
+            "from the project root and restart -- it detects and installs the "
+            "right build automatically, no command to look up or type by hand. "
+            "This app never runs that upgrade for you while running: myogait's "
+            "own auto-upgrade path replaces the current process, which would "
+            "kill this server out from under every connected session."
+        )
+
+    # Sapiens 2's depth head was renamed upstream (Meta ships a "pointmap"
+    # repo for v2 instead) and myogait's sapiens2_depth module still points
+    # at the old facebook/sapiens2-depth-* name, which no longer exists --
+    # every sapiens2-* extraction with this checked fails with a 404
+    # RepositoryNotFoundError. Confirmed against HuggingFace directly:
+    # sapiens2-{pose,seg}-* are real, published repos; sapiens2-depth-* is
+    # not, for any size. Sapiens v1's depth repos are real and unaffected.
+    depth_broken = model in SAPIENS2_SIZES
     columns = st.columns(2)
     with_depth = columns[0].checkbox(
-        "Sapiens depth", value=False, disabled=model not in SAPIENS_BACKENDS
+        "Sapiens depth",
+        value=False,
+        disabled=model not in SAPIENS_BACKENDS or depth_broken,
+        help=(
+            "Broken upstream for Sapiens 2: myogait still requests "
+            "facebook/sapiens2-depth-* from HuggingFace, a repo Meta never "
+            "published (they ship a differently-shaped \"pointmap\" repo "
+            "for v2 instead). Available for Sapiens v1 only, until "
+            "myogait's own sapiens2_depth module is updated to match."
+        ) if depth_broken else None,
     )
     with_seg = columns[1].checkbox(
         "Sapiens segmentation", value=False, disabled=model not in SAPIENS_BACKENDS
     )
+
+    if chosen and model in SAPIENS2_SIZES:
+        needs_pose = not sapiens2_weights_ready(model)
+        needs_seg = with_seg and not sapiens2_seg_weights_ready(model)
+        if needs_pose or needs_seg:
+            _sapiens2_first_use_note(chosen, pose=needs_pose, seg=needs_seg)
+
     max_frames = st.number_input(
         "Limit frames (0 = all)", min_value=0, max_value=200000, value=0, step=100,
         help="Useful to sanity-check a model on a long recording before committing "
@@ -543,7 +610,12 @@ def _video_tab() -> None:
             kwargs["max_frames"] = int(max_frames)
 
         ticket = job_manager().submit(
-            source_path, model, kwargs, video_name=source_path.name, study=study
+            source_path,
+            model,
+            kwargs,
+            video_name=source_path.name,
+            study=study,
+            device_override=device_choice,
         )
         state.remember_ticket(ticket)
         st.success(f"Started. Your ticket is **{ticket}** - keep it.")
@@ -582,6 +654,38 @@ def _study_form(source_path: Path) -> dict:
         "group": group.strip(),
         "experiment": experiment.strip(),
     }
+
+
+def _sapiens2_first_use_note(chosen, *, pose: bool, seg: bool) -> None:
+    """Say what Start extraction will do the first time, nothing to click first.
+
+    No separate setup action: myogait's own weight lookup already
+    downloads on first use regardless of anything this app does, so the
+    fetch is folded into the extraction job itself
+    (``JobManager._fetch_sapiens2_weights``) rather than gated behind an
+    extra button. This is purely informational, so a multi-gigabyte,
+    multi-minute first run does not come as a surprise.
+
+    ``pose``/``seg`` say which of the two independently-cached model
+    files still need fetching -- pose is what the size itself needs;
+    seg is separate and only relevant when the Sapiens segmentation
+    checkbox is on (see ``sapiens2_seg_weights_ready``'s docstring for
+    how this two-file split was discovered).
+    """
+    parts = []
+    if pose:
+        parts.append("pose")
+    if seg:
+        parts.append("segmentation")
+    st.info(
+        f"**{chosen.label}**'s packages are installed, but its {' / '.join(parts)} "
+        f"{'weights are' if len(parts) > 1 else 'model is'} not on this machine yet. "
+        "Starting extraction will fetch them first, automatically -- several "
+        "gigabytes, a few minutes, one time only. Every later extraction with "
+        "this size skips straight to the video. Meta's Sapiens 2 license "
+        "excludes biometric processing and unlicensed medical/health "
+        "practice; see the README before using it here."
+    )
 
 
 def _pick_video() -> Path | None:

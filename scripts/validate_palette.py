@@ -138,18 +138,22 @@ def default_pairs() -> list[dict]:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from myogait_app.branding import BRANDING as B
 
-    return [
-        {"label": "light: text on background", "fg": B.ink_light, "bg": B.surface_light},
-        {"label": "light: muted text on background", "fg": B.ink_muted_light, "bg": B.surface_light, "min_ratio": 4.5},
-        {"label": "light: accent on background", "fg": B.accent, "bg": B.surface_light},
-        {"label": "light: white on accent (button fill)", "fg": "#ffffff", "bg": B.accent},
-        {"label": "light: border on background (non-text)", "fg": B.border_light, "bg": B.surface_light, "min_ratio": 1.4},
-        {"label": "dark: text on background", "fg": B.ink_dark, "bg": B.surface_dark},
-        {"label": "dark: muted text on background", "fg": B.ink_muted_dark, "bg": B.surface_dark, "min_ratio": 4.5},
-        {"label": "dark: accent on background", "fg": B.accent_dark, "bg": B.surface_dark},
-        {"label": "dark: ink on accent (button fill)", "fg": B.ink_light, "bg": B.accent_dark},
-        {"label": "dark: border on background (non-text)", "fg": B.border_dark, "bg": B.surface_dark, "min_ratio": 1.4},
-    ]
+    pairs = []
+    for mode, dark in (("light", False), ("dark", True)):
+        pairs += [
+            {"label": f"{mode}: text on background", "fg": B.ink_for(dark), "bg": B.surface_for(dark)},
+            {"label": f"{mode}: muted text on background", "fg": B.ink_muted_for(dark), "bg": B.surface_for(dark), "min_ratio": 4.5},
+            # accent itself is fill-only (this identity's yellow is too
+            # light-valued to also serve as a mark on the paper ground);
+            # accent_mark is the token real call sites use for text/thin
+            # marks/lines, and accent_ink_for is what sits on the fill.
+            {"label": f"{mode}: accent_mark on background", "fg": B.accent_mark_for(dark), "bg": B.surface_for(dark), "min_ratio": 3.0},
+            {"label": f"{mode}: ink on accent (button fill)", "fg": B.accent_ink_for(dark), "bg": B.accent_for(dark)},
+            {"label": f"{mode}: border on background (non-text)", "fg": B.border_for(dark), "bg": B.surface_for(dark), "min_ratio": 1.4},
+            {"label": f"{mode}: side left on background", "fg": B.side_colors["left"], "bg": B.surface_for(dark), "min_ratio": 3.0},
+            {"label": f"{mode}: side right on background", "fg": B.side_colors["right"], "bg": B.surface_for(dark), "min_ratio": 3.0},
+        ]
+    return pairs
 
 
 if __name__ == "__main__":

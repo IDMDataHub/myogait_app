@@ -2,8 +2,11 @@
 
 One template, built from the validated palette in :mod:`branding`, applied
 to every figure so the app reads as one system rather than a pile of
-plots. Dark mode is a *selected* set of steps against the dark surface,
-not an automatic inversion of the light one.
+plots. Light-only by this redesign's own deliberate choice (see
+branding.py's module docstring) -- the dark template is kept registered,
+built from the same light tokens, purely so a figure requested with
+``dark=True`` (Streamlit's own OS-preference escape hatch) still renders
+correctly rather than mixing an old dark palette with this one's chrome.
 
 Chrome is deliberately recessive: hairline grid, muted axis text, no
 chart border. The data is the only thing with saturation.
@@ -20,11 +23,11 @@ from ..branding import BRANDING
 TEMPLATE_LIGHT = "myogait_light"
 TEMPLATE_DARK = "myogait_dark"
 
-#: Archivo: a grotesk with a technical, engineering character rather than
-#: a friendly-app one -- the same instrument-panel register as the rest
-#: of the identity (see .streamlit/config.toml, which loads it for the
-#: whole UI too, so charts and chrome read as one typeface, not two).
-_FONT = "Archivo, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif"
+#: Helvetica Neue: the international-typographic-style workhorse this
+#: identity's world is built from (see .streamlit/config.toml, which
+#: loads it for the whole UI too, so charts and chrome read as one
+#: typeface, not two).
+_FONT = "Helvetica Neue, Helvetica, Arial, -apple-system, 'Segoe UI', sans-serif"
 
 
 def _build(dark: bool) -> go.layout.Template:
@@ -101,12 +104,16 @@ def series_colors(dark: bool) -> tuple[str, ...]:
 
 
 def side_color(side: str, dark: bool) -> str:
-    """Colour for a limb side.
+    """Colour for a limb side, from ``BRANDING.side_colors`` directly.
 
-    Slot 8 (left) and slot 1 (right), taken from the mode's own steps.
+    Previously re-derived from categorical slots 8/1 -- correct only
+    because the old side_colors dict happened to hold the same two
+    hexes. This redesign's side_colors (blue/ink) are not in the
+    categorical tuple at all, so that shortcut silently went stale;
+    delegating to color_for_side keeps the two definitions from ever
+    drifting apart again. ``dark`` is unused: side_colors is light-only.
     """
-    slots = series_colors(dark)
-    return slots[7] if str(side).lower().startswith("l") else slots[0]
+    return BRANDING.color_for_side(side)
 
 
 def apply(fig: go.Figure, dark: bool, title: str = "", height: int | None = None) -> go.Figure:

@@ -99,6 +99,31 @@ def _has(module: str) -> bool:
         return False
 
 
+def _myogait_backend_availability() -> dict[str, bool] | None:
+    """Ask myogait's own registry which pose backends are importable.
+
+    ``myogait.models.available_models()`` exists specifically for this:
+    its docstring calls it out as "suitable for a UI to grey out
+    unavailable options". It is the ground truth for what each backend
+    module actually imports -- a mapping only myogait's own author can
+    keep correct, and this app's local ``BACKENDS.requires`` copy has
+    already drifted from it once (``hrnet`` was gated on ``mmpose`` here;
+    myogait needs only ``torch`` for it). Not cached: a Sapiens 2 setup
+    job run from this app writes new files into the *same* process, and
+    the next rerun should see it without a restart. Returns ``None`` on
+    a myogait old enough to lack this API, so the caller falls back to
+    ``BackendInfo.requires``.
+    """
+    try:
+        from myogait.models import available_models
+    except ImportError:
+        return None
+    try:
+        return available_models()
+    except Exception:
+        return None
+
+
 @dataclass(frozen=True)
 class BackendInfo:
     """One entry of the pose-model registry, with its availability."""
@@ -113,14 +138,57 @@ class BackendInfo:
 
     @property
     def available(self) -> bool:
+        live = _myogait_backend_availability()
+        if live is not None and self.name in live:
+            return live[self.name]
         return all(_has(module) for module in self.requires)
 
     @property
     def missing(self) -> tuple[str, ...]:
         return tuple(module for module in self.requires if not _has(module))
 
+    @property
+    def install_hint(self) -> str:
+        """Best-effort install command, mirroring myogait's own error text.
 
-_SETUP_HINT = "Needs: myogait setup-sapiens2"
+        ``myogait.models.get_extractor`` raises ``MissingDependencyError``
+        with exactly ``pip install myogait[{name.split('-')[0]}]`` --
+        matched here so the hint in this app's UI is the same command
+        myogait itself would suggest at the point of failure. Verified
+        against myogait's actual declared extras (Aug 2026) rather than
+        assumed, since that generic formula is wrong for three backends:
+
+        - ``openpose`` needs only ``cv2``, already a base dependency
+          (``opencv-python-headless``) -- no extra exists or is needed.
+        - ``hrnet`` needs only ``torch``, and no ``[hrnet]`` extra wraps
+          it -- installing any extra that happens to include torch would
+          pull unrelated packages along with it.
+        - ``detectron2``'s extra is real but installs only its
+          prerequisite (``torch``): the ``detectron2`` package itself is
+          not on PyPI under any name, on any platform, and never will be
+          -- the upstream project publishes no wheels at all.
+        """
+        if self.name == "openpose":
+            return "Included with the base install (cv2) -- nothing extra to install."
+        if self.name == "hrnet":
+            return "pip install torch"
+        if self.name == "detectron2":
+            return (
+                'pip install "myogait[detectron2]" (installs torch, the '
+                "prerequisite), then separately: pip install "
+                '"git+https://github.com/facebookresearch/detectron2.git" '
+                "-- not on PyPI, needs a C++ build toolchain, and the "
+                "upstream project is unmaintained and pinned to older "
+                "PyTorch/Python, so a source build can fail even after "
+                "the toolchain is set up."
+            )
+        extra = self.name.split("-")[0]
+        return f'pip install "myogait[{extra}]"'
+
+
+#: First extraction with this size fetches its weights automatically (see
+#: jobs.py::_fetch_sapiens2_weights) -- no separate setup command needed.
+_SETUP_HINT = "First use downloads weights automatically (several GB, one time)."
 
 #: The registry mirrors myogait.models.EXTRACTORS. Kept explicit here
 #: because the app needs the dependency and cost metadata that the
@@ -133,10 +201,13 @@ BACKENDS: tuple[BackendInfo, ...] = (
     BackendInfo("vitpose-large", "ViTPose+ (large)", ("transformers", "torch"), "17 COCO", "", "heavy"),
     BackendInfo("vitpose-huge", "ViTPose+ (huge)", ("transformers", "torch"), "17 COCO", "", "heavy"),
     BackendInfo("rtmw", "RTMW whole-body", ("rtmlib", "onnxruntime"), "133", "ONNX, real-time", "medium"),
-    BackendInfo("hrnet", "HRNet-W48", ("mmpose",), "17 COCO", "", "heavy"),
-    BackendInfo("mmpose", "RTMPose-m", ("mmpose",), "17 COCO", "", "medium"),
+    # myogait needs only torch for hrnet -- not mmpose. Confirmed against
+    # myogait.models's own requirement map (Aug 2026), which this app's
+    # copy had drifted from.
+    BackendInfo("hrnet", "HRNet-W48", ("torch",), "17 COCO", "", "heavy"),
+    BackendInfo("mmpose", "RTMPose-m", ("mmpose", "mmdet"), "17 COCO", "", "medium"),
     BackendInfo("alphapose", "AlphaPose FastPose", ("torch", "torchvision", "ultralytics"), "17 COCO", "", "medium"),
-    BackendInfo("detectron2", "Keypoint R-CNN", ("detectron2",), "17 COCO", "", "heavy"),
+    BackendInfo("detectron2", "Keypoint R-CNN", ("detectron2", "torch"), "17 COCO", "", "heavy"),
     BackendInfo("sapiens-quick", "Sapiens 0.3B", ("torch", "huggingface_hub"), "17 + 308", "", "heavy"),
     BackendInfo("sapiens-mid", "Sapiens 0.6B", ("torch", "huggingface_hub"), "17 + 308", "", "heavy"),
     BackendInfo("sapiens-top", "Sapiens 1B", ("torch", "huggingface_hub"), "17 + 308", "", "heavy"),
@@ -148,6 +219,141 @@ BACKENDS: tuple[BackendInfo, ...] = (
 
 #: Backends whose auxiliary depth / segmentation heads exist.
 SAPIENS_BACKENDS = tuple(b.name for b in BACKENDS if b.name.startswith("sapiens"))
+
+#: Sapiens 2 backend name -> the size key myogait's own registry uses
+#: (myogait.models.sapiens2._MODELS), and the weight-file stem it
+#: downloads under that key.
+SAPIENS2_SIZES: dict[str, str] = {
+    "sapiens2-quick": "0.4b",
+    "sapiens2-mid": "0.8b",
+    "sapiens2-top": "1b",
+    "sapiens2-ultra": "5b",
+}
+
+
+def sapiens2_weights_ready(name: str) -> bool:
+    """True once a Sapiens 2 size is immediately usable with no extra step.
+
+    Only a traced ``.pt2`` qualifies -- it is self-contained and
+    ``torch.jit.load``-able with no other dependency. A ``.safetensors``
+    alone does **not**: loading it needs Meta's ``sapiens`` package to
+    reconstruct the model architecture first (myogait's own
+    ``ImportError`` message spells this out), so a size that has only
+    been downloaded but never traced is functionally identical to one
+    that has not been fetched at all -- both need
+    ``_fetch_sapiens2_weights`` to run before ``get_extractor`` can load
+    them. An earlier version of this check treated ``.safetensors``
+    alone as "ready" and was wrong: confirmed live, ``sapiens2-ultra``
+    (5B) has only a ``.safetensors`` cached (its trace was never run,
+    likely because it is the one size with no ``.pt2`` produced yet) and
+    picking it failed with exactly that ``ImportError`` before this fix.
+
+    Checks the same locations myogait's own ``_find_model`` looks in
+    (``~/.myogait/models/`` and ``./models/``) -- see
+    myogait.models.sapiens2.
+    """
+    from pathlib import Path
+
+    size = SAPIENS2_SIZES.get(name)
+    if size is None:
+        return True  # not a Sapiens 2 backend -- no separate weight step
+    stem = f"sapiens2_{size}_pose"
+    for directory in (Path.home() / ".myogait" / "models", Path.cwd() / "models"):
+        if (directory / f"{stem}.pt2").exists():
+            return True
+    return False
+
+
+def sapiens2_seg_weights_ready(name: str) -> bool:
+    """Like ``sapiens2_weights_ready``, but for the *segmentation* model.
+
+    Discovered live, not anticipated: myogait's ``with_seg=True`` option
+    loads a completely separate cached file
+    (``sapiens2_{size}_seg.*``) from the pose model
+    (``sapiens2_{size}_pose.*``) that ``sapiens2_weights_ready`` checks --
+    two independent downloads, independently traced. Checking only the
+    pose file let a size whose segmentation weights existed solely as
+    ``.safetensors`` (never traced) through as "ready", and picking it
+    with the Sapiens segmentation checkbox on hit the exact same "needs
+    Meta's sapiens package" ``ImportError`` the pose-only fetch exists to
+    prevent.
+    """
+    from pathlib import Path
+
+    size = SAPIENS2_SIZES.get(name)
+    if size is None:
+        return True
+    stem = f"sapiens2_{size}_seg"
+    for directory in (Path.home() / ".myogait" / "models", Path.cwd() / "models"):
+        if (directory / f"{stem}.pt2").exists():
+            return True
+    return False
+
+
+#: Env vars this app sets around an extraction call to steer myogait's
+#: own device auto-detection (cuda > xpu > cpu, hardcoded inside every
+#: backend module -- myogait exposes no device parameter or env var of
+#: its own). Caveat that the UI must state plainly: PyTorch caches CUDA
+#: availability after the first successful init in a process, so forcing
+#: "cpu" *after* an earlier extraction already used the GPU in this same
+#: long-lived Streamlit server process may not take effect until the app
+#: is restarted -- a PyTorch limitation, not something settable here.
+DEVICE_OVERRIDE_ENV: dict[str, dict[str, str]] = {
+    "cpu": {"CUDA_VISIBLE_DEVICES": "", "ZE_AFFINITY_MASK": ""},
+    "xpu": {"CUDA_VISIBLE_DEVICES": ""},
+}
+DEVICE_CHOICES: tuple[str, ...] = ("auto", "cpu", "cuda", "xpu")
+DEVICE_LABELS: dict[str, str] = {
+    "auto": "Auto-detect",
+    "cpu": "Force CPU",
+    "cuda": "Force GPU (CUDA)",
+    # XPU is PyTorch's device type for Intel Arc/Xe *GPUs*, not the
+    # separate NPU chip on Intel Core Ultra machines -- torch has no NPU
+    # device API at all (confirmed: no torch.npu, only torch.cuda and
+    # torch.xpu), and myogait has no NPU code path anywhere. Do not
+    # relabel this "NPU" again; it was wrong the first time.
+    "xpu": "Force GPU (Intel XPU/Arc)",
+}
+
+
+def xpu_upgrade_hint() -> str | None:
+    """The pip command to get Intel Arc/Xe GPU acceleration, or None.
+
+    PyPI's default ``torch`` wheel for Windows is CPU-only; Intel Arc/Xe
+    needs the build from PyTorch's dedicated XPU index instead. myogait
+    already detects this exact situation itself
+    (``myogait.models.base.ensure_xpu_torch``), so this mirrors that
+    function's own condition -- Windows, GenuineIntel CPU, no CUDA, no
+    working XPU, a ``+cpu`` (or XPU-less) torch build -- rather than
+    polling the GPU directly through WMI or a subprocess, which would be
+    slower and platform-specific in a module that otherwise probes
+    everything through cheap, import-free checks.
+
+    Deliberately does NOT call ``ensure_xpu_torch()`` itself: its
+    automatic-upgrade path runs ``pip install --force-reinstall`` and
+    then ``os.execv``, which *replaces the current process* -- fatal to
+    a long-lived, multi-session Streamlit server (every connected user's
+    session dies with it). Detection only; installing stays a command
+    the user runs themselves, same as every other backend's install hint.
+    """
+    import platform
+
+    if platform.system() != "Windows":
+        return None
+    if "GenuineIntel" not in platform.processor():
+        return None
+    try:
+        import torch
+    except ImportError:
+        return None
+    if torch.cuda.is_available():
+        return None
+    if hasattr(torch, "xpu") and torch.xpu.is_available():
+        return None
+    is_cpu_build = "+cpu" in torch.__version__ or not hasattr(torch, "xpu")
+    if not is_cpu_build:
+        return None
+    return "pip install torch --index-url https://download.pytorch.org/whl/xpu"
 
 
 def _detect_device() -> tuple[str, str]:

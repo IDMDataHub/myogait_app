@@ -18,14 +18,17 @@ must remain testable and runnable headless.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .runtime import DEVICE_OVERRIDE_ENV
 from .settings import SETTINGS, Settings
 from .storage import job_dir, new_ticket, read_json, write_json_atomic
 
@@ -38,6 +41,42 @@ FAILED = "failed"
 CANCELLED = "cancelled"
 
 _TERMINAL = (DONE, FAILED, CANCELLED)
+
+#: Env vars are process-global, so two concurrent jobs with different
+#: device overrides would clobber each other's setting. Serialising on
+#: this lock is a non-issue at the default MYOGAIT_APP_MAX_JOBS=1; at a
+#: higher setting, jobs with an explicit override queue briefly at
+#: start rather than racing -- correct, if not maximally parallel.
+_device_env_lock = threading.Lock()
+
+
+@contextmanager
+def _device_env(choice: str):
+    """Temporarily set the env vars that steer myogait's device pick.
+
+    myogait exposes no device parameter of its own -- every backend
+    hardcodes ``torch.cuda.is_available() > xpu > cpu`` internally (see
+    ``runtime.DEVICE_OVERRIDE_ENV``'s docstring). "auto" is a no-op:
+    myogait's own detection already runs. Known limitation, stated in
+    the Data page: once CUDA has initialised once in this long-lived
+    server process, PyTorch caches that fact, so forcing "cpu" on a
+    later job may not take effect without restarting the app.
+    """
+    overrides = DEVICE_OVERRIDE_ENV.get(choice, {})
+    if not overrides:
+        yield
+        return
+    with _device_env_lock:
+        previous = {key: os.environ.get(key) for key in overrides}
+        os.environ.update(overrides)
+        try:
+            yield
+        finally:
+            for key, value in previous.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
 
 
 @dataclass
@@ -206,8 +245,18 @@ class JobManager:
         extract_kwargs: dict[str, Any] | None = None,
         video_name: str = "",
         study: dict[str, Any] | None = None,
+        device_override: str = "auto",
     ) -> str:
-        """Queue an extraction and return its ticket."""
+        """Queue an extraction and return its ticket.
+
+        ``device_override`` steers myogait's own cuda>xpu>cpu
+        auto-detection (see ``runtime.DEVICE_OVERRIDE_ENV``) -- it is
+        applied as environment variables around the call, never passed
+        as a kwarg to ``myogait.extract`` itself, since several
+        extractors (MediaPipe's constructor, notably) accept no
+        ``**kwargs`` at all and would raise ``TypeError`` on an unknown
+        one.
+        """
         ticket = new_ticket()
         directory = job_dir(ticket, self.settings)
         directory.mkdir(parents=True, exist_ok=True)
@@ -217,7 +266,7 @@ class JobManager:
             status=QUEUED,
             video_name=video_name or Path(video_path).name,
             model=model,
-            params=dict(extract_kwargs or {}),
+            params=dict(extract_kwargs or {}, device_override=device_override),
             study={k: v for k, v in (study or {}).items() if v not in (None, "")},
             created_at=time.time(),
             message="Waiting for a free worker...",
@@ -225,14 +274,24 @@ class JobManager:
         self._write(job)
 
         self._pool.submit(
-            self._run, ticket, Path(video_path), model, dict(extract_kwargs or {})
+            self._run,
+            ticket,
+            Path(video_path),
+            model,
+            dict(extract_kwargs or {}),
+            device_override,
         )
         return ticket
 
     # ── Worker ───────────────────────────────────────────────────────
 
     def _run(
-        self, ticket: str, video_path: Path, model: str, extract_kwargs: dict
+        self,
+        ticket: str,
+        video_path: Path,
+        model: str,
+        extract_kwargs: dict,
+        device_override: str = "auto",
     ) -> None:
         job = self.get(ticket)
         if job is None:
@@ -270,13 +329,37 @@ class JobManager:
             from myogait import extract
             from myogait.schema import save_json
 
-            data = extract(
-                str(video_path),
-                model=model,
-                progress_callback=on_progress,
-                show_progress=False,
-                **extract_kwargs,
+            from .runtime import (
+                SAPIENS2_SIZES,
+                sapiens2_seg_weights_ready,
+                sapiens2_weights_ready,
             )
+
+            with _device_env(device_override):
+                # Sapiens 2's one-time trace (torch.jit.trace, inside
+                # _fetch_sapiens2_weights) must run under the same device
+                # override as extraction itself -- tracing on a backend
+                # missing a required op (seen on Intel XPU: aten::empty.
+                # memory_format has no XPU kernel in this torch build)
+                # fails exactly the way extraction on that device would,
+                # and "Force CPU" is the user's only escape hatch for it.
+                if model in SAPIENS2_SIZES:
+                    size = SAPIENS2_SIZES[model]
+                    if not sapiens2_weights_ready(model):
+                        self._fetch_sapiens2_weights(job, ticket, size, kind="pose")
+                    # with_seg loads a second, independently-cached model
+                    # file -- see _fetch_sapiens2_weights' docstring for
+                    # how this was discovered.
+                    if extract_kwargs.get("with_seg") and not sapiens2_seg_weights_ready(model):
+                        self._fetch_sapiens2_weights(job, ticket, size, kind="seg")
+
+                data = extract(
+                    str(video_path),
+                    model=model,
+                    progress_callback=on_progress,
+                    show_progress=False,
+                    **extract_kwargs,
+                )
 
             # Study identifiers travel with the pivot so a pooled,
             # multi-recording analysis can group and label each output JSON.
@@ -312,6 +395,110 @@ class JobManager:
         finally:
             with self._lock:
                 self._cancelled.discard(ticket)
+
+    # ── Sapiens 2 weight fetch (inline, no separate action) ─────────────
+
+    def _fetch_sapiens2_weights(
+        self, job: Job, ticket: str, size: str, kind: str = "pose"
+    ) -> None:
+        """Download + trace one Sapiens 2 model file, as part of *this* job.
+
+        ``kind`` is ``"pose"`` or ``"seg"`` -- myogait's ``with_seg=True``
+        option loads a completely separate cached file
+        (``sapiens2_{size}_seg.*``) from the pose model
+        (``sapiens2_{size}_pose.*``), independently downloaded and traced.
+        Discovered live: fetching only the pose file let a size whose
+        segmentation weights existed solely as ``.safetensors`` through as
+        "ready" (see ``runtime.sapiens2_seg_weights_ready``), and picking
+        it with segmentation on hit the exact same "needs Meta's sapiens
+        package" ``ImportError`` this function exists to prevent -- so
+        ``_run`` calls this once per model file actually needed, not once
+        per backend.
+
+        No separate setup step for the user to trigger first: myogait's
+        own finder already downloads on first use regardless, so skipping
+        this would not skip the download -- only the progress messaging
+        around it, leaving the job's progress bar sitting at 0% for
+        however long a multi-gigabyte fetch takes with no explanation.
+        Runs once per (size, kind) (the same fetch as ``myogait
+        setup-sapiens2`` for the pose case, minus the CLI's cleanup/
+        uninstall flags, which had no UI control asking for them here);
+        every later extraction needing the same file finds it cached via
+        ``sapiens2_weights_ready``/``sapiens2_seg_weights_ready`` and
+        skips straight past this.
+        """
+        import importlib.util
+        import subprocess
+        import sys
+
+        if self._is_cancelled(ticket):
+            raise _JobCancelled()
+
+        label = "segmentation" if kind == "seg" else "pose"
+        job.progress = 0.02
+        job.message = (
+            f"Sapiens 2 {size} {label}: one-time weight fetch before this "
+            "extraction can start..."
+        )
+        self._write(job)
+
+        if importlib.util.find_spec("sapiens") is None:
+            job.progress = 0.05
+            job.message = "Installing Meta's sapiens package from GitHub..."
+            self._write(job)
+            subprocess.check_call([
+                sys.executable, "-m", "pip", "install",
+                "git+https://github.com/facebookresearch/sapiens2.git",
+            ])
+            importlib.invalidate_caches()
+
+        if self._is_cancelled(ticket):
+            raise _JobCancelled()
+
+        job.progress = 0.15
+        job.message = f"Downloading Sapiens 2 {size} {label} weights (several GB)..."
+        self._write(job)
+
+        from myogait.models.sapiens2 import _get_device, _load_model
+
+        if kind == "seg":
+            from myogait.models.sapiens2_seg import _find_seg_model
+
+            weights_path = _find_seg_model(size)
+        else:
+            from myogait.models.sapiens2 import _find_model
+
+            weights_path = _find_model(size)
+        device = _get_device()
+
+        if self._is_cancelled(ticket):
+            raise _JobCancelled()
+
+        job.progress = 0.35
+        job.message = f"Tracing on {device} (one-time, can take 1-3 min)..."
+        self._write(job)
+
+        try:
+            traced = _load_model(weights_path, device)
+            del traced
+        except Exception as exc:
+            device_str = str(device)
+            if device_str != "cpu":
+                raise RuntimeError(
+                    f"Tracing Sapiens 2 {size} {label} failed on {device_str}: "
+                    f"{type(exc).__name__}: {exc}\n\n"
+                    "This can be a missing op for this device in the "
+                    "installed PyTorch build (seen on Intel XPU: "
+                    "aten::empty.memory_format has no XPU kernel here) -- "
+                    "CPU supports every op, if slower. Retry this "
+                    "extraction with the Data page's Compute device set to "
+                    "\"Force CPU\"."
+                ) from exc
+            raise
+
+        job.progress = 0.4
+        job.message = f"Sapiens 2 {size} {label} ready..."
+        self._write(job)
 
 
 class _JobCancelled(Exception):

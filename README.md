@@ -26,6 +26,7 @@ alongside the kinematic curves, never as a standalone diagnosis.
 py -3.12 -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+python scripts/setup_gpu.py   # optional: NVIDIA/Intel GPU acceleration, see below
 streamlit run app.py
 ```
 
@@ -99,7 +100,7 @@ own alias-and-keyword scan only when that cannot resolve enough landmarks.
 
 ```bash
 pip install --upgrade \
-  "myogait[mediapipe,yolo,excel,yaml,loess,wavelet] @ git+https://github.com/IDMDataHub/myogait.git@master" \
+  "myogait[mediapipe,yolo,vitpose,rtmw,sapiens,sapiens2,alphapose,detectron2,excel,yaml,loess,wavelet] @ git+https://github.com/IDMDataHub/myogait.git@master" \
   "gaitkit>=1.4.8" ezc3d "c3d>=0.5"
 ```
 
@@ -109,9 +110,109 @@ newest available), so requesting it fails the whole install. C3D import only
 needs `ezc3d` (any resolvable version); C3D export needs the separate `c3d`
 package — both are installed unbundled above instead.
 
-Optional backends install as extras — `myogait[vitpose]`, `myogait[rtmw]`,
-`myogait[sapiens2]`, plus `intel-extension-for-pytorch` for Intel Arc
-acceleration. Anything absent is shown greyed out with the reason.
+Every pose backend myogait implements is requested above except two: `mmpose`
+(OpenMMLab's usual install path resolves `mmcv` through its own `mim install`,
+not plain pip — myogait's own `[all]`/`[full]` extras exclude it for the same
+reason) and `intel-extension-for-pytorch` (see GPU acceleration, next). The
+Data page's model picker always lists every backend regardless — an
+uninstalled one shows the exact command to add it, instead of disappearing.
+`detectron2`'s extra installs only its prerequisite (`torch`): the
+`detectron2` package itself is not on PyPI under any name, on any platform,
+and needs a from-source build (`pip install
+git+https://github.com/facebookresearch/detectron2.git`, a C++ toolchain, and
+some tolerance for an unmaintained project pinned to older PyTorch/Python).
+
+### GPU acceleration
+
+PyPI's default `torch` wheel is CPU-only on Windows. Run this once, after
+`pip install -r requirements.txt` and before `streamlit run app.py`, and
+there is nothing else to configure:
+
+```bash
+python scripts/setup_gpu.py
+```
+
+It detects the machine (an NVIDIA GPU via `nvidia-smi`'s reported driver
+CUDA version, an Intel CPU on Windows for Arc/Xe) and installs the matching
+`torch` build from PyTorch's own dedicated wheel index — the same install a
+person would otherwise have to look up on
+[pytorch.org](https://pytorch.org/get-started/locally/) and run by hand. A
+no-op, safely, on a machine with no GPU it recognises or one where torch
+already has working acceleration.
+
+This is *not* the same automatic path myogait itself offers
+(`myogait.models.base.ensure_xpu_torch`, `MYOGAIT_AUTO_XPU=1`): that one ends
+in `os.execv`, which *replaces the running process* — fine for the one-shot
+`myogait setup-sapiens2` CLI it was written for, fatal if triggered inside
+this app's own long-lived, multi-session Streamlit server. Never set that
+variable for this app; `setup_gpu.py` runs before the server ever starts, so
+there is no live process for the same risk to apply to.
+
+**Windows long paths.** Confirmed on real hardware while building this: even
+the plain CPU `torch` wheel can fail to install with `OSError: [WinError
+206] ... path too long` — recent `torch` releases (2.13.0, tried here) ship
+third-party license files nested deep enough
+(`.../kineto/libkineto/.../prometheus-cpp/.../civetweb/examples/rest/...`,
+a profiler-tracing dependency) to overflow Windows' 260-character `MAX_PATH`
+the moment the venv itself sits at a long path, which every one of this
+repo's own directories does. Two independent fixes exist, and `setup_gpu.py`
+uses the first one automatically for the XPU path:
+
+1. **Pin an older torch build.** `2.6.0` (+ matching `torchvision==0.21.0`)
+   does not carry that nested dependency chain and installs clean at any
+   path length, no registry change needed — recovered from this machine's
+   own PowerShell history, which showed a short-lived conda environment
+   (`sapiens_intel_env`) running exactly this combination successfully
+   before this repo's `.venv` ever existed. `setup_gpu.py`'s XPU branch
+   installs this exact pin (`--ignore-installed --no-deps`, which overlays
+   in place — `--force-reinstall`'s uninstall-then-install sequence fails
+   outright if anything already using torch, e.g. this app's own running
+   preview server, has its `.pyd` files open).
+2. **Enable Windows long paths system-wide** (needs Administrator; fixes
+   every path-length problem, not just this one, so the right call if a
+   newer torch is ever required for some other reason):
+
+   ```powershell
+   New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" `
+     -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force
+   ```
+
+One dead end, for the record: prefixing the interpreter path with `\\?\`
+(the Win32 extended-length-path escape) does bypass `MAX_PATH` — the
+original `WinError 206` disappears — but pip's own installer then fails one
+step later with `OSError: [Errno 22] Invalid argument` on a relative path it
+constructs internally (`...site-packages\../../Scripts/readelf.py`): `\\?\`
+paths must be fully canonical, no `..` segments, and pip does not know to
+avoid emitting one. Not usable from this repo either way.
+
+**Not the same thing as an NPU.** Intel Core Ultra machines also carry a
+separate NPU chip ("AI Boost"); PyTorch has no NPU device at all (only
+`torch.cuda` and `torch.xpu`), and myogait has no NPU code path anywhere —
+`torch.xpu` targets the Arc/Xe *GPU*, not the NPU. There is nothing in this
+app or myogait for the NPU to plug into today.
+
+### Model licenses
+
+Every backend above is Apache/MIT-equivalent except two, both from Meta and
+both worth reading before enabling them — this app requests their weights
+automatically (no separate download step) the first time you pick them, but
+does not itself impose any usage restriction beyond what these licenses
+already do:
+
+- **Sapiens** (`sapiens-quick/mid/top`) — weights are
+  [CC-BY-NC-4.0](https://creativecommons.org/licenses/by-nc/4.0/):
+  **non-commercial use only**.
+- **Sapiens 2** (`sapiens2-quick/mid/top/ultra`) — Meta's own
+  [Sapiens2 License](https://github.com/facebookresearch/sapiens2/blob/main/LICENSE.md),
+  broader (research *and* commercial use), but with explicit carve-outs:
+  no surveillance or biometric processing, and no "unauthorized or
+  unlicensed practice of any profession including but not limited to
+  financial, legal, medical/health". Read that clause yourself before
+  relying on Sapiens 2 in a clinical or diagnostic setting — this app's own
+  position throughout is that its outputs are a research/screening aid, not
+  a diagnosis (see the top of this README), which is the reading these
+  terms are written to allow, but the call is yours to make for your own
+  use, not this document's to make for you.
 
 ## What is in it
 
@@ -233,7 +334,8 @@ deploy/                    nginx + systemd
 Developed by Romain Feigean, lead researcher at Assistmyo · NeuPEL · Institut
 de Myologie. Built on [myogait](https://github.com/IDMDataHub/myogait) and
 [gaitkit](https://github.com/IDMDataHub/gaitkit) by Frédéric Fer, developed
-separately from this application.
+separately from this application. See [**CHANGELOG.md**](CHANGELOG.md) for
+what changed and why, credited by contributor.
 
 ## License
 
