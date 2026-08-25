@@ -18,6 +18,7 @@ import json
 import re
 import secrets
 import shutil
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -60,8 +61,11 @@ def write_json_atomic(path: Path, payload: Any) -> None:
     mid-flush and raise a decode error.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with open(tmp, "w", encoding="utf-8") as handle:
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=path.parent,
+        prefix=f".{path.name}.", suffix=".tmp", delete=False,
+    ) as handle:
+        tmp = Path(handle.name)
         json.dump(payload, handle, ensure_ascii=False, indent=2)
     tmp.replace(path)
 
