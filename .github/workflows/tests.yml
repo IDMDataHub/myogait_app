@@ -17,4 +17,4 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -r requirements-dev.txt
-      - run: pytest -q
+      - run: pytest -q --cov=myogait_app --cov-report=term-missing
