@@ -22,7 +22,6 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Medical Science Apps.",
-    "Framework :: Streamlit",
 ]
 # The single source of truth for the version is myogait_app/__init__.py.
 dynamic = ["version"]
