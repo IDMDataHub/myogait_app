@@ -14,6 +14,7 @@ import pandas as pd
 import streamlit as st
 
 from ..charts import kinematics as K
+from ..clinical import VALIDITY_GRADES, normative_bands, validity
 from ..pipeline import PipelineConfig
 from ..pooling import (
     SAGITTAL_JOINTS,
@@ -150,23 +151,37 @@ def _condition_view(label: str, runs: list) -> None:
     summary = condition_summary(runs)
     spatio = summary["spatiotemporal"]
 
-    cols = st.columns(4)
+    cols = st.columns(5)
     cols[0].metric("Patients", summary["n_patients"])
     cols[1].metric("Runs", f"{summary['n_runs']} ({summary['n_reference']} ref)")
     cols[2].metric("Cadence", _fmt(spatio.get("cadence_steps_per_min"), "steps/min"))
-    cols[3].metric("Duration", _fmt(summary.get("duration_s"), "s"))
+    cols[3].metric(
+        "Step length", _fmt(summary.get("step_length_m"), "m"),
+        help="Metric only when a subject height is set in the study identifiers.",
+    )
+    cols[4].metric("Duration", _fmt(summary.get("duration_s"), "s"))
+
+    _scores_row(summary)
 
     pooled = summary["cycles"]
     dark = is_dark()
+    bands = normative_bands(SAGITTAL_JOINTS, summary.get("stratum", "adult"))
 
-    st.markdown("**Variability — kinematic curves (all runs pooled, mean +/- SD)**")
+    st.markdown(
+        "**Variability — kinematic curves (all runs pooled, mean +/- SD, "
+        f"vs {summary.get('stratum', 'adult')} normative band)**"
+    )
     joint_cols = st.columns(3)
     for column, joint in zip(joint_cols, SAGITTAL_JOINTS):
         with column:
             chart(
-                K.cycle_overlay(pooled, joint=joint, show_individual=True, dark=dark, height=300),
+                K.cycle_overlay(
+                    pooled, joint=joint, show_individual=True,
+                    normative=bands.get(joint), dark=dark, height=300,
+                ),
                 key=f"pool_{label}_{joint}",
             )
+            _validity_caption(joint)
 
     left, right = st.columns(2)
     with left:
@@ -192,6 +207,34 @@ def _condition_view(label: str, runs: list) -> None:
                 "Duration (s)": _round(run.duration_s),
             })
         st.dataframe(pd.DataFrame(run_rows), use_container_width=True, hide_index=True)
+
+
+def _scores_row(summary: dict) -> None:
+    """2-D clinical screening scores for the condition, if myogait exposes them."""
+    scores = summary.get("scores")
+    if not scores:
+        return
+    cols = st.columns(3)
+    cols[0].metric(
+        "GPS-2D", _fmt(scores.get("gps_2d_overall"), "deg"),
+        help="2-D sagittal Gait Profile Score — screening only, not the "
+             "validated 3-D GPS.",
+    )
+    cols[1].metric(
+        "GDI-2D", _fmt(scores.get("gdi_2d_overall"), ""),
+        help="Normal ~ 100; a z-score index, not the PCA-based 3-D GDI.",
+    )
+    gvs = scores.get("gvs_by_joint") or {}
+    worst = max(gvs.items(), key=lambda kv: kv[1], default=None)
+    if worst:
+        cols[2].metric("Worst joint (GVS)", f"{worst[0].title()} {worst[1]:.1f} deg")
+
+
+def _validity_caption(joint: str) -> None:
+    entry = validity(joint)
+    if entry:
+        grade = VALIDITY_GRADES.get(entry.get("grade"), entry.get("grade", ""))
+        st.caption(f"{grade}: {entry.get('note', '')}")
 
 
 def _accuracy_section(label: str, runs: list) -> None:

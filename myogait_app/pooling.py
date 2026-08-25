@@ -16,14 +16,15 @@ recomputes the per-side summary in exactly that shape.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Iterable
 
 import numpy as np
 
 from .agreement import curve_metrics, summarize_agreement
-from .pipeline import PipelineConfig, PipelineRunner
+from .clinical import clinical_scores, select_stratum
+from .pipeline import PipelineConfig, PipelineRunner, SubjectConfig
 
 #: The sagittal joints every figure and summary is built around.
 SAGITTAL_JOINTS = ("hip", "knee", "ankle")
@@ -110,6 +111,18 @@ def _duration_s(data: dict) -> float | None:
     return None
 
 
+def _apply_study_subject(config: PipelineConfig, study: dict) -> PipelineConfig:
+    """A subject height in the study block calibrates step length to metres."""
+    height = study.get("height_m")
+    try:
+        height = float(height) if height not in (None, "") else None
+    except (TypeError, ValueError):
+        height = None
+    if height is None:
+        return config
+    return replace(config, subject=SubjectConfig(height_m=height))
+
+
 def load_run(path, config: PipelineConfig | None = None) -> RunResult:
     """Load one pivot JSON and run the pipeline, capturing any failure.
 
@@ -130,6 +143,8 @@ def load_run(path, config: PipelineConfig | None = None) -> RunResult:
     study = dict(data.get("study") or {})
     kind = _detect_kind(data)
     duration_s = _duration_s(data)
+    # A subject height in the study block makes step length metric (unit "m").
+    config = _apply_study_subject(config, study)
 
     try:
         result = PipelineRunner(data, source_key=str(path)).run(config)
@@ -206,6 +221,31 @@ def _spatiotemporal(run: RunResult) -> dict:
     return (run.stats or {}).get("spatiotemporal") or {}
 
 
+def _mean_metric_step_length(runs: list[RunResult]) -> float | None:
+    """Mean left/right step length in metres, over calibrated runs only."""
+    values: list[float] = []
+    for run in runs:
+        step = (run.stats or {}).get("step_length") or {}
+        if step.get("unit") != "m":
+            continue
+        for side in ("step_length_left", "step_length_right"):
+            value = step.get(side)
+            if isinstance(value, (int, float)):
+                values.append(float(value))
+    return float(np.mean(values)) if values else None
+
+
+def _first_age(runs: list[RunResult]) -> float | None:
+    for run in runs:
+        age = run.study.get("age")
+        try:
+            if age not in (None, ""):
+                return float(age)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
 def condition_summary(runs: list[RunResult]) -> dict:
     """Aggregate figures for one condition: counts, spatiotemporal, ROM.
 
@@ -242,6 +282,13 @@ def condition_summary(runs: list[RunResult]) -> dict:
         if spans:
             rom[joint] = float(np.mean(spans))
 
+    # Metric step length only when calibrated (a subject height was provided);
+    # analyze_gait puts it top-level with unit "m", not in spatiotemporal.
+    step_length_m = _mean_metric_step_length(runs)
+
+    stratum = select_stratum(_first_age(runs))
+    scores = clinical_scores(pooled, stratum=stratum)
+
     return {
         "n_runs": len(runs),
         "n_patients": len({run.patient for run in runs}),
@@ -249,8 +296,11 @@ def condition_summary(runs: list[RunResult]) -> dict:
         "n_video": sum(1 for r in runs if not r.is_reference),
         "n_reference": sum(1 for r in runs if r.is_reference),
         "duration_s": _mean_or_none([r.duration_s for r in runs]),
+        "step_length_m": step_length_m,
         "spatiotemporal": spatiotemporal,
         "rom_deg": rom,
+        "scores": scores,
+        "stratum": stratum,
         "cycles": pooled,
     }
 

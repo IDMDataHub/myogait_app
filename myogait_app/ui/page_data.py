@@ -654,12 +654,29 @@ def _study_form(source_path: Path) -> dict:
         condition = c4.text_input(
             "Condition", value="baseline", key="study_condition"
         )
-    return {
+        c5, c6 = st.columns(2)
+        # Height (and optionally age) travel with the JSON so the cohort can
+        # report step length in metres and pick an age-matched normative band.
+        height_m = c5.number_input(
+            "Height (m)", min_value=0.0, max_value=2.5, value=0.0, step=0.01,
+            format="%.2f", key="study_height",
+            help="0 = unknown. Needed for step length in metres.",
+        )
+        age = c6.number_input(
+            "Age (years)", min_value=0, max_value=120, value=0, step=1,
+            key="study_age", help="0 = unknown. Selects the normative stratum.",
+        )
+    study = {
         "patient_id": patient_id.strip(),
         "run": run.strip(),
         "group": group.strip(),
         "condition": condition.strip(),
     }
+    if height_m and height_m > 0:
+        study["height_m"] = float(height_m)
+    if age and age > 0:
+        study["age"] = int(age)
+    return study
 
 
 def _sapiens2_first_use_note(chosen, *, pose: bool, seg: bool) -> None:
