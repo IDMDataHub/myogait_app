@@ -35,11 +35,22 @@ is no live process for that to kill.
 
 from __future__ import annotations
 
+import argparse
 import platform
 import re
 import shutil
 import subprocess
 import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from myogait_app.windows_paths import (
+    long_paths_enabled_on_windows,
+    needs_long_path_warning,
+)
 
 # Newest-first candidates actually published under
 # https://download.pytorch.org/whl/cuXXX -- checked live against the index
@@ -69,8 +80,10 @@ have failed:
 """.strip()
 
 
-def _run(cmd: list[str]) -> None:
+def _run(cmd: list[str], dry_run: bool = False) -> None:
     print("  $", " ".join(cmd))
+    if dry_run:
+        return
     result = subprocess.run(cmd, capture_output=True, text=True)
     print(result.stdout)
     if result.returncode != 0:
@@ -134,7 +147,20 @@ def _best_cuda_tag(max_version: tuple[int, int]) -> str | None:
     return None
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--venv", type=Path, default=Path(sys.prefix))
+    parser.add_argument("--dry-run", action="store_true", help="Print planned pip commands without running them.")
+    args = parser.parse_args(argv)
+
+    if needs_long_path_warning(args.venv, long_paths_enabled_on_windows(), sys.platform):
+        print(
+            "WARNING: Windows long paths are disabled and this virtual environment "
+            f"is deep ({args.venv}). Recreate it at a short path such as C:\\mg\\venv "
+            "before installing GPU packages, or enable LongPathsEnabled."
+        )
+        return 1
+
     version, cuda_ok, xpu_ok = _torch_state()
 
     if not version:
@@ -165,7 +191,7 @@ def main() -> None:
                 sys.executable, "-m", "pip", "install",
                 "--ignore-installed", "--no-deps", "torch",
                 "--index-url", f"https://download.pytorch.org/whl/{tag}",
-            ])
+            ], dry_run=args.dry_run)
             print("Done. CUDA acceleration is now available to the app.")
             print(
                 "If this fails with WinError 206 on a Windows machine, the fix "
@@ -192,12 +218,12 @@ def main() -> None:
             sys.executable, "-m", "pip", "install",
             "--ignore-installed", "--no-deps", "torch==2.6.0",
             "--index-url", "https://download.pytorch.org/whl/xpu",
-        ])
+        ], dry_run=args.dry_run)
         _run([
             sys.executable, "-m", "pip", "install",
             "--ignore-installed", "--no-deps", "torchvision==0.21.0",
             "--index-url", "https://download.pytorch.org/whl/xpu",
-        ])
+        ], dry_run=args.dry_run)
         print("Done. If this machine has an Arc/Xe GPU, it is now available to the app.")
         return
 
@@ -205,4 +231,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

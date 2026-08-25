@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 
@@ -19,10 +20,11 @@ def validate_pivot(data: Any) -> list[str]:
         return ["'meta' must be an object when present."]
     if isinstance(meta, dict) and "fps" in meta:
         try:
-            if float(meta["fps"]) <= 0:
-                return ["'meta.fps' must be a positive number."]
+            fps = float(meta["fps"])
+            if not math.isfinite(fps) or fps <= 0:
+                return ["'meta.fps' must be a finite positive number."]
         except (TypeError, ValueError):
-            return ["'meta.fps' must be a positive number."]
+            return ["'meta.fps' must be a finite positive number."]
 
     for index, frame in enumerate(frames):
         if not isinstance(frame, dict):

@@ -11,6 +11,8 @@ from myogait_app.validation import validate_pivot
         ([], "root"),
         ({}, "frames"),
         ({"frames": [{}], "meta": {"fps": 0}}, "fps"),
+        ({"frames": [{}], "meta": {"fps": "NaN"}}, "finite"),
+        ({"frames": [{}], "meta": {"fps": "Infinity"}}, "finite"),
         ({"frames": ["bad"]}, "Frame 0"),
         ({"frames": [{"landmarks": []}]}, "landmarks"),
     ],
