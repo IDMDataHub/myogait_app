@@ -18,6 +18,7 @@ from pathlib import Path
 import streamlit as st
 
 from ..pipeline import PipelineResult
+from ..provenance import write_provenance
 from ..runtime import get_runtime
 from ..settings import SETTINGS
 from . import state
@@ -475,6 +476,10 @@ def _run_export(
     if zip_directory:
         import shutil
 
+        if not target.is_dir():
+            st.error(f"{label} reported success but wrote no directory.")
+            return
+        provenance_path = write_provenance(target / "provenance.json", state.get_config())
         archive = shutil.make_archive(str(target), "zip", root_dir=str(target))
         payload = Path(archive).read_bytes()
         filename = Path(archive).name
@@ -483,6 +488,9 @@ def _run_export(
         if not target.is_file():
             st.error(f"{label} reported success but wrote no file.")
             return
+        provenance_path = write_provenance(
+            target.with_suffix(target.suffix + ".provenance.json"), state.get_config()
+        )
         payload = target.read_bytes()
         filename = target.name
         mime = "application/octet-stream"
@@ -496,4 +504,12 @@ def _run_export(
         mime=mime,
         use_container_width=True,
         key=f"dl_{filename}",
+    )
+    st.download_button(
+        "Download provenance JSON",
+        provenance_path.read_bytes(),
+        file_name=provenance_path.name,
+        mime="application/json",
+        use_container_width=True,
+        key=f"dl_provenance_{filename}",
     )
