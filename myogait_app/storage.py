@@ -13,6 +13,7 @@ is left idle is cleaned the next time anyone opens it.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import secrets
@@ -120,6 +121,48 @@ class Workspace:
 
     def clear(self) -> None:
         shutil.rmtree(self.root, ignore_errors=True)
+
+
+def store_uploaded_file(
+    workspace: Workspace,
+    source: Any,
+    original_name: str,
+    chunk_size: int = 1024 * 1024,
+) -> Path:
+    """Store an uploaded binary stream under a content-derived name.
+
+    Browser uploads are commonly named ``walk.mp4`` repeatedly. The old
+    name-and-size reuse rule could therefore analyse a previous file when two
+    distinct uploads happened to have the same name and size. A SHA-256 prefix
+    makes storage idempotent for the same content and distinct for distinct
+    content, while callers keep ``original_name`` for display.
+
+    Streamlit's uploaded-file object implements the seek/read protocol used
+    here; keeping this function Streamlit-free makes it testable outside the UI.
+    """
+    workspace.ensure()
+    try:
+        source.seek(0)
+    except (AttributeError, OSError):
+        pass
+
+    digest = hashlib.sha256()
+    while chunk := source.read(chunk_size):
+        digest.update(chunk)
+
+    suffix = Path(str(original_name)).suffix.lower()
+    target = workspace.uploads / f"{digest.hexdigest()[:16]}{suffix}"
+    if target.exists():
+        return target
+
+    try:
+        source.seek(0)
+    except (AttributeError, OSError) as exc:
+        raise ValueError("Uploaded stream must support seek()") from exc
+
+    with target.open("wb") as handle:
+        shutil.copyfileobj(source, handle, length=chunk_size)
+    return target
 
 
 def get_workspace(session_id: str, settings: Settings = SETTINGS) -> Workspace:

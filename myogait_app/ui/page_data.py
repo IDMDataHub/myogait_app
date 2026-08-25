@@ -17,7 +17,7 @@ import streamlit as st
 from ..jobs import DONE, FAILED, JobManager, RUNNING
 from ..runtime import SAPIENS_BACKENDS, get_runtime
 from ..settings import SETTINGS
-from ..storage import is_ticket
+from ..storage import is_ticket, store_uploaded_file
 from . import state
 from .components import (
     empty_state,
@@ -96,9 +96,7 @@ def _json_tab() -> None:
     if uploaded is not None and st.button(
         "Load JSON", type="primary", use_container_width=True
     ):
-        workspace = state.workspace()
-        target = workspace.path_for(uploaded.name)
-        target.write_bytes(uploaded.getbuffer())
+        target = store_uploaded_file(state.workspace(), uploaded, uploaded.name)
         _load_pivot(target, uploaded.name)
 
     if SETTINGS.watch_dir and SETTINGS.watch_dir.is_dir():
@@ -185,10 +183,7 @@ def _c3d_tab() -> None:
     detected_mapping: dict[str, list[str]] = {}
     diagnostics = None
     if uploaded is not None:
-        workspace = state.workspace()
-        target = workspace.path_for(uploaded.name)
-        if not target.exists() or target.stat().st_size != uploaded.size:
-            target.write_bytes(uploaded.getbuffer())
+        target = store_uploaded_file(state.workspace(), uploaded, uploaded.name)
         try:
             from ..marker_presets import read_c3d_labels, resolve_c3d_mapping
 
@@ -560,10 +555,7 @@ def _pick_video() -> Path | None:
                 "Large upload. If this is slow or drops, copy the file to the "
                 "server's drop folder instead and use the other option."
             )
-        target = state.workspace().path_for(uploaded.name)
-        if not target.exists() or target.stat().st_size != uploaded.size:
-            target.write_bytes(uploaded.getbuffer())
-        return target
+        return store_uploaded_file(state.workspace(), uploaded, uploaded.name)
 
     directory = SETTINGS.watch_dir
     if not directory or not directory.is_dir():
