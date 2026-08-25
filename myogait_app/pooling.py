@@ -16,12 +16,13 @@ recomputes the per-side summary in exactly that shape.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
 import numpy as np
 
+from .agreement import curve_metrics, summarize_agreement
 from .pipeline import PipelineConfig, PipelineRunner
 
 #: The sagittal joints every figure and summary is built around.
@@ -124,19 +125,30 @@ def load_run(path, config: PipelineConfig | None = None) -> RunResult:
     except Exception as exc:  # noqa: BLE001 - reported per-run, not raised
         return RunResult(name=name, study={}, ok=False, error=f"read: {exc}")
 
+    # kind and duration come from the pivot itself, so they are known even
+    # if the downstream pipeline later fails.
     study = dict(data.get("study") or {})
+    kind = _detect_kind(data)
+    duration_s = _duration_s(data)
+
     try:
         result = PipelineRunner(data, source_key=str(path)).run(config)
     except Exception as exc:  # noqa: BLE001
-        return RunResult(name=name, study=study, ok=False, error=f"pipeline: {exc}")
+        return RunResult(
+            name=name, study=study, ok=False, kind=kind, duration_s=duration_s,
+            error=f"pipeline: {exc}",
+        )
 
     if not result.ok:
         failed = result.failed_stage
         reason = f"{failed.name}: {failed.error}" if failed else "pipeline failed"
-        return RunResult(name=name, study=study, ok=False, error=reason)
+        return RunResult(
+            name=name, study=study, ok=False, kind=kind, duration_s=duration_s,
+            error=reason,
+        )
 
     return RunResult(
-        name=name, study=study, ok=True,
+        name=name, study=study, ok=True, kind=kind, duration_s=duration_s,
         cycles=result.cycles, stats=result.stats,
     )
 
@@ -234,7 +246,54 @@ def condition_summary(runs: list[RunResult]) -> dict:
         "n_runs": len(runs),
         "n_patients": len({run.patient for run in runs}),
         "n_cycles": len(pooled["cycles"]),
+        "n_video": sum(1 for r in runs if not r.is_reference),
+        "n_reference": sum(1 for r in runs if r.is_reference),
+        "duration_s": _mean_or_none([r.duration_s for r in runs]),
         "spatiotemporal": spatiotemporal,
         "rom_deg": rom,
         "cycles": pooled,
+    }
+
+
+def _mean_or_none(values):
+    nums = [float(v) for v in values if isinstance(v, (int, float))]
+    return float(np.mean(nums)) if nums else None
+
+
+def condition_agreement(runs: list[RunResult]) -> dict | None:
+    """Accuracy of the markerless runs against the marker reference, if any.
+
+    Only meaningful when a condition holds both markerless (video) and
+    marker-based (vicon) recordings: the reference is what turns variability
+    into accuracy. Pools each kind's mean cycle curve per joint/side and
+    compares them with :func:`agreement.curve_metrics`. Returns ``None`` when
+    one of the two kinds is absent (video alone -> variability only).
+    """
+    video_runs = [r for r in runs if r.ok and not r.is_reference]
+    vicon_runs = [r for r in runs if r.ok and r.is_reference]
+    if not video_runs or not vicon_runs:
+        return None
+
+    video_pooled = pool_cycles(video_runs)
+    vicon_pooled = pool_cycles(vicon_runs)
+
+    per_joint_side: list[dict] = []
+    for side in ("left", "right"):
+        v_side = video_pooled["summary"].get(side) or {}
+        c_side = vicon_pooled["summary"].get(side) or {}
+        for joint in SAGITTAL_JOINTS:
+            video_curve = v_side.get(f"{joint}_mean")
+            reference_curve = c_side.get(f"{joint}_mean")
+            if not video_curve or not reference_curve:
+                continue
+            metrics = curve_metrics(video_curve, reference_curve)
+            if metrics:
+                metrics.update(joint=joint, side=side)
+                per_joint_side.append(metrics)
+
+    return {
+        "n_video": len(video_runs),
+        "n_reference": len(vicon_runs),
+        "per_joint_side": per_joint_side,
+        "by_joint": summarize_agreement(per_joint_side),
     }

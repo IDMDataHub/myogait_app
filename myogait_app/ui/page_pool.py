@@ -10,7 +10,6 @@ underneath.
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -18,6 +17,7 @@ from ..charts import kinematics as K
 from ..pipeline import PipelineConfig
 from ..pooling import (
     SAGITTAL_JOINTS,
+    condition_agreement,
     condition_summary,
     group_by_condition,
     load_runs,
@@ -132,9 +132,10 @@ def _overview(groups: dict) -> None:
             "Condition": label,
             "Patients": summary["n_patients"],
             "Runs": summary["n_runs"],
+            "Ref": summary["n_reference"],
             "Cycles": summary["n_cycles"],
             "Cadence (steps/min)": _round(spatio.get("cadence_steps_per_min")),
-            "Step length (m)": _round(_step_length(spatio), 2),
+            "Duration (s)": _round(summary.get("duration_s")),
         }
         for joint in SAGITTAL_JOINTS:
             row[f"{joint.title()} ROM (deg)"] = _round(summary["rom_deg"].get(joint))
@@ -151,14 +152,14 @@ def _condition_view(label: str, runs: list) -> None:
 
     cols = st.columns(4)
     cols[0].metric("Patients", summary["n_patients"])
-    cols[1].metric("Runs", summary["n_runs"])
+    cols[1].metric("Runs", f"{summary['n_runs']} ({summary['n_reference']} ref)")
     cols[2].metric("Cadence", _fmt(spatio.get("cadence_steps_per_min"), "steps/min"))
-    cols[3].metric("Step length", _fmt(_step_length(spatio), "m"))
+    cols[3].metric("Duration", _fmt(summary.get("duration_s"), "s"))
 
     pooled = summary["cycles"]
     dark = is_dark()
 
-    st.markdown("**Kinematic curves (all runs pooled, mean +/- SD)**")
+    st.markdown("**Variability — kinematic curves (all runs pooled, mean +/- SD)**")
     joint_cols = st.columns(3)
     for column, joint in zip(joint_cols, SAGITTAL_JOINTS):
         with column:
@@ -175,6 +176,8 @@ def _condition_view(label: str, runs: list) -> None:
         st.markdown("**Stance / swing**")
         chart(K.stance_swing_bar(pooled, dark=dark), key=f"pool_{label}_stance")
 
+    _accuracy_section(label, runs)
+
     with st.expander(f"Run by run ({summary['n_runs']} recordings)", expanded=False):
         run_rows = []
         for run in runs:
@@ -183,23 +186,58 @@ def _condition_view(label: str, runs: list) -> None:
                 "Patient": run.patient,
                 "Run": run.run,
                 "Group": run.group,
+                "Kind": "reference" if run.is_reference else "video",
                 "Cycles": run.n_cycles,
                 "Cadence (steps/min)": _round(rspatio.get("cadence_steps_per_min")),
-                "Step length (m)": _round(_step_length(rspatio), 2),
+                "Duration (s)": _round(run.duration_s),
             })
         st.dataframe(pd.DataFrame(run_rows), use_container_width=True, hide_index=True)
 
 
+def _accuracy_section(label: str, runs: list) -> None:
+    """Show accuracy vs the marker reference, when the condition has one.
+
+    Video alone gives variability; a paired marker (Vicon) reference is what
+    turns it into accuracy -- error and bias per joint. Without a reference in
+    the condition, say so rather than showing an empty table.
+    """
+    agreement = condition_agreement(runs)
+    st.markdown("**Accuracy vs marker reference (Vicon)**")
+    if agreement is None:
+        st.caption(
+            "No marker reference in this condition, so only variability is "
+            "shown above. Add a C3D-derived pivot (a synchronised skeleton) "
+            "tagged with the same patient and run to unlock error / bias here."
+        )
+        return
+
+    st.caption(
+        f"{agreement['n_video']} video vs {agreement['n_reference']} marker "
+        "recording(s), pooled mean cycle curves compared per joint. "
+        "Centred RMSE removes the constant offset (a calibratable zero "
+        "difference); waveform r is the shape match."
+    )
+    rows = []
+    for joint, m in agreement["by_joint"].items():
+        rows.append({
+            "Joint": joint.title(),
+            "RMSE (deg)": round(m["rmse"], 1),
+            "Centred RMSE (deg)": round(m["rmse_centered"], 1),
+            "Waveform r": round(m["shape_r"], 2),
+            "|ROM error| (deg)": round(m["rom_err_abs"], 1),
+            "|Peak timing| (% cycle)": round(m["peak_t_err_abs"], 1),
+            "Joint-sides": m["n"],
+        })
+    if rows:
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    else:
+        st.caption(
+            "The video and reference curves did not correlate well enough "
+            "(r <= 0.5) to report a meaningful error -- check tracking quality."
+        )
+
+
 # ── Formatting ───────────────────────────────────────────────────────
-
-
-def _step_length(spatio: dict):
-    """Mean of left/right step length, whichever the stats expose."""
-    values = [
-        spatio.get(key) for key in ("step_length_left", "step_length_right", "step_length")
-        if isinstance(spatio.get(key), (int, float))
-    ]
-    return float(np.mean(values)) if values else None
 
 
 def _round(value, ndigits: int = 1):
