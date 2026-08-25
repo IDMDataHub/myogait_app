@@ -18,3 +18,19 @@ def test_settings_reads_optional_local_roots(monkeypatch, tmp_path):
     monkeypatch.setenv("MYOGAIT_APP_VICON_ROOT", str(vicon_root))
 
     assert Settings.from_env().vicon_root == vicon_root
+
+
+def test_settings_rejects_values_below_their_supported_minimum(monkeypatch):
+    monkeypatch.setenv("MYOGAIT_APP_RETENTION_HOURS", "0")
+    monkeypatch.setenv("MYOGAIT_APP_MAX_UPLOAD_MB", "-1")
+    monkeypatch.setenv("MYOGAIT_APP_INMEMORY_WARN_MB", "-1")
+    monkeypatch.setenv("MYOGAIT_APP_MAX_JOBS", "0")
+    monkeypatch.setenv("MYOGAIT_APP_JOB_STALE_MINUTES", "-1")
+
+    settings = Settings.from_env()
+
+    assert settings.retention_hours == 24
+    assert settings.max_upload_mb == 2048
+    assert settings.in_memory_warn_mb == 512
+    assert settings.max_concurrent_jobs == 1
+    assert settings.job_stale_minutes == 120

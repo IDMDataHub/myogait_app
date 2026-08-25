@@ -18,11 +18,12 @@ def _env_str(name: str, default: str) -> str:
     return value or default
 
 
-def _env_int(name: str, default: int) -> int:
+def _env_int(name: str, default: int, minimum: int | None = None) -> int:
     try:
-        return int(os.environ.get(name, "").strip() or default)
+        value = int(os.environ.get(name, "").strip() or default)
     except ValueError:
         return default
+    return value if minimum is None or value >= minimum else default
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -88,11 +89,11 @@ class Settings:
             workspace_root=Path(
                 _env_str("MYOGAIT_APP_WORKSPACE", str(_default_workspace_root()))
             ),
-            retention_hours=_env_int("MYOGAIT_APP_RETENTION_HOURS", 24),
-            max_upload_mb=_env_int("MYOGAIT_APP_MAX_UPLOAD_MB", 2048),
-            in_memory_warn_mb=_env_int("MYOGAIT_APP_INMEMORY_WARN_MB", 512),
-            max_concurrent_jobs=_env_int("MYOGAIT_APP_MAX_JOBS", 1),
-            job_stale_minutes=_env_int("MYOGAIT_APP_JOB_STALE_MINUTES", 120),
+            retention_hours=_env_int("MYOGAIT_APP_RETENTION_HOURS", 24, minimum=1),
+            max_upload_mb=_env_int("MYOGAIT_APP_MAX_UPLOAD_MB", 2048, minimum=1),
+            in_memory_warn_mb=_env_int("MYOGAIT_APP_INMEMORY_WARN_MB", 512, minimum=0),
+            max_concurrent_jobs=_env_int("MYOGAIT_APP_MAX_JOBS", 1, minimum=1),
+            job_stale_minutes=_env_int("MYOGAIT_APP_JOB_STALE_MINUTES", 120, minimum=1),
             watch_dir=Path(watch_raw) if watch_raw else None,
             vicon_root=Path(vicon_raw) if vicon_raw else None,
             enable_experimental=_env_bool("MYOGAIT_APP_EXPERIMENTAL", True),
