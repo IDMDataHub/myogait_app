@@ -56,6 +56,18 @@ CYCLE_QUALITY_GATES_VERSION = (0, 8, 1)
 #: added native ``femur_mm``/``foot_mm``/``femur_ratio`` parameters.
 NATIVE_ANTHROPOMETRIC_CALIBRATION_VERSION = (0, 7, 0)
 
+#: Below this version, ``step_length``/``walking_speed`` applied the
+#: (mostly vertical) femur scale directly to the normalised horizontal
+#: antero-posterior displacement. Landmarks are normalised per axis
+#: (x / width, y / height), so on a non-square frame that under-estimated
+#: step and stride length by roughly the image aspect ratio (~1.78x on
+#: 16:9). 0.8.2 de-normalises distances to source pixels first, making the
+#: scale isotropic. The segment-based calibration cross-check
+#: (myogait_app.calibration) mirrors this geometry, so it must apply the
+#: same de-normalisation from this version on to stay comparable. See
+#: Runtime.step_length_isotropic_native.
+STEP_LENGTH_ISOTROPIC_VERSION = (0, 8, 2)
+
 
 def _version_tuple(raw: str) -> tuple[int, ...]:
     parts: list[int] = []
@@ -329,6 +341,19 @@ class Runtime:
             _version_tuple(self.myogait_version)
             >= NATIVE_ANTHROPOMETRIC_CALIBRATION_VERSION
         )
+
+    @property
+    def step_length_isotropic_native(self) -> bool:
+        """True when ``step_length``/``walking_speed`` de-normalise to source pixels.
+
+        The calibration cross-check (myogait_app.calibration) must apply
+        the same isotropic de-normalisation only when this is True -- on an
+        older install myogait itself still uses the anisotropic geometry,
+        so the cross-check has to match it to stay comparable.
+        """
+        if not self.myogait_version:
+            return False
+        return _version_tuple(self.myogait_version) >= STEP_LENGTH_ISOTROPIC_VERSION
 
     @property
     def available_backends(self) -> tuple[BackendInfo, ...]:

@@ -528,7 +528,12 @@ def _segment_calibration_panel(result: PipelineResult, config) -> None:
             "scale (all rows above, weighted by stability) - compare against the "
             "femur-only numbers at the top of this tab."
         )
-        metrics = calibrated_metrics(result.data, result.cycles, calibration.combined_scale)
+        metrics = calibrated_metrics(
+            result.data,
+            result.cycles,
+            calibration.combined_scale,
+            isotropic=get_runtime().step_length_isotropic_native,
+        )
         columns = st.columns(3)
         columns[0].metric("Step length (L), multi-segment", _fmt(metrics.step_length_left_m, "m"))
         columns[1].metric("Step length (R), multi-segment", _fmt(metrics.step_length_right_m, "m"))

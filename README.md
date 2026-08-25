@@ -46,8 +46,15 @@ That floor is a *minimum*, not a recommendation: **0.8.0 fixed a critical
 `load_c3d` bug** (each axis was normalised by its own range instead of
 isotropically, distorting every angle computed from a non-square recording)
 and a hip-sign inversion, benchmarked against marker-based optical motion
-capture. Everything below this app degrades gracefully on an older install,
-but a C3D-heavy workflow specifically wants 0.8.0 or newer.
+capture. **0.8.2** carries the same isotropy fix into the spatial metrics:
+`step_length`/`walking_speed` now de-normalise distances to source pixels
+before scaling, so step and stride length are no longer under-estimated by
+the frame aspect ratio (~1.78× on 16:9) on landscape video. The
+segment-calibration cross-check follows myogait here
+(`runtime.step_length_isotropic_native`), applying the same de-normalisation
+only on 0.8.2+ so the two panels stay comparable on any install. Everything
+below this app degrades gracefully on an older install, but a C3D-heavy or
+step-length workflow specifically wants 0.8.2 or newer.
 
 Below **0.8.0**, `load_c3d` normalises the antero-posterior and vertical axes
 independently, distorting angles on any non-square recording; the C3D tab's

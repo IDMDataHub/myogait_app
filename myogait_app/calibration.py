@@ -140,7 +140,10 @@ class CalibratedSpatiotemporal:
 
 
 def calibrated_metrics(
-    data: dict, cycles: dict, scale_m_per_unit: float | None
+    data: dict,
+    cycles: dict,
+    scale_m_per_unit: float | None,
+    isotropic: bool = False,
 ) -> CalibratedSpatiotemporal:
     """Recompute step length, stride length and speed with an explicit scale.
 
@@ -153,11 +156,43 @@ def calibrated_metrics(
     0.245`` there. Without that, a discrepancy between the two panels
     could look like a real geometry difference when it is really just a
     different calibration source.
+
+    ``isotropic`` tracks myogait's own geometry across versions. Landmarks
+    are normalised per axis (x / width, y / height); the calibration scale
+    is derived mostly from the (vertical) reference segments but a step is
+    a (horizontal) antero-posterior distance, so on a non-square frame the
+    two axes span different real lengths. From myogait 0.8.2 on,
+    ``step_length``/``walking_speed`` de-normalise to source pixels before
+    scaling (isotropic), so this cross-check must do the same to stay
+    comparable -- pass ``isotropic=Runtime.step_length_isotropic_native``.
+    The horizontal displacement is then taken in source pixels
+    (``dx x width``) against a metres-per-source-pixel scale; the aspect
+    factor is exact for a vertical reference (myogait's femur) and a close
+    approximation for the combined multi-segment scale, whose segments are
+    predominantly vertical. On an older install leave it False so the
+    cross-check reproduces myogait's own anisotropic numbers.
     """
     frames = data.get("frames", [])
     events = data.get("events", {})
     if not frames or not events or not scale_m_per_unit:
         return CalibratedSpatiotemporal()
+
+    # De-normalise the horizontal displacement to source pixels when
+    # myogait does (>= 0.8.2). scale_m_per_unit is metres per normalised
+    # unit of a mostly-vertical reference, i.e. metres per (height-pixel);
+    # dividing by height turns it into metres per source pixel, and the
+    # step is measured as (dx x width) source pixels. Net effect: the
+    # antero-posterior distances gain the frame aspect ratio (width /
+    # height) the anisotropic path dropped.
+    meta = data.get("meta", {}) or {}
+    img_w = float(meta.get("width") or 1.0)
+    img_h = float(meta.get("height") or 1.0)
+    if isotropic and img_h:
+        x_scale = img_w
+        unit_scale = scale_m_per_unit / img_h
+    else:
+        x_scale = 1.0
+        unit_scale = scale_m_per_unit
 
     all_hs = [
         {"frame": ev["frame"], "side": side}
@@ -179,7 +214,7 @@ def calibrated_metrics(
         x1 = _x(all_hs[i]["frame"], f"{side.upper()}_ANKLE")
         x2 = _x(all_hs[i + 1]["frame"], f"{side.upper()}_ANKLE")
         if x1 is not None and x2 is not None:
-            step_lengths[side].append(abs(x2 - x1) * scale_m_per_unit)
+            step_lengths[side].append(abs((x2 - x1) * x_scale) * unit_scale)
 
     stride_lengths: dict[str, list[float]] = {"left": [], "right": []}
     speeds: dict[str, list[float]] = {"left": [], "right": []}
@@ -190,7 +225,7 @@ def calibrated_metrics(
         x2 = _x(cycle["end_frame"], ankle)
         if x1 is None or x2 is None:
             continue
-        dist = abs(x2 - x1) * scale_m_per_unit
+        dist = abs((x2 - x1) * x_scale) * unit_scale
         stride_lengths[side].append(dist)
         if cycle.get("duration"):
             speeds[side].append(dist / cycle["duration"])
