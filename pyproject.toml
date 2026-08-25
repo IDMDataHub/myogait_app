@@ -1,0 +1,93 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "myogait-app"
+description = "Interactive Streamlit workbench for the myogait markerless gait-analysis toolkit."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Romain Feigean" },
+    { name = "Frédéric Fer" },
+]
+keywords = ["gait", "biomechanics", "pose-estimation", "streamlit", "myogait"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+    "Framework :: Streamlit",
+]
+# The single source of truth for the version is myogait_app/__init__.py.
+dynamic = ["version"]
+
+# Runtime floor. Every backend myogait can drive is optional -- see the
+# `backends` extra -- so a plain install stays light and the app greys out
+# what is not present rather than failing. myogait 0.8.2 is the floor: it
+# carries the isotropic step-length fix the calibration cross-check relies
+# on (see myogait_app/runtime.py::step_length_isotropic_native).
+dependencies = [
+    "streamlit>=1.38",
+    "plotly>=5.24",
+    "myogait>=0.8.2",
+    "gaitkit>=1.4.8",
+    "ezc3d",
+    "c3d>=0.5",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "scipy>=1.11",
+    "matplotlib>=3.7",
+]
+
+[project.optional-dependencies]
+# Every pose backend myogait implements, in one shot. Deliberately not
+# myogait's own [all]/[full] shorthand: those bundle two extras that break
+# a plain `pip install` (ezc3d>=2.0, never published; intel-extension-for-
+# pytorch, not on PyPI) -- see requirements.txt for the full reasoning.
+backends = [
+    "myogait[mediapipe,yolo,vitpose,rtmw,sapiens,sapiens2,alphapose,detectron2,excel,yaml,loess,wavelet]>=0.8.2",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "PyYAML>=6.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/IDMDataHub/myogait_app"
+Source = "https://github.com/IDMDataHub/myogait_app"
+Issues = "https://github.com/IDMDataHub/myogait_app/issues"
+
+# `myogait-app` launches the Streamlit workbench; `python -m myogait_app`
+# does the same via __main__.
+[project.scripts]
+myogait-app = "myogait_app.cli:main"
+
+[tool.hatch.version]
+path = "myogait_app/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["myogait_app"]
+
+# The Streamlit entry point (app.py) lives at the repo root for
+# `streamlit run app.py` during development; ship a copy inside the
+# package so the installed `myogait-app` command can find it.
+[tool.hatch.build.targets.wheel.force-include]
+"app.py" = "myogait_app/streamlit_app.py"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "myogait_app",
+    "app.py",
+    "README.md",
+    "LICENSE",
+    "requirements.txt",
+    "requirements-dev.txt",
+    "tests",
+]
