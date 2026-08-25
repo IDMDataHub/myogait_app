@@ -93,6 +93,11 @@ def main() -> None:
         components.runtime_badge()
 
     components.runtime_warnings()
+
+    # A running extraction outlives the page it was launched from, so its
+    # progress stays visible (and stoppable) wherever the user navigates.
+    page_data.active_jobs_banner()
+
     PAGES[page]()
 
 

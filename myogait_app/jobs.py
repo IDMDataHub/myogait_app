@@ -162,6 +162,37 @@ class JobManager:
         )
         self._cancelled: set[str] = set()
         self._lock = threading.Lock()
+        self._reconcile_orphans()
+
+    def _reconcile_orphans(self) -> None:
+        """Fail jobs left ``running``/``queued`` by a previous server process.
+
+        A freshly created manager owns no in-flight work (its pool is empty),
+        so any job still marked active on disk is an orphan from an earlier
+        process -- e.g. the server was restarted mid-extraction. Left as-is it
+        would block a new extraction (the one-at-a-time guard counts it) and
+        show an eternal progress bar. Marking it failed clears both.
+        """
+        directory = self.settings.jobs_dir
+        if not directory.is_dir():
+            return
+        try:
+            entries = list(directory.iterdir())
+        except OSError:
+            return
+        for entry in entries:
+            if not entry.is_dir():
+                continue
+            payload = read_json(entry / "job.json")
+            if not payload or payload.get("status") not in (QUEUED, RUNNING):
+                continue
+            payload["status"] = FAILED
+            payload["error"] = "Interrupted by a server restart - relaunch the extraction."
+            payload["updated_at"] = time.time()
+            try:
+                write_json_atomic(entry / "job.json", payload)
+            except OSError:
+                pass
 
     # ── State access ─────────────────────────────────────────────────
 
