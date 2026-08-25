@@ -27,8 +27,9 @@ Choose one installation profile:
 # Base application: pivots, C3D and installed pose backends.
 pip install .
 
-# Standard pose backends available through PyPI.
-pip install ".[backends]"
+# Add only the pose backend needed for the study.
+pip install ".[mediapipe]"
+# or: pip install ".[yolo]"
 
 # Tests, build and dependency-audit tools.
 pip install ".[dev]"
@@ -40,7 +41,8 @@ Then start the application.
 # Windows PowerShell
 py -3.12 -m venv .venv
 .venv\Scripts\Activate.ps1
-pip install ".[backends]"
+pip install .
+pip install ".[mediapipe]"  # choose a backend explicitly
 python scripts/setup_gpu.py   # optional: NVIDIA/Intel GPU acceleration, see below
 myogait-app
 ```
@@ -50,11 +52,12 @@ On Linux/macOS:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install ".[backends]"
+pip install .
+pip install ".[mediapipe]"  # choose a backend explicitly
 myogait-app --server.address 127.0.0.1
 ```
 
-`requirements.txt` remains a development/experimental profile that follows
+`.[backends]` remains a comprehensive GPU-workstation profile; it can install large frameworks such as Torch. `requirements.txt` is a development/experimental profile that follows
 `myogait@master`; it is not the recommended installation for a reproducible
 study.
 
