@@ -68,14 +68,7 @@ def main() -> None:
     st.markdown(theme_css.background_css(), unsafe_allow_html=True)
 
     with st.sidebar:
-        # Constructivist mark + the wordmark: the app name, capitalised and
-        # underlined in the accent.
-        st.markdown(
-            '<div class="nk-mark"><i class="sq"></i><i class="disc"></i>'
-            '<i class="bar"></i></div>'
-            f'<div class="nk-wordmark">{BRANDING.app_name}</div>',
-            unsafe_allow_html=True,
-        )
+        components.sidebar_identity()
         st.divider()
 
         page = st.pills(
@@ -107,10 +100,6 @@ def main() -> None:
         components.runtime_badge()
 
     components.runtime_warnings()
-
-    # A running extraction outlives the page it was launched from, so its
-    # progress stays visible (and stoppable) wherever the user navigates.
-    page_data.active_jobs_banner()
 
     PAGES[page]()
 

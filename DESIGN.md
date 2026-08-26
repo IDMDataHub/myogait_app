@@ -163,3 +163,169 @@ No visual screenshot review happened at any point (no browser tool
 available in this session) -- this is the one real gap against the
 skill's normal finish process, disclosed rather than hidden, same as
 the previous redesign.
+
+## Refinement pass: colour-block + injected CSS
+
+A follow-up, not a replacement -- the direction stays the same Bauhaus/
+1960s print world above, implemented from a second, more complete Claude
+Design handoff (`branding_identity.py`, `config.toml`, `theme_css.py`)
+covering all six screens instead of Pipeline explorer alone.
+
+**What changed**: the paper/ink/accent hexes were retuned slightly
+(`#e8e8e2`/`#16181a`/`#e0a80f` -> `#edeae3`/`#111213`/`#f0b90b`) and two
+more primaries were added -- `primary_red` (`#c21b16`) and `primary_blue`
+(`#1b4fb0`, matching `side_colors["left"]`, which was re-pointed at it).
+Unlike the yellow accent, both new primaries are dark-valued enough to
+serve as text/marks *and* as a filled block with paper-coloured text on
+top (`Branding.primary_ink_for`) -- red was darkened from the mockup's
+original `#d6231f` (4.25:1) to `#c21b16` (5.0:1) specifically so it
+clears AA as small text, not just as a large fill.
+
+**New file**: `myogait_app/theme_css.py`. Targets Streamlit's stable
+`data-testid`/`data-baseweb` attributes only, never generated class
+names, so it survives Streamlit version upgrades. This is what
+`.streamlit/config.toml`'s theme block cannot express on its own: the
+sidebar's black identity-slab, the numbered-folio treatment on
+expanders, tab underlines replaced with a yellow slab indicator,
+hairline-divided metric cells, 3px-ruled buttons, hatched progress bars.
+`.streamlit/config.toml`'s `[server]`/`[browser]`/`[runner]` sections
+are deliberately left untouched by this pass -- the handoff's own
+config.toml only specified `[theme]`, and this app's operational
+settings (upload size, XSRF, telemetry opt-out, fast reruns) are not a
+design decision.
+
+**Encoding rules held**: colour still carries one entity per chart
+(side on analysis pages, model/method on the Comparator); joint identity
+still rides on dash pattern, not hue, so side stays the only colour axis;
+yellow stays reserved for the interaction accent alone -- never page
+texture. The categorical/normative/status data-viz palette is untouched
+again, same reasoning as both passes before it.
+
+## Structural fidelity pass: header, metric strip, figure frame
+
+Closer to the actual `Myogait App.dc.html` mockup than the refinement
+pass above, which only ever reskinned Streamlit's existing widget DOM
+via CSS. CSS injection alone cannot add new decorative elements (a
+rotated colour bar, a numbered folio, a boxed word inside a heading) --
+that needs real layout markup, so this pass touches Python, not just
+`theme_css.py`, while staying inside the design-only boundary agreed for
+this work: `myogait_app/ui/components.py` (the one place a page's chrome
+is built), `myogait_app/ui/sidebar.py` (four one-line marker calls, no
+control logic touched), and `theme_css.py`. No pipeline, analysis,
+export, marker-mapping, calibration or chart-generation file was edited.
+
+**`page_header()`** now looks up a `(number, eyebrow)` pair from the page
+title (a fixed table, e.g. Pipeline explorer -> `02` / "Parametric
+explorer") and renders a rotated blue bar, a quarter-circle, the page
+number in red JetBrains Mono, a vertical eyebrow label, an h1 with its
+last word boxed in solid ink, and a small left/right colour swatch
+echoing the side encoding used on the charts below. Call sites are
+unchanged (`page_header(title, description)`); a title with no table
+entry still renders correctly via a `--` fallback, so a page added later
+never breaks.
+
+**`source_summary()`** now renders its four figures as a custom HTML
+grid instead of four `st.metric` widgets, to get the mockup's alternating
+cell colours (plain / solid ink / plain / solid yellow) that Streamlit's
+own metric widget cannot take per-instance. Every other `st.metric` call
+in the app (spatiotemporal tab, clinical scores, cohort summaries) is
+untouched and keeps the generic hairline-cell CSS treatment.
+
+**`chart()`** wraps every Plotly figure in a bordered `st.container`,
+a small numbered "fig. N" tag (alternating red/blue), and a black
+caption bar -- purely presentational, the figure itself (data, colour,
+layout) is untouched. Numbering resets per page (`page_header()` does
+it) rather than climbing across the whole session, since how many charts
+a session actually renders depends on the loaded data and the controls
+in use, unlike a fixed mockup's own static figure count; the caption
+text is derived from the `key` argument every call site already passes
+(`fig_timeline` -> "Joint angle timeline"), with a humanised fallback for
+anything not in that table. This lives entirely in `components.py::chart()`
+-- `page_pipeline.py`, `page_compare.py` and `page_pool.py` already funnel
+every figure through it, so no page file needed a line of new code, and
+`myogait_app/ui/page_longitudinal.py`'s matplotlib figures (rendered via
+`st.pyplot`, myogait's own `plot_longitudinal`/`plot_session_comparison`)
+are unaffected -- deliberately out of scope, since wrapping those would
+mean touching a page file to fit the same frame around a different
+rendering path, for a comparatively small visual gain.
+
+**`sidebar_identity()`** now renders a black slab with a small two-cell
+yellow/red swatch as a logo mark, the app name and the tagline, instead
+of a plain `st.markdown("## ...")` heading. **`sidebar_section_marker()`**
+is new: a small coloured JetBrains Mono numeral placed just above each
+of the four already-numbered sidebar sections (`01` red / Signal
+conditioning, `02` blue / Joint kinematics, `03` gold-mark / Gait events,
+`04` ink / Cycle segmentation) -- the existing digit in each expander's
+own label is left as-is, this just adds the folio treatment beside it.
+`Subject` and `2b. Bias corrections` intentionally get no chip: the
+mockup's four-slot numbering doesn't map cleanly onto this app's six
+real sections, and inventing a fifth/sixth colour to force-fit it would
+misrepresent structure that isn't there.
+
+Verified the same way as every pass before it: `scripts/validate_palette.py`
+(the two new primaries confirmed independently, not trusted from the
+handoff), a manual `AppTest` sweep across every page with an extended
+timeout (the harness default is too short for this app's cold start --
+see "Reconciled with Nocturne" below), the full pytest suite, and a real
+`streamlit run` launch confirmed serving.
+
+## Reconciled with Nocturne (2026-08-26)
+
+While this identity was mid-refinement, `092e27d` ("Nocturne dark
+identity, pressed-pill nav, footer credits", tagged v0.3.0) landed on
+`main` from another contributor: an independently art-directed **dark**
+Bauhaus/constructivist world (blurple accent, Inter, a dimmed walker
+photo behind the app) on almost exactly the same files as this document
+describes. Two designers had redesigned the same surface in parallel,
+without coordination. Put to the product owner directly; the decision
+was to keep this paper-light Bauhaus world and reassert it over
+Nocturne, while keeping every non-visual addition Nocturne's commit
+carried alongside its CSS -- the Jobs list (no ticket to type), the
+footer's partner-mark credits and package links, and the cohort/clinical
+work in earlier commits of the same release. None of that is a colour
+or typography decision, so none of it needed to move.
+
+**What was reverted**: `.streamlit/config.toml`'s `[theme]` block (back
+to `base = "light"`, the tokens above, Helvetica Neue); `branding.py`'s
+identity tokens (the `_dark` fields go back to equalling their `_light`
+counterparts -- light-only was always this identity's own deliberate
+choice, not an oversight Nocturne happened to fix); `charts/theme.py`'s
+`_FONT` constant (Inter -> Helvetica Neue; the rest of that file reads
+`BRANDING` dynamically, so fixing the tokens was enough -- it needed no
+other change); `theme_css.py` (full rewrite back to the Bauhaus rules
+above, `inject()`/`background_css()`/`render_footer()` keeping the exact
+function names and call signature `app.py` already used, so app.py
+itself needed only one change, below).
+
+**What was kept from Nocturne's commit, reskinned rather than reverted**:
+the footer (`render_footer()`, partner marks + package links + contact,
+now on a solid ink rule and `accent_mark`-coloured links instead of a
+fade gradient and blurple); the `st.pills` sidebar navigation (a
+perfectly good widget choice independent of which identity is on top --
+restyled as pressed ink-filled boxes rather than reverted to `st.radio`).
+`background_css()` is kept as a deliberate no-op rather than removed
+from its `app.py` call site: the walker-photo backdrop doesn't fit a
+flat, no-photography Bauhaus world (the same reason the *earlier*
+chronophotography/Marey identity was replaced by Bauhaus in the first
+place, see "World" above) but the asset files stay in the repo rather
+than being deleted, in case a future pass wants them.
+
+**The one app.py change**: the sidebar's identity markup was inlined
+directly in `app.py` by Nocturne's commit rather than calling
+`components.sidebar_identity()` -- restored the function call, since
+"the single place branding surfaces" (that function's own docstring) is
+an architecture rule this document has held since the first redesign,
+not a preference to relitigate per identity.
+
+**A real, pre-existing test-suite gap surfaced during this reconciliation,
+left unfixed**: `tests/test_smoke_pages.py` selects the sidebar nav via
+`next(r for r in app.radio if "Data" in r.options)` -- since Nocturne's
+commit replaced that `st.radio` with `st.pills`, this now raises
+`StopIteration` rather than a passing assertion, for the "Pipeline
+explorer" case specifically. This predates every change in this section
+(introduced by `092e27d` itself, confirmed by reading that commit's own
+`app.py` diff) and is not this pass's file to fix unprompted. The other
+`test_smoke_pages.py`/`test_cohort_smoke.py` failures are the
+already-documented default-`AppTest`-timeout margin issue (3s, too short
+for this app's cold start), not a regression -- reconfirmed by rerunning
+every page with an extended timeout and getting zero exceptions.

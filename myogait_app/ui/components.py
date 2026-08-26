@@ -7,6 +7,8 @@ ran, so what it shows is what happened, not a description of it.
 
 from __future__ import annotations
 
+import html
+
 import streamlit as st
 
 from ..branding import BRANDING
@@ -17,6 +19,11 @@ from ..runtime import Runtime, get_runtime
 from ..settings import SETTINGS
 from ..storage import purge_expired, workspace_usage
 from . import state
+
+#: Session-state key for the per-page figure counter that drives the
+#: "fig. N" tag in chart(). Reset by page_header() so numbering restarts
+#: at 1 on every page rather than climbing across the whole session.
+_K_FIGURE_COUNTER = "_mg_fig_counter"
 
 
 def is_dark() -> bool:
@@ -37,27 +44,151 @@ def is_dark() -> bool:
         return False
 
 
+#: Figure-key substrings (matched from the end of the ``key`` argument,
+#: which every call site already builds from the plotted metric's name)
+#: to a human caption for the "fig. N" frame. Purely decorative -- falls
+#: back to a humanised version of the key itself for anything unlisted,
+#: so a new chart() call site never needs to touch this table to render
+#: correctly, just less legibly.
+_FIGURE_CAPTIONS = {
+    "timeline": "Joint angle timeline",
+    "cycles": "Cycle overlay",
+    "rom": "Range of motion summary",
+    "stance": "Stance / swing split",
+    "cadence": "Instantaneous cadence",
+    "com": "Center of mass",
+    "sway": "Postural sway",
+    "derivatives": "Angular velocity / acceleration",
+    "spectrogram": "Time-frequency analysis",
+    "pca": "PCA waveform components",
+    "quality": "Signal quality",
+    "diff": "Difference from reference",
+    "heat": "Agreement heatmap",
+    "metric": "Metric comparison",
+    "raster": "Event raster",
+}
+
+
+def _figure_caption(key: str | None) -> str:
+    if not key:
+        return "Figure"
+    tokens = key.lower().split("_")
+    for token in reversed(tokens):
+        if token in _FIGURE_CAPTIONS:
+            return _FIGURE_CAPTIONS[token]
+    words = [t for t in tokens if t not in ("fig", "pool")]
+    return " ".join(words).title() or "Figure"
+
+
 def chart(fig, key: str | None = None) -> None:
-    """Render a Plotly figure with the app's shared config."""
-    st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG, key=key)
+    """Render a Plotly figure with the app's shared config.
+
+    Wrapped in the identity's "fig. N" frame: a bordered container, a
+    small numbered tag, and a caption bar -- purely presentational, the
+    figure itself (data, colours, layout) is untouched. Numbering is
+    per-page (page_header() resets it), since the number of charts a
+    session actually renders depends on the loaded data and the controls
+    in use, unlike a fixed mockup's own static figure count.
+    """
+    st.session_state[_K_FIGURE_COUNTER] = st.session_state.get(_K_FIGURE_COUNTER, 0) + 1
+    n = st.session_state[_K_FIGURE_COUNTER]
+    tag_color = BRANDING.primary_red if n % 2 else BRANDING.primary_blue
+    container_key = f"mg_fig_{key}" if key else f"mg_fig_n{n}"
+
+    with st.container(border=True, key=container_key):
+        st.markdown(
+            f'<div class="mg-fig-tag" style="background:{tag_color};'
+            f'color:{BRANDING.primary_ink_for(False)}">fig. {n}</div>',
+            unsafe_allow_html=True,
+        )
+        st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG, key=key)
+        st.markdown(
+            f'<div class="mg-fig-caption">{html.escape(_figure_caption(key))}</div>',
+            unsafe_allow_html=True,
+        )
 
 
 # ── Header and runtime ───────────────────────────────────────────────
 
+#: (page number, eyebrow label) per page title, matching the Claude
+#: Design mockup's header treatment. A title with no entry here (a page
+#: added later, or page_pool.render() called with a title not yet wired
+#: into app.py's nav) still renders correctly via the "--" fallback.
+_PAGE_META: dict[str, tuple[str, str]] = {
+    "Data": ("01", "Load & inspect"),
+    "Pipeline explorer": ("02", "Parametric explorer"),
+    "Comparator": ("03", "Colour encodes method"),
+    "Longitudinal": ("04", "Track over time"),
+    "Export": ("05", "Data & figures out"),
+    "Experimental": ("06", "AIM benchmark"),
+    "Reference": ("07", "Function reference"),
+    "Cohort": ("08", "Study by condition"),
+}
+
 
 def page_header(title: str, description: str = "") -> None:
-    st.markdown(f"### {title}")
-    if description:
-        st.caption(description)
+    st.session_state[_K_FIGURE_COUNTER] = 0
+    num, eyebrow = _PAGE_META.get(title, ("--", ""))
+    left = BRANDING.side_colors["left"]
+    right = BRANDING.side_colors["right"]
+
+    words = title.split(" ")
+    lead = html.escape(" ".join(words[:-1]) + " ") if len(words) > 1 else ""
+    block_word = html.escape(words[-1])
+    desc_html = (
+        f'<p class="mg-header-desc">{html.escape(description)}</p>' if description else ""
+    )
+
+    st.markdown(
+        f"""
+<div class="mg-header">
+  <div class="mg-header-bar"></div>
+  <div class="mg-header-circle"></div>
+  <div class="mg-header-top">
+    <div class="mg-header-num">{html.escape(num)}</div>
+    <div class="mg-header-eyebrow">{html.escape(eyebrow)}</div>
+    <div class="mg-header-side"><span style="background:{left}"></span><span style="background:{right}"></span></div>
+  </div>
+  <h1 class="mg-header-title">{lead}<span class="mg-header-title-block">{block_word}</span></h1>
+  {desc_html}
+</div>
+""",
+        unsafe_allow_html=True,
+    )
 
 
 def sidebar_identity() -> None:
     """App name or logo. The single place branding surfaces."""
     if BRANDING.logo_path and BRANDING.logo_path.is_file():
         st.image(str(BRANDING.logo_path), use_container_width=True)
-    else:
-        st.markdown(f"## {BRANDING.app_name}")
-    st.caption(BRANDING.tagline)
+        st.caption(BRANDING.tagline)
+        return
+
+    st.markdown(
+        f"""
+<div class="mg-sidebar-id">
+  <div class="mg-sidebar-mark"><span style="background:{BRANDING.accent}"></span><span style="background:{BRANDING.primary_red}"></span></div>
+  <div>
+    <div class="mg-sidebar-id-name">{html.escape(BRANDING.app_name)}</div>
+    <div class="mg-sidebar-id-tag">{html.escape(BRANDING.tagline)}</div>
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+
+def sidebar_section_marker(number: str, color: str) -> None:
+    """A small coloured numeral chip preceding a numbered sidebar section.
+
+    Purely decorative, placed just above the matching ``st.expander`` --
+    an expander's own summary cannot hold rich HTML, so the numeral lives
+    just outside it rather than inside the label text.
+    """
+    st.markdown(
+        f'<div class="mg-sec-num" style="color:{color}">{html.escape(number)}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def runtime_badge(runtime: Runtime | None = None) -> None:
@@ -73,7 +204,8 @@ def runtime_badge(runtime: Runtime | None = None) -> None:
         f"[myogait](https://github.com/IDMDataHub/myogait) "
         f"`{runtime.myogait_version or 'not installed'}` &middot; "
         f"[gaitkit](https://github.com/IDMDataHub/gaitkit) "
-        f"`{runtime.gaitkit_version or 'absent'}` &middot; {device_label}"
+        f"`{runtime.gaitkit_version or 'absent'}` &middot; {device_label} &middot; "
+        f"retention {SETTINGS.retention_hours}h"
     )
     if not runtime.accelerated:
         st.caption(
@@ -149,11 +281,24 @@ def stage_status(result: PipelineResult) -> None:
 
 def source_summary(source: state.Source) -> None:
     """What is loaded, stated in the terms a reviewer would ask for."""
-    columns = st.columns(4)
-    columns[0].metric("Frames", source.n_frames)
-    columns[1].metric("Duration", f"{source.duration_s:.1f} s")
-    columns[2].metric("Frame rate", f"{source.fps:.0f} fps")
-    columns[3].metric("Model", source.model)
+    cells = [
+        ("Frames", str(source.n_frames), ""),
+        ("Duration", f"{source.duration_s:.1f} s", "ink"),
+        ("Frame rate", f"{source.fps:.0f} fps", ""),
+        ("Model", str(source.model), "accent"),
+    ]
+    html_parts = ['<div class="mg-metric-grid">']
+    for label, value, variant in cells:
+        variant_class = f" mg-metric-{variant}" if variant else ""
+        html_parts.append(
+            f'<div class="mg-metric-cell{variant_class}">'
+            f'<div class="mg-metric-label">{html.escape(label)}</div>'
+            f'<div class="mg-metric-value">{html.escape(value)}</div>'
+            f"</div>"
+        )
+    html_parts.append("</div>")
+    st.markdown("".join(html_parts), unsafe_allow_html=True)
+
     if source.is_demo:
         st.info(
             "This is the synthetic dataset - a generated gait-like signal, not a "

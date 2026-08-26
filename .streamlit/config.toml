@@ -10,29 +10,32 @@ headless = true
 gatherUsageStats = false
 
 [theme]
-# "Nocturne" identity -- a dark, Bauhaus/1960s-international dark ground with
-# a single blurple accent voice and Inter throughout. Design-system tokens
-# live in the source-of-truth palette; branding.py mirrors these for anything
-# Plotly-rendered, this file drives Streamlit's own chrome. Keep the two in
-# sync. Dark-only, by design: the system was art-directed on the dark ground.
-base = "dark"
-baseRadius = "medium"
-buttonRadius = "medium"
-primaryColor = "#9184d9"
-backgroundColor = "#161826"
-secondaryBackgroundColor = "#232532"
-textColor = "#e9e9ed"
-borderColor = "#3f424d"
-# Accent-400: readable as plain link text on the dark ground (the primary
-# blurple is reserved for filled/outlined widget chrome).
-linkColor = "#b5abfc"
-font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-codeFont = "JetBrains Mono:https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
-
-[theme.sidebar]
-backgroundColor = "#1b1d29"
-secondaryBackgroundColor = "#232532"
-borderColor = "#3f424d"
+# Bauhaus / 1960s German postmodern print identity -- see
+# myogait_app/branding.py for the full rationale and the validated hex
+# values this mirrors, and myogait_app/theme_css.py for the injected CSS
+# that expresses everything this config block cannot (heavy rules, the
+# numbered-section signature, the colour-block metric strip). Keep the
+# three files in sync when any changes. Light-only, deliberately: this
+# print language is inherently light-ground, so there is no [theme.dark]
+# section for a dark OS preference to pick up a half-finished world from.
+#
+# A parallel dark "Nocturne" identity was explored on this same surface
+# (see CHANGELOG.md, v0.3.0) and this block previously carried it; product
+# direction landed back on this paper world -- see DESIGN.md's
+# "Reconciled with Nocturne" section for the reasoning.
+base = "light"
+primaryColor = "#c21b16"
+backgroundColor = "#edeae3"
+secondaryBackgroundColor = "#e3dfd6"
+textColor = "#111213"
+linkColor = "#7f4c00"
+borderColor = "#b9b6ac"
+showWidgetBorder = true
+baseRadius = "none"
+buttonRadius = "none"
+font = "Helvetica Neue, Helvetica, Arial, sans-serif"
+headingFont = "Helvetica Neue, Helvetica, Arial, sans-serif"
+codeFont = "JetBrains Mono, ui-monospace, monospace"
 
 [runner]
 fastReruns = true

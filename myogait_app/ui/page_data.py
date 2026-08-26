@@ -14,7 +14,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from ..jobs import DONE, FAILED, QUEUED, JobManager, RUNNING
+from ..jobs import DONE, FAILED, JobManager, RUNNING
 from ..runtime import (
     BACKENDS,
     DEVICE_CHOICES,
@@ -759,56 +759,8 @@ def _pick_video() -> Path | None:
 # ── Jobs ─────────────────────────────────────────────────────────────
 
 
-def active_jobs_banner() -> None:
-    """Persistent extraction status, shown on every page.
-
-    An extraction outlives the page it was launched from, so its progress
-    must be visible wherever the user navigates -- start it, work elsewhere,
-    come back and see where it is. Rendered by ``app.main`` above the page
-    body. Shows running/queued jobs with a live bar and a Stop button, plus
-    a one-click load for anything that has just finished, and polls while
-    something is still running.
-    """
-    tickets = state.known_tickets()
-    if not tickets:
-        return
-    manager = job_manager()
-    jobs = [j for j in (manager.get(t) for t in tickets) if j is not None]
-    active = [j for j in jobs if j.status in (QUEUED, RUNNING)]
-    just_done = [j for j in jobs if j.status == DONE]
-
-    if not active and not just_done:
-        return
-
-    with st.container(border=True):
-        for job in active:
-            cols = st.columns([5, 1])
-            cols[0].progress(
-                job.progress if job.status == RUNNING else 0.0,
-                text=f"{job.video_name} · {job.model} — {job.message}",
-            )
-            if cols[1].button("Stop", key=f"banner_stop_{job.ticket}"):
-                manager.cancel(job.ticket)
-                st.rerun()
-        for job in just_done:
-            source = state.get_source()
-            already = source is not None and source.name.startswith(job.video_name)
-            cols = st.columns([5, 1])
-            cols[0].caption(f"✓ {job.video_name} · {job.model} — ready")
-            label = "Loaded" if already else "Analyse"
-            if cols[1].button(label, key=f"banner_load_{job.ticket}", disabled=already):
-                path = job.result_path(SETTINGS)
-                if path:
-                    _load_pivot(path, f"{job.video_name} [{job.model}]")
-
-    if active:
-        # Poll only while something is actually running.
-        time.sleep(2)
-        st.rerun()
-
-
 def _live_jobs() -> None:
-    """Progress for jobs started in this session."""
+    """Progress for jobs started in this session, right under Start extraction."""
     tickets = state.known_tickets()
     if not tickets:
         return

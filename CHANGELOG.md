@@ -5,6 +5,30 @@ yet tag releases, so entries are dated rather than versioned. Newest first.
 Every entry below is attributed to its actual author; where that is not
 stated, it is Romain Feigean.
 
+## Unreleased — 2026-08-26 (Romain Feigean)
+
+- **Reconciled with "Nocturne": back to the paper-light Bauhaus identity.**
+  0.3.0 below landed a second, independently art-directed visual identity
+  (dark ground, blurple, Inter) on the same files as an in-progress
+  refinement of the original light Bauhaus/international-typographic
+  identity from Claude Design — two redesigns of the same surface, done in
+  parallel without coordination. Product decision: keep the paper-light
+  world, reasserted over Nocturne's tokens/CSS/font in `branding.py`,
+  `.streamlit/config.toml`, `charts/theme.py` and `theme_css.py`, while
+  keeping every non-visual part of 0.3.0 as-is — the Jobs list, the footer's
+  partner-mark credits and package links (reskinned, not reverted), and the
+  `st.pills` navigation (restyled as pressed ink boxes rather than reverted
+  to a radio). See `DESIGN.md`'s "Reconciled with Nocturne" section for the
+  full accounting of what changed back and what stayed.
+- **Header, metric-strip and figure-frame fidelity pass.** `page_header()`,
+  `source_summary()` and `chart()` in `myogait_app/ui/components.py` now
+  match the Claude Design mockup's structural elements (the rotated colour
+  bar and numbered folio on every page header, the alternating-colour
+  metric grid, the bordered "fig. N" frame around every Plotly chart) —
+  CSS injection alone cannot add new decorative markup, so this needed
+  real (but page-file-untouched) layout code. See `DESIGN.md`'s "Structural
+  fidelity pass" section.
+
 ## 0.3.0 — 2026-08-26 (Frédéric Fer)
 
 - **"Nocturne" visual identity.** A dark Bauhaus/constructivist ground with a

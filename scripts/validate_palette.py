@@ -149,6 +149,11 @@ def default_pairs() -> list[dict]:
             # marks/lines, and accent_ink_for is what sits on the fill.
             {"label": f"{mode}: accent_mark on background", "fg": B.accent_mark_for(dark), "bg": B.surface_for(dark), "min_ratio": 3.0},
             {"label": f"{mode}: ink on accent (button fill)", "fg": B.accent_ink_for(dark), "bg": B.accent_for(dark)},
+            # primary_red/primary_blue: unlike the yellow accent, both are
+            # dark-valued enough to serve as text/marks *and* as a filled
+            # block with paper-coloured text on top (primary_ink_for).
+            {"label": f"{mode}: red on background (text/marks)", "fg": B.primary_red, "bg": B.surface_for(dark)},
+            {"label": f"{mode}: paper on red (button fill)", "fg": B.primary_ink_for(dark), "bg": B.primary_red},
             {"label": f"{mode}: border on background (non-text)", "fg": B.border_for(dark), "bg": B.surface_for(dark), "min_ratio": 1.4},
             {"label": f"{mode}: side left on background", "fg": B.side_colors["left"], "bg": B.surface_for(dark), "min_ratio": 3.0},
             {"label": f"{mode}: side right on background", "fg": B.side_colors["right"], "bg": B.surface_for(dark), "min_ratio": 3.0},

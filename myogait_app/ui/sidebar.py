@@ -14,6 +14,7 @@ from dataclasses import replace
 
 import streamlit as st
 
+from ..branding import BRANDING
 from ..glossary import find_one
 from ..pipeline import (
     AnglesConfig,
@@ -25,6 +26,7 @@ from ..pipeline import (
     SubjectConfig,
 )
 from ..runtime import get_runtime
+from . import components
 
 _SEE_REFERENCE = " See the Reference page for what each option actually does."
 
@@ -190,6 +192,7 @@ def _sync_femur_from_subject(cfg: EventsConfig, subject: SubjectConfig) -> Event
 
 
 def _normalize_section(cfg: NormalizeConfig) -> NormalizeConfig:
+    components.sidebar_section_marker("01", BRANDING.primary_red)
     with st.expander("1. Signal conditioning", expanded=True):
         options = _available_filters()
         filters = st.multiselect(
@@ -269,6 +272,7 @@ def _normalize_section(cfg: NormalizeConfig) -> NormalizeConfig:
 
 
 def _angles_section(cfg: AnglesConfig, runtime) -> AnglesConfig:
+    components.sidebar_section_marker("02", BRANDING.primary_blue)
     with st.expander("2. Joint kinematics", expanded=True):
         methods = list(runtime.angle_methods)
         method = st.selectbox(
@@ -498,6 +502,7 @@ def _bias_section(cfg: BiasConfig, angles: AnglesConfig, runtime) -> BiasConfig:
 
 
 def _events_section(cfg: EventsConfig, runtime) -> EventsConfig:
+    components.sidebar_section_marker("03", BRANDING.accent_mark)
     with st.expander("3. Gait events", expanded=True):
         methods = list(runtime.event_methods) or ["zeni"]
         use_consensus = st.checkbox(
@@ -572,6 +577,7 @@ def _events_section(cfg: EventsConfig, runtime) -> EventsConfig:
 
 
 def _cycles_section(cfg: CyclesConfig, runtime) -> CyclesConfig:
+    components.sidebar_section_marker("04", BRANDING.ink_light)
     with st.expander("4. Cycle segmentation", expanded=False):
         n_points = st.select_slider(
             "Points per normalised cycle", [51, 101, 201], value=int(cfg.n_points),

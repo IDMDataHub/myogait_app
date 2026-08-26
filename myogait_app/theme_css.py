@@ -1,206 +1,275 @@
-"""Nocturne — the design-system CSS that Streamlit's native theme cannot do.
+"""Injected CSS for the Bauhaus / 1960s postmodern identity.
 
-`.streamlit/config.toml` sets the dark ground, the blurple accent and Inter.
-This module layers the *identity* on top: the geometric Bauhaus/constructivist
-voice — generous empty space, a hairline-outlined card, rules that fade at
-both ends, tracked-uppercase micro-labels, outlined buttons, and selection
-controls that read as real pressed buttons. Injected once by ``app.main`` via
-``st.markdown(CSS, unsafe_allow_html=True)``.
+Everything Streamlit's theme config cannot express: heavy rules, the
+tracked-out uppercase label voice, the numbered-section signature, the
+colour-block metric strip, the page-header decoration, and the "fig. N"
+frame around every chart. ``inject()`` returns the stylesheet as a string
+for ``app.main`` to hand to ``st.markdown`` (it does not call ``st.markdown``
+itself, so it composes cleanly with ``background_css()``/``render_footer()``
+below in the same call site).
 
-Values mirror the Nocturne tokens (see myogait_app/branding.py). Selectors are
-kept as stable as Streamlit allows (data-testid first, class fallbacks).
+Selectors are Streamlit's stable data-testid attributes only -- no
+generated class names, which change between releases.
+
+A parallel dark "Nocturne" identity (blurple accent, Inter, a dimmed
+walker photo behind the app) was built and released as v0.3.0 on this
+same module; product direction landed back on the paper world documented
+in DESIGN.md, so ``background_css()`` is now a deliberate no-op -- see
+that file's "Reconciled with Nocturne" section. ``render_footer()``'s
+credits/links/partner-marks are kept and reskinned: real, non-visual
+content, independent of which identity is on screen.
 """
 
 from __future__ import annotations
 
-import base64
-from functools import lru_cache
 from pathlib import Path
+
+from .branding import BRANDING
 
 _ASSETS = Path(__file__).resolve().parent / "assets"
 
-
-@lru_cache(maxsize=8)
-def _data_uri(name: str, mime: str) -> str:
-    """Base64 data URI for a bundled asset, or empty string if missing."""
-    path = _ASSETS / name
-    if not path.is_file():
-        return ""
-    return f"data:{mime};base64,{base64.b64encode(path.read_bytes()).decode()}"
-
-
-def background_css() -> str:
-    """The walker illustration, dimmed to a faint texture behind everything.
-
-    A near-opaque dark overlay sits over the image so it reads as a whisper of
-    the app's own identity, never competing with the content on top.
-    """
-    uri = _data_uri("walker.jpg", "image/jpeg")
-    if not uri:
-        return ""
-    return f"""
+_CSS = """
 <style>
-.stApp {{
-  background-image:
-    linear-gradient(rgba(22,24,38,0.90), rgba(22,24,38,0.945)),
-    url("{uri}");
-  background-size: cover; background-position: center right;
-  background-attachment: fixed;
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+:root {{
+  --paper: {paper};
+  --paper-2: {paper2};
+  --ink: {ink};
+  --muted: {muted};
+  --rule: {rule};
+  --red: {red};
+  --blue: {blue};
+  --yellow: {yellow};
+  --mark: {mark};
 }}
-</style>
-"""
 
+/* Rules, never shadows or radii. */
+[data-testid="stAppViewContainer"] * {{ border-radius: 0 !important; box-shadow: none !important; }}
 
-CSS = """
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+/* Sidebar: black identity slab, hairline-separated sections. */
+[data-testid="stSidebar"] {{ background: var(--paper-2); border-right: 3px solid var(--ink); }}
+[data-testid="stSidebar"] hr {{ border-top: 3px solid var(--ink); opacity: 1; }}
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] strong {{
+  font-size: 0.7rem; letter-spacing: 2.2px; text-transform: uppercase;
+}}
 
-:root {
-  --nk-bg: #161826;
-  --nk-surface: #232532;
-  --nk-text: #e9e9ed;
-  --nk-accent: #9184d9;
-  --nk-accent-100: #f5f4ff;
-  --nk-accent-400: #b5abfc;
-  --nk-accent-800: #423a6a;
-  --nk-divider: rgba(233,233,237,0.16);
-  --nk-hair: #3f424d;
-  --nk-radius: 8px;
-}
+/* Sidebar identity block: logo mark + name + tagline, black slab. */
+.mg-sidebar-id {{
+  display: flex; align-items: center; gap: 0.75rem;
+  background: var(--ink); margin: -1rem -1rem 0.9rem; padding: 1.1rem 1.25rem;
+}}
+.mg-sidebar-mark {{
+  display: grid; grid-template-rows: 1fr 1fr; width: 30px; height: 30px;
+  border: 2px solid var(--paper); flex-shrink: 0;
+}}
+.mg-sidebar-mark span {{ display: block; }}
+.mg-sidebar-id-name {{
+  color: var(--paper); font-weight: 700; font-size: 1.3rem;
+  text-transform: uppercase; letter-spacing: -0.5px; line-height: 1.05;
+}}
+.mg-sidebar-id-tag {{
+  color: #a9a7a0; font-size: 0.62rem; letter-spacing: 1.6px;
+  text-transform: uppercase; margin-top: 0.25rem;
+}}
 
-/* ── Type: Inter everywhere, tight tracked headings ─────────────────── */
-html, body, .stApp, [data-testid="stAppViewContainer"], .stMarkdown,
-button, input, select, textarea, [data-baseweb] {
-  font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-}
-.stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4 {
-  font-weight: 500; letter-spacing: -0.015em; line-height: 1.12;
-}
-/* Tracked-uppercase micro label — the Bauhaus kicker voice. */
-.stMarkdown h6, [data-testid="stMetricLabel"] {
-  text-transform: uppercase; letter-spacing: 0.10em;
-  font-size: 11px !important; font-weight: 600;
-  color: color-mix(in srgb, var(--nk-text) 62%, transparent);
-}
+/* Sidebar section numerals: a coloured folio chip above the matching expander. */
+.mg-sec-num {{
+  font-family: 'JetBrains Mono', ui-monospace, monospace; font-weight: 700;
+  font-size: 1.1rem; letter-spacing: -0.5px; margin: 0.9rem 0 -0.5rem 0.1rem;
+}}
 
-/* ── More air: the constructivist empty space ───────────────────────── */
-.block-container { padding-top: 3.2rem; padding-bottom: 4rem; max-width: 1180px; }
-[data-testid="stVerticalBlock"] { gap: 1.15rem; }
-
-/* ── Wordmark: the app name, capitalised and underlined ─────────────── */
-[data-testid="stSidebar"] .nk-wordmark {
-  font-weight: 600; font-size: 21px; letter-spacing: -0.01em;
-  text-transform: capitalize;
-  padding-bottom: 3px; border-bottom: 2px solid var(--nk-accent);
-  display: inline-block;
-}
-/* A constructivist geometric mark set beside it: a square + a disc. */
-[data-testid="stSidebar"] .nk-mark {
-  display: inline-flex; gap: 6px; align-items: center; margin-bottom: 6px;
-}
-[data-testid="stSidebar"] .nk-mark i { width: 13px; height: 13px; display: block; }
-[data-testid="stSidebar"] .nk-mark i.sq { background: var(--nk-accent); }
-[data-testid="stSidebar"] .nk-mark i.disc { background: var(--nk-accent-400); border-radius: 50%; }
-[data-testid="stSidebar"] .nk-mark i.bar { width: 22px; height: 5px; background: var(--nk-hair); }
-
-/* ── Rules that fade to transparent at both ends (Nocturne signature) ── */
-hr, [data-testid="stDivider"] hr {
-  border: 0 !important; height: 1px !important; background: linear-gradient(
-    to right, transparent, var(--nk-divider) 48px,
-    var(--nk-divider) calc(100% - 48px), transparent) !important;
-}
-
-/* ── Buttons: outlined, transparent fill, accent voice ──────────────── */
-.stButton > button, .stDownloadButton > button {
-  border-radius: var(--nk-radius); font-weight: 500;
-  border: 1px solid var(--nk-divider); background: transparent;
-  transition: background .12s ease, border-color .12s ease;
-}
-.stButton > button:hover, .stDownloadButton > button:hover {
-  border-color: color-mix(in srgb, var(--nk-text) 45%, transparent);
-  background: color-mix(in srgb, var(--nk-text) 7%, transparent);
-}
-/* Primary = the accent, outlined not filled. */
-.stButton > button[kind="primary"], .stButton > button[data-testid="baseButton-primary"] {
-  color: var(--nk-accent); border-color: var(--nk-accent); background: transparent;
-}
-.stButton > button[kind="primary"]:hover {
-  background: color-mix(in srgb, var(--nk-accent) 14%, transparent);
-}
-.stButton > button[kind="primary"]:active {
-  background: color-mix(in srgb, var(--nk-accent) 24%, transparent);
-}
-
-/* ── Selection as real pressed buttons: pills & segmented control ────── */
-[data-testid="stPills"] button, [data-testid="stSegmentedControl"] button,
-[data-baseweb="button-group"] button {
-  border-radius: var(--nk-radius) !important;
-  border: 1px solid var(--nk-divider) !important;
-  background: transparent !important; color: var(--nk-text) !important;
-  font-weight: 500 !important;
-}
-/* Pressed / selected: it stays lit with an accent inset border + tint. */
+/* Nav pills: pressed-box selection, not a soft chip. */
+[data-testid="stPills"] button {{
+  border-radius: 0 !important; border: 2px solid var(--ink) !important;
+  background: transparent !important; color: var(--ink) !important;
+  font-size: 0.68rem !important; font-weight: 700 !important;
+  letter-spacing: 1.6px; text-transform: uppercase;
+}}
 [data-testid="stPills"] button[aria-checked="true"],
 [data-testid="stPills"] button[aria-selected="true"],
-[data-testid="stPills"] button[kind="pillsActive"],
-[data-testid="stSegmentedControl"] button[aria-checked="true"],
-[data-testid="stSegmentedControl"] button[kind="segmented_controlActive"] {
-  color: var(--nk-accent) !important;
-  box-shadow: inset 0 0 0 1.5px var(--nk-accent) !important;
-  background: color-mix(in srgb, var(--nk-accent) 12%, transparent) !important;
-}
+[data-testid="stPills"] button[kind="pillsActive"] {{
+  background: var(--ink) !important; color: var(--paper) !important;
+  box-shadow: none !important;
+}}
 
-/* ── Tabs: the active one carries the accent, others recede ─────────── */
-.stTabs [data-baseweb="tab-list"] { gap: 4px; border-bottom: 1px solid var(--nk-divider); }
-.stTabs [data-baseweb="tab"] {
-  font-weight: 500; letter-spacing: 0.01em; color: color-mix(in srgb, var(--nk-text) 60%, transparent);
-}
-.stTabs [aria-selected="true"] { color: var(--nk-accent) !important; }
-.stTabs [data-baseweb="tab-highlight"] { background: var(--nk-accent) !important; }
+/* Numbered sidebar sections: "1." .. "4." get the folio treatment. */
+[data-testid="stExpander"] summary p {{
+  font-size: 0.7rem; letter-spacing: 2.2px; text-transform: uppercase; font-weight: 700;
+}}
+[data-testid="stExpander"] details {{ border: 2px solid var(--ink); background: transparent; }}
 
-/* ── Cards: bordered containers become surfaces with a hairline ─────── */
-[data-testid="stVerticalBlockBorderWrapper"] {
-  background: var(--nk-surface); border-radius: var(--nk-radius);
-  box-shadow: 0 0 0 1px var(--nk-hair);
-}
-/* Metrics read as small constructivist cards. */
-[data-testid="stMetric"] {
-  background: var(--nk-surface); border-radius: var(--nk-radius);
-  box-shadow: 0 0 0 1px var(--nk-hair); padding: 14px 16px;
-}
-[data-testid="stMetricValue"] { font-weight: 600; letter-spacing: -0.01em; }
+/* Headings: tracked-out uppercase, heavy. */
+h1, h2, h3 {{ text-transform: uppercase; letter-spacing: -1px; font-weight: 700; }}
+h3 {{ font-size: 2.6rem !important; line-height: 0.9; border-bottom: 3px solid var(--ink); padding-bottom: 0.5rem; }}
 
-/* ── Inputs: quiet surfaces, accent on focus ────────────────────────── */
-[data-baseweb="input"], [data-baseweb="select"] > div, .stTextInput input,
-.stNumberInput input, [data-baseweb="textarea"] {
-  border-radius: var(--nk-radius) !important;
-}
-[data-testid="stExpander"] { border: 1px solid var(--nk-divider); border-radius: var(--nk-radius); }
+/* Page header: numbered folio, rotated colour block, boxed last word. */
+.mg-header {{ position: relative; overflow: hidden; margin: 0 0 1.6rem; padding: 0.9rem 0 1.5rem; }}
+.mg-header-bar {{
+  position: absolute; top: 10px; right: -20px; width: 55%; max-width: 320px; height: 14px;
+  background: var(--blue); transform: rotate(-4deg); z-index: 0;
+}}
+.mg-header-circle {{
+  position: absolute; top: -30px; right: 4%; width: 90px; height: 90px;
+  background: var(--blue); opacity: 0.16; border-radius: 0 0 0 90px; z-index: 0;
+}}
+.mg-header-top {{ position: relative; z-index: 1; display: flex; align-items: flex-end; gap: 0.9rem; }}
+.mg-header-num {{
+  font-family: 'JetBrains Mono', ui-monospace, monospace; font-weight: 700;
+  font-size: 2.6rem; line-height: 0.8; color: var(--red); letter-spacing: -2px;
+}}
+.mg-header-eyebrow {{
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  font-size: 0.62rem; letter-spacing: 2px; text-transform: uppercase; color: var(--muted);
+  align-self: stretch; padding-bottom: 2px;
+}}
+.mg-header-side {{ margin-left: auto; display: flex; flex-direction: column; width: 18px; flex-shrink: 0; }}
+.mg-header-side span {{ display: block; height: 11px; }}
+.mg-header-title {{
+  position: relative; z-index: 1; text-transform: uppercase; letter-spacing: -1px;
+  font-weight: 700; font-size: 3rem !important; line-height: 0.92; margin: 0.4rem 0 0.55rem;
+}}
+.mg-header-title-block {{
+  display: inline-block; background: var(--ink); color: var(--paper);
+  padding: 0 0.3em; transform: rotate(-1deg);
+}}
+.mg-header-desc {{
+  position: relative; z-index: 1; max-width: 62ch; border-left: 4px solid var(--red);
+  padding-left: 0.85rem; color: var(--muted); font-size: 0.92rem; margin: 0;
+}}
+@media (max-width: 640px) {{
+  .mg-header-title {{ font-size: 2rem !important; }}
+  .mg-header-bar, .mg-header-circle {{ display: none; }}
+}}
 
-/* ── Progress + the persistent job banner accent ────────────────────── */
-.stProgress > div > div > div { background: var(--nk-accent) !important; }
+/* Every numeral in the interface is monospaced. */
+[data-testid="stMetricValue"], [data-testid="stMetricDelta"], code, pre, [data-testid="stDataFrame"] {{
+  font-family: 'JetBrains Mono', ui-monospace, monospace !important;
+}}
 
-/* ── Footer: credits, package links and the partner marks ───────────── */
-.nk-footer-rule {
-  height: 1px; margin: 2.5rem 0 1rem; background: linear-gradient(
-    to right, transparent, var(--nk-divider) 48px,
-    var(--nk-divider) calc(100% - 48px), transparent);
-}
-.nk-credits {
-  font-size: 12px; color: color-mix(in srgb, var(--nk-text) 55%, transparent);
-  line-height: 1.7;
-}
-.nk-credits a { color: var(--nk-accent-400); text-decoration: none; text-underline-offset: 3px; }
-.nk-credits a:hover { text-decoration: underline; }
-/* The partner marks are already tinted to the ground; keep them quiet. */
-.nk-footer [data-testid="stImage"] img { opacity: 0.85; }
+/* Native st.metric strips (used outside source_summary): hairline-divided, oversized. */
+[data-testid="stMetric"] {{ border-left: 1px solid var(--rule); padding: 0.9rem 1.1rem; }}
+[data-testid="stMetricLabel"] p {{
+  font-size: 0.58rem !important; letter-spacing: 2px; text-transform: uppercase; color: var(--muted);
+}}
+[data-testid="stMetricValue"] {{ font-size: 1.9rem !important; font-weight: 700; }}
+
+/* source_summary()'s own metric grid: hairline-divided cells, alternating colour blocks. */
+.mg-metric-grid {{
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  border: 2px solid var(--ink); border-bottom: 3px solid var(--ink);
+  margin: 0.25rem 0 1.2rem;
+}}
+.mg-metric-cell {{ padding: 0.85rem 1rem; border-left: 1px solid var(--rule); min-width: 0; }}
+.mg-metric-cell:first-child {{ border-left: none; }}
+.mg-metric-label {{
+  font-size: 0.58rem; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 0.3rem;
+}}
+.mg-metric-value {{
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: clamp(1.05rem, 2.2vw, 1.5rem); font-weight: 700; overflow-wrap: anywhere;
+}}
+.mg-metric-ink {{ background: var(--ink); }}
+.mg-metric-ink .mg-metric-label {{ color: #cfcdc6; }}
+.mg-metric-ink .mg-metric-value {{ color: var(--paper); }}
+.mg-metric-accent {{ background: var(--yellow); }}
+.mg-metric-accent .mg-metric-label {{ color: var(--mark); }}
+.mg-metric-accent .mg-metric-value {{ color: var(--ink); }}
+@media (max-width: 640px) {{
+  .mg-metric-grid {{ grid-template-columns: repeat(2, 1fr); }}
+  .mg-metric-cell:nth-child(3) {{ border-left: none; }}
+}}
+
+/* Figure frame: bordered container, numbered tag, black caption bar. */
+div[class*="st-key-mg_fig_"] {{
+  position: relative; border: 3px solid var(--ink) !important;
+  margin: 1.75rem 0 1.4rem; padding-top: 0.9rem !important;
+}}
+div[class*="st-key-mg_fig_"] .mg-fig-tag {{
+  position: absolute; top: -14px; left: 14px; z-index: 2;
+  font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 0.66rem;
+  font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
+  padding: 3px 9px; border: 2px solid var(--ink); transform: rotate(-2deg);
+}}
+div[class*="st-key-mg_fig_"] .mg-fig-caption {{
+  margin-top: 0.7rem; padding: 0.5rem 0.9rem; background: var(--ink); color: var(--paper);
+  font-size: 0.7rem; letter-spacing: 1.2px; text-transform: uppercase;
+}}
+
+/* Tabs: yellow slab under the active one, no underline animation. */
+[data-baseweb="tab-list"] {{ gap: 0; border-bottom: 3px solid var(--ink); }}
+[data-baseweb="tab"] {{
+  border-left: 1px solid var(--rule); padding: 0.9rem 1rem 0.75rem;
+  font-size: 0.68rem; font-weight: 700; letter-spacing: 1.8px; text-transform: uppercase;
+}}
+[data-baseweb="tab"][aria-selected="true"] {{ box-shadow: inset 0 -8px 0 var(--yellow) !important; }}
+[data-baseweb="tab-highlight"] {{ display: none; }}
+
+/* Buttons: 3px rule, red fill for the primary action. */
+[data-testid="stBaseButton-secondary"], [data-testid="stBaseButton-primary"] {{
+  border: 3px solid var(--ink); font-size: 0.68rem; font-weight: 700;
+  letter-spacing: 2.2px; text-transform: uppercase;
+}}
+[data-testid="stBaseButton-primary"] {{ background: var(--red); color: var(--paper); }}
+[data-testid="stBaseButton-primary"]:hover {{ background: var(--ink); color: var(--paper); }}
+[data-testid="stBaseButton-secondary"]:hover {{ background: var(--ink); color: var(--paper); }}
+
+/* Widgets: hairline boxes, uppercase labels. */
+[data-testid="stWidgetLabel"] p {{
+  font-size: 0.6rem; letter-spacing: 1.6px; text-transform: uppercase; color: var(--muted);
+}}
+[data-baseweb="select"] > div, [data-baseweb="input"] > div {{ border: 2px solid var(--ink); background: var(--paper); }}
+[data-testid="stFileUploaderDropzone"] {{ border: 3px dashed var(--ink); background: transparent; }}
+
+/* Alerts as flat blocks of the palette, no tinted pastels. */
+[data-testid="stAlertContainer"] {{ border: 3px solid var(--ink); background: var(--paper-2); }}
+[data-testid="stNotification"] p {{ font-size: 0.82rem; }}
+
+/* Captions carry the annotation voice. */
+[data-testid="stCaptionContainer"] p {{ font-size: 0.72rem; color: var(--muted); }}
+
+/* Divider = a real rule. */
+hr {{ border-top: 3px solid var(--ink); opacity: 1; }}
+
+/* Progress: yellow fill, hatched remainder. */
+[data-testid="stProgress"] > div > div {{ background: repeating-linear-gradient(135deg, var(--ink) 0 3px, var(--paper) 3px 8px); }}
+[data-testid="stProgress"] > div > div > div {{ background: var(--yellow); }}
+
+/* Footer: credits, package links and the partner marks. */
+.mg-footer-rule {{ height: 3px; margin: 2.5rem 0 1rem; background: var(--ink); }}
+.mg-credits {{ font-size: 0.72rem; color: var(--muted); line-height: 1.7; }}
+.mg-credits a {{ color: var(--mark); text-decoration: none; text-underline-offset: 3px; }}
+.mg-credits a:hover {{ text-decoration: underline; }}
+.mg-footer [data-testid="stImage"] img {{ opacity: 0.85; }}
 </style>
 """
 
 
 def inject() -> str:
-    """Return the Nocturne stylesheet to hand to ``st.markdown``."""
-    return CSS
+    """Return the identity's stylesheet, for the caller to hand to st.markdown."""
+    return _CSS.format(
+        paper=BRANDING.surface_light,
+        paper2=BRANDING.surface_light_secondary,
+        ink=BRANDING.ink_light,
+        muted=BRANDING.ink_muted_light,
+        rule=BRANDING.border_light,
+        red=BRANDING.primary_red,
+        blue=BRANDING.primary_blue,
+        yellow=BRANDING.accent,
+        mark=BRANDING.accent_mark,
+    )
+
+
+def background_css() -> str:
+    """No-op: this identity is flat and geometric, not a dimmed photograph.
+
+    A walker-photo backdrop was part of the Nocturne pass this replaces
+    (see the module docstring) -- kept as a callable no-op rather than
+    removed from app.py's call site, so that reconciliation stays a
+    pure content/token change here rather than a structural app.py edit.
+    """
+    return ""
 
 
 #: GitHub homes for the packages the app is built on, linked in the footer.
@@ -217,8 +286,8 @@ def render_footer() -> None:
     """A discreet footer: partner marks, package links and a contact."""
     import streamlit as st
 
-    st.markdown('<div class="nk-footer-rule"></div>', unsafe_allow_html=True)
-    st.markdown('<div class="nk-footer">', unsafe_allow_html=True)
+    st.markdown('<div class="mg-footer-rule"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="mg-footer">', unsafe_allow_html=True)
     left, right = st.columns([1, 1.6], vertical_alignment="center")
     with left:
         marks = st.columns(2, vertical_alignment="center")
@@ -227,13 +296,13 @@ def render_footer() -> None:
             if path.is_file():
                 col.image(str(path), width=118 if "telethon" in name else 70)
     with right:
-        links = " · ".join(
+        links = " &middot; ".join(
             f'<a href="{url}" target="_blank">{name}</a>'
             for name, url in _PACKAGE_LINKS.items()
         )
         st.markdown(
-            f'<div class="nk-credits">Built on {links}'
-            f'<br>Assistmyo · NeuPEL · Institut de Myologie — '
+            f'<div class="mg-credits">Built on {links}'
+            f'<br>Assistmyo &middot; NeuPEL &middot; Institut de Myologie -- '
             f'<a href="mailto:{_CONTACT_EMAIL}">{_CONTACT_EMAIL}</a></div>',
             unsafe_allow_html=True,
         )
