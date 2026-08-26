@@ -205,6 +205,7 @@ def _condition_view(label: str, runs: list) -> None:
                 "Cycles": run.n_cycles,
                 "Cadence (steps/min)": _round(rspatio.get("cadence_steps_per_min")),
                 "Duration (s)": _round(run.duration_s),
+                "Pipeline recipe": run.config_note or "Explicit configuration",
             })
         st.dataframe(pd.DataFrame(run_rows), use_container_width=True, hide_index=True)
 

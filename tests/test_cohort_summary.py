@@ -75,6 +75,20 @@ def test_condition_summary_ignores_non_finite_clinical_measurements(monkeypatch)
     assert summary["spatiotemporal"]["cadence_steps_per_min"] == pytest.approx(100.0)
 
 
+def test_condition_summary_drops_implausible_metric_step_lengths(monkeypatch) -> None:
+    monkeypatch.setattr("myogait_app.pooling.clinical_scores", lambda *_args, **_kw: None)
+    plausible = _run(step_length={
+        "unit": "m", "step_length_left": 0.20, "step_length_right": 1.20,
+    })
+    implausible = _run(step_length={
+        "unit": "m", "step_length_left": 0.19, "step_length_right": 12.0,
+    })
+
+    summary = condition_summary([plausible, implausible])
+
+    assert summary["step_length_m"] == pytest.approx(0.70)
+
+
 def test_condition_summary_selects_an_age_matched_clinical_stratum(monkeypatch) -> None:
     seen: dict[str, str] = {}
 

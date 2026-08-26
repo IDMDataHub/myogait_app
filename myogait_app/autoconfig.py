@@ -24,14 +24,32 @@ from .pipeline import (
 
 
 def _mid_hip_x(frames: list) -> np.ndarray:
-    """Antero-posterior progression proxy: the mid-hip x over the trial."""
+    """Antero-posterior progression proxy: the finite mid-hip x values.
+
+    Auto-configuration is advisory, so an incomplete landmark must not turn a
+    usable recording into a failed Cohort load. Invalid hips are simply absent
+    from this proxy; the pipeline still receives the original pivot unchanged.
+    """
     xs: list[float] = []
     for frame in frames:
-        lm = frame.get("landmarks") or {}
-        hips = [lm.get(k) for k in ("LEFT_HIP", "RIGHT_HIP")]
-        vals = [h["x"] for h in hips if h and h.get("x") is not None]
-        if vals:
-            xs.append(float(np.mean(vals)))
+        if not isinstance(frame, dict):
+            continue
+        landmarks = frame.get("landmarks")
+        if not isinstance(landmarks, dict):
+            continue
+        values: list[float] = []
+        for key in ("LEFT_HIP", "RIGHT_HIP"):
+            hip = landmarks.get(key)
+            if not isinstance(hip, dict):
+                continue
+            try:
+                value = float(hip.get("x"))
+            except (TypeError, ValueError):
+                continue
+            if np.isfinite(value):
+                values.append(value)
+        if values:
+            xs.append(float(np.mean(values)))
     return np.asarray(xs, dtype=float)
 
 
@@ -56,12 +74,16 @@ def _has_direction_reversal(frames: list, thresh: float = 0.15) -> bool:
     xs = _mid_hip_x(frames)
     if xs.size < 10:
         return False
-    peak = float(np.max(xs))
+    start = float(xs[0])
     end = float(xs[-1])
-    # Reached a far extreme, then returned a meaningful distance from it.
-    forward = peak - xs[0]
-    came_back = peak - end
-    return forward > thresh and came_back > thresh
+    high = float(np.max(xs))
+    low = float(np.min(xs))
+    # A trial may begin in either camera direction. Detect an excursion to
+    # either extreme followed by a meaningful return, not only x increasing
+    # then decreasing.
+    returned_from_high = high - start > thresh and high - end > thresh
+    returned_from_low = start - low > thresh and end - low > thresh
+    return returned_from_high or returned_from_low
 
 
 #: The validated overground/marker recipe: no first-frame calibration, keep

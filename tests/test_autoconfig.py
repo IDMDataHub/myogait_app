@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import numpy as np
+from types import SimpleNamespace
 
 from myogait_app.autoconfig import (
     _has_direction_reversal,
     _has_static_start,
     detect_config,
+    run_auto,
 )
 
 
@@ -58,3 +60,50 @@ def test_detect_config_keeps_the_base_subject():
     data = {"c3d_markers_3d": {"x": 1}, "frames": _frames(np.linspace(0.3, 0.7, 40))}
     cfg, _ = detect_config(data, base)
     assert cfg.subject.height_m == 1.75  # recipe changed, subject preserved
+
+
+def test_there_and_back_is_detected_in_either_camera_direction():
+    xs = list(np.linspace(0.80, 0.30, 30)) + list(np.linspace(0.30, 0.80, 30))
+
+    assert _has_direction_reversal(_frames(xs)) is True
+    cfg, reasons = detect_config({"frames": _frames(xs)})
+    assert cfg.angles.calibrate is False
+    assert any("there-and-back" in reason for reason in reasons)
+
+
+def test_incomplete_landmarks_do_not_break_auto_detection():
+    frames = [
+        {"landmarks": {"LEFT_HIP": {"x": "not-a-number"}}},
+        {"landmarks": {"LEFT_HIP": None, "RIGHT_HIP": []}},
+        {"landmarks": {}},
+        {"not_landmarks": True},
+    ]
+
+    cfg, reasons = detect_config({"frames": frames})
+
+    assert cfg.angles.calibrate is False
+    assert any("no standing neutral" in reason for reason in reasons)
+
+
+def test_run_auto_retries_overground_after_an_empty_default_result(monkeypatch):
+    calls = []
+
+    class FakeRunner:
+        def __init__(self, _data, source_key):
+            calls.append(source_key)
+
+        def run(self, config):
+            return SimpleNamespace(
+                ok=True,
+                cycles={"cycles": [] if len(calls) == 1 else [{"cycle_id": 1}]},
+            )
+
+    monkeypatch.setattr("myogait_app.autoconfig.PipelineRunner", FakeRunner)
+    data = {"frames": _frames([0.3] * 25 + list(np.linspace(0.3, 0.7, 35)))}
+
+    result, config, reasons = run_auto(data, "trial")
+
+    assert calls == ["trial", "trial:auto2"]
+    assert result.cycles["cycles"]
+    assert config.angles.calibrate is False
+    assert any("fell back" in reason for reason in reasons)
