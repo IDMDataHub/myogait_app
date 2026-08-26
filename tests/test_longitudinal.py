@@ -12,11 +12,13 @@ cleanly rather than erroring where the app would just hide the section.
 
 from __future__ import annotations
 
-import matplotlib
-
-matplotlib.use("Agg")  # headless: build the figure objects, open no window
-
 import pytest
+
+# The Longitudinal engine returns matplotlib figures; skip the whole module
+# (cleanly, at collection) where matplotlib is not installed -- e.g. the CI
+# image, which does not ship the plotting extra -- rather than error out.
+matplotlib = pytest.importorskip("matplotlib")
+matplotlib.use("Agg")  # headless: build the figure objects, open no window
 
 
 def _sessions(n: int = 3) -> list[dict]:
