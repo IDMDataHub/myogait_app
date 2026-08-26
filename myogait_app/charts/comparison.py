@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from ..branding import BRANDING
-from .theme import apply, rgba, series_colors
+from .theme import apply, series_colors
 
 #: Beyond this many series the categorical palette stops being able to
 #: keep them apart. The interface offers faceting instead of inventing

@@ -49,7 +49,10 @@ def test_cohort_tab_renders_a_paired_video_and_reference_trial() -> None:
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
 
-    app = AppTest.from_file(str(APP_PY))
+    # Generous timeout: the themed app injects its identity + background on
+    # every run and the cohort tab runs a small pipeline, well over the 3 s
+    # AppTest default on a cold import.
+    app = AppTest.from_file(str(APP_PY), default_timeout=60)
     app.run()
     app.session_state["pool_runs"] = _cohort_fixture()
     app.run()
