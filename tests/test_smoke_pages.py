@@ -19,12 +19,14 @@ def test_page_renders_without_an_exception(page):
     pytest.importorskip("streamlit")
     from streamlit.testing.v1 import AppTest
 
-    app = AppTest.from_file(str(APP_PY))
+    # A generous timeout: some pages import the full analysis stack and the
+    # app injects its theme + background on every run, which is well over the
+    # 3 s AppTest default on a cold import.
+    app = AppTest.from_file(str(APP_PY), default_timeout=60)
     app.run()
-    # The Data page also renders radios of its own (e.g. "Video source"),
-    # so select the sidebar navigation radio by its options rather than by
-    # position in the element tree.
-    nav = next(r for r in app.radio if "Data" in r.options)
-    nav.set_value(page).run()
+    # Navigation is a keyed st.pills ("nav_page"); drive it through session
+    # state, which AppTest supports for any keyed widget regardless of type.
+    app.session_state["nav_page"] = page
+    app.run()
 
     assert not app.exception

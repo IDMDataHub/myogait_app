@@ -80,7 +80,7 @@ def main() -> None:
 
         page = st.pills(
             "Page", list(PAGES), selection_mode="single", default="Data",
-            label_visibility="collapsed",
+            label_visibility="collapsed", key="nav_page",
         )
         page = page or "Data"
 
