@@ -812,13 +812,13 @@ def _render_job(job, manager: JobManager) -> None:
 def _ticket_tab() -> None:
     """Every extraction, listed directly -- no ticket to type or remember.
 
-    An extraction keeps running after you close the tab; results are kept for
-    the retention window. Newest first, each with Analyse / Stop inline.
+    Tick the finished ones you want; the app then offers only what that
+    selection makes possible -- analyse a single recording, or pool several
+    (comparing conditions when the selection spans more than one).
     """
     st.caption(
         "Every extraction on this machine, newest first. Kept for "
-        f"{SETTINGS.retention_hours} h. Analyse a finished one, or stop a "
-        "running one, right here."
+        f"{SETTINGS.retention_hours} h."
     )
     manager = job_manager()
     jobs = manager.list_jobs()
@@ -829,5 +829,67 @@ def _ticket_tab() -> None:
             "at the top of the page.",
         )
         return
-    for job in jobs:
-        _render_job(job, manager)
+
+    done = [j for j in jobs if j.status == DONE]
+    other = [j for j in jobs if j.status != DONE]
+
+    if done:
+        st.markdown("**Finished — tick to analyse**")
+        selected = []
+        for job in done:
+            study = job.study or {}
+            meta = " · ".join(
+                x for x in (study.get("patient_id"), study.get("condition")) if x
+            )
+            label = f"{job.video_name} — {job.model}"
+            if meta:
+                label += f"  ({meta})"
+            if st.checkbox(label, key=f"sel_{job.ticket}"):
+                selected.append(job)
+        _selection_actions(selected)
+
+    if other:
+        st.divider()
+        st.caption("Running / failed")
+        for job in other:
+            _render_job(job, manager)
+
+
+def _selection_actions(selected: list) -> None:
+    """Offer only the action the current tick-selection actually supports."""
+    if not selected:
+        st.caption("Tick one or more finished extractions above.")
+        return
+
+    conditions = {(j.study or {}).get("condition") or "unspecified" for j in selected}
+    patients = {(j.study or {}).get("patient_id") or "?" for j in selected}
+    st.caption(
+        f"{len(selected)} selected · {len(conditions)} condition(s) · "
+        f"{len(patients)} patient(s)"
+    )
+
+    if len(selected) == 1:
+        job = selected[0]
+        if st.button("Analyse", type="primary", use_container_width=True):
+            path = job.result_path(SETTINGS)
+            if path:
+                _load_pivot(path, f"{job.video_name} [{job.model}]")
+            else:
+                st.error("The result file is gone - it may have been purged.")
+        return
+
+    # Two or more: the feasible move is a pooled read -- which compares
+    # conditions on its own when the selection spans several.
+    label = "Compare conditions" if len(conditions) >= 2 else "Open as cohort"
+    if st.button(label, type="primary", use_container_width=True):
+        from ..pooling import load_runs
+
+        paths = [p for p in (j.result_path(SETTINGS) for j in selected) if p]
+        if not paths:
+            st.error("None of the selected results are still on disk.")
+            return
+        with st.spinner(f"Pooling {len(paths)} recording(s)..."):
+            st.session_state["pool_runs"] = load_runs(paths)
+        st.success(
+            f"Loaded {len(paths)} recording(s) into the Cohort tab — open it above."
+        )
