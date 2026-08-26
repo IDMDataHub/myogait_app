@@ -39,17 +39,20 @@ DEGRADATION_HELP = {
 def render() -> None:
     runtime = get_runtime()
     page_header(
-        "Experimental",
-        "VICON ground truth and input-degradation benchmarking. myogait scopes "
-        "this block to AIM benchmark work.",
+        "Method validation (research)",
+        "The bench for validating the method itself: how accurate markerless is "
+        "against a Vicon reference, how well it holds up when the video quality "
+        "drops, and how parameters trade off. Not a clinical read — for the "
+        "clinic use Cohort and Longitudinal.",
     )
     st.warning(
-        "Experimental in the package's own terms: these functions are not part of "
-        "the standard pipeline and their outputs are not clinical results."
+        "Research bench, myogait's own 'experimental' scope: these functions are "
+        "not part of the standard pipeline and their outputs are not clinical "
+        "results. For patient reading use the analysis pages."
     )
 
     tab_vicon, tab_degradation, tab_grid = st.tabs(
-        ["VICON alignment", "Input degradation", "Benchmark grid"]
+        ["Accuracy vs Vicon", "Video-quality robustness", "Parameter sweep"]
     )
     with tab_vicon:
         _vicon_tab(runtime)
@@ -148,17 +151,94 @@ def _vicon_tab(runtime) -> None:
         st.error(f"Alignment failed: {type(exc).__name__}: {exc}")
         return
 
+    _render_vicon_benchmark(enriched)
+
+
+def _r(value, ndigits: int = 1):
+    return round(float(value), ndigits) if isinstance(value, (int, float)) else None
+
+
+def _render_vicon_benchmark(enriched: dict) -> None:
+    """Present the single-trial VICON benchmark as readable tables.
+
+    Same battery as the validation report -- per joint RMSE / MAE / signed
+    bias / ROM difference / CMC, plus gait-event timing in milliseconds --
+    shown as tables rather than a raw JSON dump so the numbers are legible.
+    It stays a research/benchmark read, not a clinical result.
+    """
     block = ((enriched.get("experimental") or {}).get("vicon_benchmark")) or {}
     if not block:
         st.warning("The run produced no vicon_benchmark block.")
         return
 
     st.success("Alignment complete.")
-    offset = block.get("offset_seconds")
+    alignment = block.get("alignment") or {}
+    offset = alignment.get("offset_seconds")
+    n_frames = alignment.get("n_aligned_frames")
+    columns = st.columns(2)
     if offset is not None:
-        st.metric("Estimated temporal offset", f"{offset:.3f} s")
-    st.json(block)
+        columns[0].metric(
+            "Temporal offset (video vs Vicon)", f"{offset:.3f} s",
+            help="How far the two recordings had to be shifted in time to line "
+                 "up. Estimated by cross-correlation, then removed before "
+                 "comparing.",
+        )
+    if n_frames is not None:
+        columns[1].metric("Overlapping frames compared", int(n_frames))
 
+    metrics = block.get("metrics") or {}
+    if metrics.get("status") != "ok":
+        st.warning(f"No overlap to compare (status: {metrics.get('status')}).")
+
+    angle = metrics.get("angle_metrics") or {}
+    if angle:
+        st.markdown("**Joint-angle accuracy — markerless vs Vicon**")
+        st.caption(
+            "Per joint and side. **Bias** is the signed mean (markerless minus "
+            "Vicon) — the direction of the offset; **ROM diff** is the "
+            "range-of-motion difference; **CMC** is the coefficient of multiple "
+            "correlation (1.0 = identical curves, and unlike a plain "
+            "correlation it is pulled down by a constant offset). This is the "
+            "same battery as the validation report."
+        )
+        side_name = {"L": "Left", "R": "Right"}
+        rows = []
+        for name, m in angle.items():
+            joint, _, side = name.partition("_")
+            rows.append({
+                "Joint": joint.title(),
+                "Side": side_name.get(side, side),
+                "RMSE (deg)": _r(m.get("rmse_deg")),
+                "MAE (deg)": _r(m.get("mae_deg")),
+                "Bias (deg)": _r(m.get("bias_deg")),
+                "ROM diff (deg)": _r(m.get("rom_diff_deg")),
+                "CMC": _r(m.get("cmc"), 2),
+                "Frames": m.get("n"),
+            })
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+    events = metrics.get("event_metrics_ms") or {}
+    if events:
+        st.markdown("**Gait-event timing accuracy (milliseconds)**")
+        st.caption(
+            "How closely markerless heel-strike (HS) and toe-off (TO) land on "
+            "the Vicon events, per side."
+        )
+        event_name = {"left_hs": "Heel strike — Left", "right_hs": "Heel strike — Right",
+                      "left_to": "Toe off — Left", "right_to": "Toe off — Right"}
+        rows = []
+        for key, m in events.items():
+            rows.append({
+                "Event": event_name.get(key, key),
+                "MAE (ms)": _r(m.get("mae_ms")),
+                "Median (ms)": _r(m.get("median_ms")),
+                "n markerless": m.get("n_myogait"),
+                "n Vicon": m.get("n_vicon"),
+            })
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+    with st.expander("Raw benchmark block (JSON)", expanded=False):
+        st.json(block)
     st.download_button(
         "Download the enriched pivot JSON",
         _to_json_bytes(enriched),
