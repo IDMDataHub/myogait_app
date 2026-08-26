@@ -16,7 +16,9 @@ recomputes the per-side summary in exactly that shape.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, replace
+from numbers import Real
 from pathlib import Path
 from typing import Iterable
 
@@ -33,6 +35,11 @@ SAGITTAL_JOINTS = ("hip", "knee", "ankle")
 #: condition recorded (e.g. an older export, or a C3D import not yet
 #: tagged). Kept explicit so the UI can say what "unspecified" means.
 UNSPECIFIED = "unspecified"
+
+
+def _finite_number(value: object) -> bool:
+    """Whether a value can safely contribute to a clinical aggregate."""
+    return isinstance(value, Real) and not isinstance(value, bool) and math.isfinite(value)
 
 
 @dataclass
@@ -104,9 +111,9 @@ def _duration_s(data: dict) -> float | None:
     meta = data.get("meta") or {}
     frames = data.get("frames") or []
     fps = meta.get("fps")
-    if isinstance(meta.get("duration_s"), (int, float)):
+    if _finite_number(meta.get("duration_s")) and meta["duration_s"] >= 0:
         return float(meta["duration_s"])
-    if isinstance(fps, (int, float)) and fps > 0 and frames:
+    if _finite_number(fps) and fps > 0 and frames:
         return len(frames) / float(fps)
     return None
 
@@ -118,7 +125,7 @@ def _apply_study_subject(config: PipelineConfig, study: dict) -> PipelineConfig:
         height = float(height) if height not in (None, "") else None
     except (TypeError, ValueError):
         height = None
-    if height is None:
+    if height is None or not math.isfinite(height) or height <= 0:
         return config
     return replace(config, subject=SubjectConfig(height_m=height))
 
@@ -230,7 +237,7 @@ def _mean_metric_step_length(runs: list[RunResult]) -> float | None:
             continue
         for side in ("step_length_left", "step_length_right"):
             value = step.get(side)
-            if isinstance(value, (int, float)):
+            if _finite_number(value):
                 values.append(float(value))
     return float(np.mean(values)) if values else None
 
@@ -240,7 +247,9 @@ def _first_age(runs: list[RunResult]) -> float | None:
         age = run.study.get("age")
         try:
             if age not in (None, ""):
-                return float(age)
+                value = float(age)
+                if math.isfinite(value) and value >= 0:
+                    return value
         except (TypeError, ValueError):
             continue
     return None
@@ -267,7 +276,7 @@ def condition_summary(runs: list[RunResult]) -> dict:
         values = [
             float(_spatiotemporal(run)[key])
             for run in runs
-            if isinstance(_spatiotemporal(run).get(key), (int, float))
+            if _finite_number(_spatiotemporal(run).get(key))
         ]
         if values:
             spatiotemporal[key] = float(np.mean(values))
@@ -306,7 +315,7 @@ def condition_summary(runs: list[RunResult]) -> dict:
 
 
 def _mean_or_none(values):
-    nums = [float(v) for v in values if isinstance(v, (int, float))]
+    nums = [float(v) for v in values if _finite_number(v)]
     return float(np.mean(nums)) if nums else None
 
 

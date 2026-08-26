@@ -36,6 +36,21 @@ def test_pooled_sw_requires_enough_degrees_of_freedom() -> None:
     assert pooled_sw([[0, 1, 2, 3, 4], [10, 11, 12, 13, 14]]) is None
 
 
+def test_mdc_ignores_non_finite_measurements_and_fails_closed() -> None:
+    values = [
+        [0.0, 2.0, 4.0, 6.0, 8.0, 10.0, float("inf")],
+        [10.0, 12.0, 14.0, 16.0, 18.0, 20.0, float("-inf")],
+    ]
+
+    assert pooled_sw(values) == pytest.approx(math.sqrt(14.0))
+    assert mdc95(float("nan")) is None
+    assert mdc95(float("inf")) is None
+    assert mdc95(-1.0) is None
+    assert mdc95(2.0, n=1.5) is None
+    assert not exceeds_mdc(float("nan"), 2.0)
+    assert not exceeds_mdc(3.0, float("inf"))
+
+
 def test_mdc95_scales_with_the_square_root_of_cycle_count() -> None:
     single_cycle = mdc95(2.0)
 

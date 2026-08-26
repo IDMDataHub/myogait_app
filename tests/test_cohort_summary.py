@@ -59,6 +59,22 @@ def test_condition_summary_hides_step_length_without_metric_calibration(monkeypa
     assert summary["step_length_m"] is None
 
 
+def test_condition_summary_ignores_non_finite_clinical_measurements(monkeypatch) -> None:
+    monkeypatch.setattr("myogait_app.pooling.clinical_scores", lambda *_args, **_kw: None)
+    usable = _run(step_length={
+        "unit": "m", "step_length_left": 0.60, "step_length_right": 0.70,
+    })
+    invalid = _run(step_length={
+        "unit": "m", "step_length_left": float("nan"), "step_length_right": float("inf"),
+    })
+    invalid.stats["spatiotemporal"]["cadence_steps_per_min"] = float("nan")
+
+    summary = condition_summary([usable, invalid])
+
+    assert summary["step_length_m"] == pytest.approx(0.65)
+    assert summary["spatiotemporal"]["cadence_steps_per_min"] == pytest.approx(100.0)
+
+
 def test_condition_summary_selects_an_age_matched_clinical_stratum(monkeypatch) -> None:
     seen: dict[str, str] = {}
 

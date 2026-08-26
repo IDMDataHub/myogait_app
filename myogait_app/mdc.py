@@ -17,6 +17,7 @@ Ported from the validation report's ``repeatability_stats``. Streamlit-free.
 from __future__ import annotations
 
 import math
+from numbers import Real
 
 import numpy as np
 
@@ -25,6 +26,11 @@ import numpy as np
 #: of freedom remain -- mirrors the report.
 MIN_CYCLES_PER_SUBJECT = 3
 MIN_DOF = 10
+
+
+def _finite_number(value: object) -> bool:
+    """Whether *value* is a usable measurement (not a bool, NaN or infinity)."""
+    return isinstance(value, Real) and not isinstance(value, bool) and math.isfinite(value)
 
 
 def pooled_sw(values_by_subject: list[list[float]]) -> float | None:
@@ -37,7 +43,7 @@ def pooled_sw(values_by_subject: list[list[float]]) -> float | None:
     dof = 0
     for values in values_by_subject:
         arr = np.asarray(
-            [v for v in values if isinstance(v, (int, float)) and not math.isnan(v)],
+            [v for v in values if _finite_number(v)],
             dtype=float,
         )
         if arr.size < MIN_CYCLES_PER_SUBJECT:
@@ -51,11 +57,16 @@ def pooled_sw(values_by_subject: list[list[float]]) -> float | None:
 
 def mdc95(sw: float | None, n: int = 1) -> float | None:
     """MDC95 for the mean of ``n`` cycles. ``None`` if ``sw`` is unknown."""
-    if sw is None or n < 1:
+    if not _finite_number(sw) or sw < 0 or isinstance(n, bool) or not isinstance(n, int) or n < 1:
         return None
     return float(1.96 * math.sqrt(2.0) * sw / math.sqrt(n))
 
 
 def exceeds_mdc(difference: float, mdc: float | None) -> bool:
     """True when a between-condition/visit difference is beyond measurement noise."""
-    return mdc is not None and abs(float(difference)) > mdc
+    return (
+        _finite_number(difference)
+        and _finite_number(mdc)
+        and mdc >= 0
+        and abs(float(difference)) > mdc
+    )

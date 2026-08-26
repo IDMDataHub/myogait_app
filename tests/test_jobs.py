@@ -46,3 +46,16 @@ def test_stale_job_cannot_be_revived_by_a_late_worker(tmp_path):
     assert not manager._write(job)
     assert manager.get(ticket).status == FAILED
     manager._pool.shutdown(wait=True)
+
+
+def test_corrupt_job_records_do_not_break_polling_or_listing(tmp_path):
+    settings = Settings(workspace_root=tmp_path)
+    manager = JobManager(settings)
+    ticket = "MG-ABCD-2345"
+    record = job_dir(ticket, settings) / "job.json"
+    record.parent.mkdir(parents=True)
+    record.write_text('["not", "a", "job"]', encoding="utf-8")
+
+    assert manager.get(ticket) is None
+    assert manager.list_jobs() == []
+    manager._pool.shutdown(wait=True)

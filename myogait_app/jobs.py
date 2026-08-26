@@ -26,11 +26,11 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from .runtime import DEVICE_OVERRIDE_ENV
 from .settings import SETTINGS, Settings
-from .storage import job_dir, new_ticket, read_json, write_json_atomic
+from .storage import is_ticket, job_dir, new_ticket, read_json, write_json_atomic
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +129,21 @@ class Job:
         return candidate if candidate.is_file() else None
 
     @classmethod
-    def from_dict(cls, payload: dict) -> "Job":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "Job":
+        """Build a job only from a structurally valid on-disk record.
+
+        Job files are polled while another thread replaces them atomically, but
+        they can still be edited or damaged outside the app. Rejecting malformed
+        records lets the Jobs page skip one bad directory rather than crashing.
+        """
+        if not isinstance(payload, Mapping):
+            raise ValueError("Job record must be an object")
+        ticket = payload.get("ticket")
+        status = payload.get("status")
+        if not isinstance(ticket, str) or not is_ticket(ticket):
+            raise ValueError("Job record has an invalid ticket")
+        if status not in (QUEUED, RUNNING, DONE, FAILED, CANCELLED):
+            raise ValueError("Job record has an invalid status")
         known = {f for f in cls.__dataclass_fields__}
         return cls(**{k: v for k, v in payload.items() if k in known})
 
@@ -184,7 +198,7 @@ class JobManager:
             if not entry.is_dir():
                 continue
             payload = read_json(entry / "job.json")
-            if not payload or payload.get("status") not in (QUEUED, RUNNING):
+            if not isinstance(payload, Mapping) or payload.get("status") not in (QUEUED, RUNNING):
                 continue
             payload["status"] = FAILED
             payload["error"] = "Interrupted by a server restart - relaunch the extraction."
@@ -207,8 +221,8 @@ class JobManager:
         overwriting ``failed`` or ``cancelled`` with ``done``.
         """
         state_file = self._state_file(job.ticket)
-        existing = read_json(state_file) or {}
-        existing_status = existing.get("status")
+        existing = read_json(state_file)
+        existing_status = existing.get("status") if isinstance(existing, Mapping) else None
         if existing_status in _TERMINAL and existing_status != job.status:
             return False
         job.updated_at = time.time()
@@ -230,7 +244,10 @@ class JobManager:
         if not payload:
             return None
 
-        job = Job.from_dict(payload)
+        try:
+            job = Job.from_dict(payload)
+        except (TypeError, ValueError):
+            return None
         stale_after = self.settings.job_stale_minutes * 60
         if job.status == RUNNING and job.since_update_seconds > stale_after:
             job.status = FAILED
@@ -251,8 +268,12 @@ class JobManager:
             if not entry.is_dir():
                 continue
             payload = read_json(entry / "job.json")
-            if payload:
+            if not payload:
+                continue
+            try:
                 jobs.append(Job.from_dict(payload))
+            except (TypeError, ValueError):
+                logger.warning("Ignoring malformed job record: %s", entry / "job.json")
         jobs.sort(key=lambda j: j.created_at, reverse=True)
         return jobs[:limit]
 
