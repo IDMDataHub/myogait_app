@@ -150,23 +150,31 @@ def store_uploaded_file(
     except (AttributeError, OSError):
         pass
 
+    # Hash while spooling once to a temporary file. The former two-pass approach
+    # read a multi-gigabyte browser upload once to hash it and once more to
+    # write it. A temporary file keeps the content-addressed name while avoiding
+    # that extra I/O and makes the completed upload appear atomically.
+    temporary: Path | None = None
     digest = hashlib.sha256()
-    while chunk := source.read(chunk_size):
-        digest.update(chunk)
-
-    suffix = Path(str(original_name)).suffix.lower()
-    target = workspace.uploads / f"{digest.hexdigest()[:16]}{suffix}"
-    if target.exists():
-        return target
-
     try:
-        source.seek(0)
-    except (AttributeError, OSError) as exc:
-        raise ValueError("Uploaded stream must support seek()") from exc
+        with tempfile.NamedTemporaryFile(
+            mode="wb", dir=workspace.uploads, prefix=".upload-", suffix=".tmp", delete=False
+        ) as handle:
+            temporary = Path(handle.name)
+            while chunk := source.read(chunk_size):
+                digest.update(chunk)
+                handle.write(chunk)
 
-    with target.open("wb") as handle:
-        shutil.copyfileobj(source, handle, length=chunk_size)
-    return target
+        suffix = Path(str(original_name)).suffix.lower()
+        target = workspace.uploads / f"{digest.hexdigest()[:16]}{suffix}"
+        if target.exists():
+            temporary.unlink()
+        else:
+            temporary.replace(target)
+        return target
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def exceeds_in_memory_warning(size_bytes: int, threshold_mb: int) -> bool:

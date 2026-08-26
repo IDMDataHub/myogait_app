@@ -31,6 +31,27 @@ def test_content_addressed_uploads_do_not_collide_on_name_and_size(tmp_path):
     assert repeated == first
 
 
+def test_content_addressed_uploads_are_spooled_in_a_single_pass(tmp_path):
+    class CountingStream(io.BytesIO):
+        def __init__(self, payload: bytes) -> None:
+            super().__init__(payload)
+            self.read_calls = 0
+
+        def read(self, size: int = -1) -> bytes:
+            self.read_calls += 1
+            return super().read(size)
+
+    workspace = Workspace("test", tmp_path / "session").ensure()
+    stream = CountingStream(b"abcdef")
+
+    stored = store_uploaded_file(workspace, stream, "walk.mp4", chunk_size=2)
+
+    assert stored.read_bytes() == b"abcdef"
+    # Three data chunks plus the final empty read: no second pass for writing.
+    assert stream.read_calls == 4
+    assert not list(workspace.uploads.glob(".upload-*.tmp"))
+
+
 def test_path_is_within_root_rejects_a_sibling_directory(tmp_path):
     root = tmp_path / "vicon"
     trial = root / "trial_01"
