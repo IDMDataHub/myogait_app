@@ -54,6 +54,9 @@ class RunResult:
     cycles: dict | None = None
     stats: dict | None = None
     error: str = ""
+    #: Short rationale for the auto-detected pipeline recipe, shown in the UI
+    #: so the reader knows what config produced these cycles.
+    config_note: str = ""
 
     def _s(self, key: str, default: str = "") -> str:
         value = self.study.get(key)
@@ -138,7 +141,8 @@ def load_run(path, config: PipelineConfig | None = None) -> RunResult:
     """
     from myogait import load_json
 
-    config = config or PipelineConfig()
+    # Keep ``config`` possibly None: that is the signal to auto-detect the
+    # recipe below. ``base`` handles the default for the subject-height merge.
     name = Path(path).name
     try:
         data = load_json(str(path))
@@ -151,10 +155,20 @@ def load_run(path, config: PipelineConfig | None = None) -> RunResult:
     kind = _detect_kind(data)
     duration_s = _duration_s(data)
     # A subject height in the study block makes step length metric (unit "m").
-    config = _apply_study_subject(config, study)
+    base = _apply_study_subject(config or PipelineConfig(), study)
 
+    note = ""
     try:
-        result = PipelineRunner(data, source_key=str(path)).run(config)
+        if config is None:
+            # No explicit config: pick the recipe from the recording itself
+            # (marker vs video, standing vs mid-stride start, there-and-back)
+            # and fall back to the overground recipe if it finds no cycle.
+            from .autoconfig import run_auto
+
+            result, _used, reasons = run_auto(data, str(path), base)
+            note = "; ".join(reasons)
+        else:
+            result = PipelineRunner(data, source_key=str(path)).run(base)
     except Exception as exc:  # noqa: BLE001
         return RunResult(
             name=name, study=study, ok=False, kind=kind, duration_s=duration_s,
@@ -166,12 +180,12 @@ def load_run(path, config: PipelineConfig | None = None) -> RunResult:
         reason = f"{failed.name}: {failed.error}" if failed else "pipeline failed"
         return RunResult(
             name=name, study=study, ok=False, kind=kind, duration_s=duration_s,
-            error=reason,
+            error=reason, config_note=note,
         )
 
     return RunResult(
         name=name, study=study, ok=True, kind=kind, duration_s=duration_s,
-        cycles=result.cycles, stats=result.stats,
+        cycles=result.cycles, stats=result.stats, config_note=note,
     )
 
 
@@ -228,8 +242,21 @@ def _spatiotemporal(run: RunResult) -> dict:
     return (run.stats or {}).get("spatiotemporal") or {}
 
 
+#: Physiological human step-length bounds (m). The femur/height scale is a
+#: video-pixel calibration; on a marker (C3D) pivot the landmarks are in
+#: projected units, so it can produce an absurd value (metres in the hundreds)
+#: -- clamp to the plausible range and drop the rest rather than show it.
+_STEP_LENGTH_M_RANGE = (0.2, 1.2)
+
+
 def _mean_metric_step_length(runs: list[RunResult]) -> float | None:
-    """Mean left/right step length in metres, over calibrated runs only."""
+    """Mean left/right step length in metres, over calibrated runs only.
+
+    Only physiologically plausible values contribute; an out-of-range number
+    means the scale was not a real video pixel calibration (e.g. a C3D source)
+    and is dropped, never averaged in.
+    """
+    lo, hi = _STEP_LENGTH_M_RANGE
     values: list[float] = []
     for run in runs:
         step = (run.stats or {}).get("step_length") or {}
@@ -237,7 +264,7 @@ def _mean_metric_step_length(runs: list[RunResult]) -> float | None:
             continue
         for side in ("step_length_left", "step_length_right"):
             value = step.get(side)
-            if _finite_number(value):
+            if _finite_number(value) and lo <= value <= hi:
                 values.append(float(value))
     return float(np.mean(values)) if values else None
 
