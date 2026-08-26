@@ -10,6 +10,7 @@ underneath.
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -257,17 +258,22 @@ def _accuracy_section(label: str, runs: list) -> None:
 
     st.caption(
         f"{agreement['n_video']} video vs {agreement['n_reference']} marker "
-        "recording(s), pooled mean cycle curves compared per joint. "
-        "Centred RMSE removes the constant offset (a calibratable zero "
-        "difference); waveform r is the shape match."
+        "recording(s), pooled mean cycle curves compared per joint — the same "
+        "battery as the validation report's single-trial Vicon benchmark. "
+        "Bias is the signed mean offset (video minus reference); centred RMSE "
+        "removes that offset; waveform r and CMC are shape matches (CMC, unlike "
+        "r, is penalised by a constant offset)."
     )
     rows = []
     for joint, m in agreement["by_joint"].items():
         rows.append({
             "Joint": joint.title(),
             "RMSE (deg)": round(m["rmse"], 1),
+            "MAE (deg)": round(m["mae"], 1),
+            "Bias (deg)": round(m["bias"], 1),
             "Centred RMSE (deg)": round(m["rmse_centered"], 1),
             "Waveform r": round(m["shape_r"], 2),
+            "CMC": None if np.isnan(m.get("cmc", float("nan"))) else round(m["cmc"], 2),
             "|ROM error| (deg)": round(m["rom_err_abs"], 1),
             "|Peak timing| (% cycle)": round(m["peak_t_err_abs"], 1),
             "Joint-sides": m["n"],

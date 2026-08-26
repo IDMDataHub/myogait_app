@@ -107,10 +107,10 @@ def test_condition_agreement_requires_a_reference():
 
 
 def test_summarize_agreement_drops_uncorrelated():
-    good = {"joint": "hip", "shape_r": 0.9, "rmse": 2.0, "rmse_centered": 1.0,
-            "rom_err": 1.0, "peak_t_err": 2.0}
-    bad = {"joint": "hip", "shape_r": 0.2, "rmse": 9.0, "rmse_centered": 8.0,
-           "rom_err": 9.0, "peak_t_err": 9.0}
+    good = {"joint": "hip", "shape_r": 0.9, "rmse": 2.0, "mae": 1.6, "bias": 1.0,
+            "rmse_centered": 1.0, "cmc": 0.95, "rom_err": 1.0, "peak_t_err": 2.0}
+    bad = {"joint": "hip", "shape_r": 0.2, "rmse": 9.0, "mae": 8.0, "bias": -7.0,
+           "rmse_centered": 8.0, "cmc": 0.3, "rom_err": 9.0, "peak_t_err": 9.0}
     out = summarize_agreement([good, bad])
     assert out["hip"]["n"] == 1  # the r=0.2 joint-side is excluded
     assert out["hip"]["rmse"] == pytest.approx(2.0)
