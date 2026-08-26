@@ -18,6 +18,7 @@ from pathlib import Path
 import streamlit as st
 
 from ..pipeline import PipelineRunner
+from ..pivot_io import load_uploaded_pivot
 from ..runtime import get_runtime
 from . import state
 from .components import empty_state, page_header
@@ -93,8 +94,6 @@ def render() -> None:
 
 
 def _run_sessions(dated_files) -> None:
-    from myogait.schema import load_json
-
     runtime = get_runtime()
     config = state.get_config()
     sessions = []
@@ -103,7 +102,7 @@ def _run_sessions(dated_files) -> None:
         for upload, session_date in dated_files:
             label = upload.name
             try:
-                data = load_json(io.BytesIO(upload.getbuffer()))
+                data = load_uploaded_pivot(state.workspace(), upload, upload.name)
                 runner = PipelineRunner(data, source_key=f"long-{label}-{session_date}")
                 result = runner.run(config)
                 if not result.ok:
