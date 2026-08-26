@@ -57,6 +57,9 @@ class RunResult:
     #: Short rationale for the auto-detected pipeline recipe, shown in the UI
     #: so the reader knows what config produced these cycles.
     config_note: str = ""
+    #: Metric step length (m) read straight off 3-D markers, when the pivot
+    #: carries them -- a real length that needs no pixel calibration.
+    marker_step_length_m: float | None = None
 
     def _s(self, key: str, default: str = "") -> str:
         value = self.study.get(key)
@@ -183,9 +186,23 @@ def load_run(path, config: PipelineConfig | None = None) -> RunResult:
             error=reason, config_note=note,
         )
 
+    # A marker pivot carries the real metric step length; read it off the 3-D
+    # markers automatically so a Cohort with a reference shows a length, not a
+    # dash. Best-effort: a failure here must not sink an otherwise-good run.
+    marker_step_length_m = None
+    markers = data.get("c3d_markers_3d")
+    if markers:
+        try:
+            from .step_length import step_length_m_from_markers
+
+            marker_step_length_m = step_length_m_from_markers(markers)
+        except Exception:  # noqa: BLE001 - advisory metric, never fatal
+            marker_step_length_m = None
+
     return RunResult(
         name=name, study=study, ok=True, kind=kind, duration_s=duration_s,
         cycles=result.cycles, stats=result.stats, config_note=note,
+        marker_step_length_m=marker_step_length_m,
     )
 
 
@@ -250,13 +267,25 @@ _STEP_LENGTH_M_RANGE = (0.2, 1.2)
 
 
 def _mean_metric_step_length(runs: list[RunResult]) -> float | None:
-    """Mean left/right step length in metres, over calibrated runs only.
+    """Mean step length in metres, marker-derived first, else calibrated video.
 
-    Only physiologically plausible values contribute; an out-of-range number
-    means the scale was not a real video pixel calibration (e.g. a C3D source)
-    and is dropped, never averaged in.
+    A marker (C3D) run carries a real metric step length read straight off the
+    3-D markers -- no pixel calibration, so it is trusted first. Video runs
+    contribute their calibrated ``step_length`` only when its unit is metres
+    and the value is physiologically plausible.
     """
     lo, hi = _STEP_LENGTH_M_RANGE
+
+    # 1) Markers: a real length, preferred whenever any run has one.
+    marker_values = [
+        run.marker_step_length_m for run in runs
+        if _finite_number(run.marker_step_length_m)
+        and lo <= run.marker_step_length_m <= hi
+    ]
+    if marker_values:
+        return float(np.mean(marker_values))
+
+    # 2) Otherwise fall back to the calibrated video estimate.
     values: list[float] = []
     for run in runs:
         step = (run.stats or {}).get("step_length") or {}
