@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from myogait_app import theme_css
 from myogait_app.branding import BRANDING
 from myogait_app.settings import SETTINGS
 from myogait_app.storage import purge_expired
@@ -63,12 +64,25 @@ PAGES["Reference"] = page_reference.render
 def main() -> None:
     _startup()
     state.init()
+    st.markdown(theme_css.inject(), unsafe_allow_html=True)
+    st.markdown(theme_css.background_css(), unsafe_allow_html=True)
 
     with st.sidebar:
-        components.sidebar_identity()
+        # Constructivist mark + the wordmark: the app name, capitalised and
+        # underlined in the accent.
+        st.markdown(
+            '<div class="nk-mark"><i class="sq"></i><i class="disc"></i>'
+            '<i class="bar"></i></div>'
+            f'<div class="nk-wordmark">{BRANDING.app_name}</div>',
+            unsafe_allow_html=True,
+        )
         st.divider()
 
-        page = st.radio("Page", list(PAGES), label_visibility="collapsed")
+        page = st.pills(
+            "Page", list(PAGES), selection_mode="single", default="Data",
+            label_visibility="collapsed",
+        )
+        page = page or "Data"
 
         source = state.get_source()
         if source is None:
@@ -99,6 +113,8 @@ def main() -> None:
     page_data.active_jobs_banner()
 
     PAGES[page]()
+
+    theme_css.render_footer()
 
 
 if __name__ == "__main__":

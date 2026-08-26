@@ -70,8 +70,10 @@ def runtime_badge(runtime: Runtime | None = None) -> None:
     }.get(runtime.device, runtime.device)
 
     st.caption(
-        f"myogait `{runtime.myogait_version or 'not installed'}` &middot; "
-        f"gaitkit `{runtime.gaitkit_version or 'absent'}` &middot; {device_label}"
+        f"[myogait](https://github.com/IDMDataHub/myogait) "
+        f"`{runtime.myogait_version or 'not installed'}` &middot; "
+        f"[gaitkit](https://github.com/IDMDataHub/gaitkit) "
+        f"`{runtime.gaitkit_version or 'absent'}` &middot; {device_label}"
     )
     if not runtime.accelerated:
         st.caption(

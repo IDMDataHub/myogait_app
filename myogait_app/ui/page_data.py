@@ -28,7 +28,7 @@ from ..runtime import (
 )
 from ..settings import SETTINGS
 from ..validation import validate_pivot
-from ..storage import exceeds_in_memory_warning, is_ticket, store_uploaded_file
+from ..storage import exceeds_in_memory_warning, store_uploaded_file
 from . import state
 from .components import (
     empty_state,
@@ -93,7 +93,7 @@ def render() -> None:
         st.divider()
 
     tab_json, tab_cohort, tab_c3d, tab_video, tab_ticket = st.tabs(
-        ["Pivot JSON", "Cohort", "C3D", "Video -> extraction", "Recover a job"]
+        ["Pivot JSON", "Cohort", "C3D", "Video -> extraction", "Jobs"]
     )
 
     with tab_json:
@@ -858,34 +858,24 @@ def _render_job(job, manager: JobManager) -> None:
 
 
 def _ticket_tab() -> None:
+    """Every extraction, listed directly -- no ticket to type or remember.
+
+    An extraction keeps running after you close the tab; results are kept for
+    the retention window. Newest first, each with Analyse / Stop inline.
+    """
     st.caption(
-        "An extraction keeps running after you close the tab. Come back with the "
-        f"ticket within {SETTINGS.retention_hours} hours to collect the result."
+        "Every extraction on this machine, newest first. Kept for "
+        f"{SETTINGS.retention_hours} h. Analyse a finished one, or stop a "
+        "running one, right here."
     )
-    raw = st.text_input("Ticket", placeholder="MG-XXXX-XXXX").strip().upper()
-
-    if raw:
-        if not is_ticket(raw):
-            st.error("That is not a valid ticket. The shape is MG-XXXX-XXXX.")
-            return
-        job = job_manager().get(raw)
-        if job is None:
-            st.warning(
-                "No job under that ticket. It may have been purged after "
-                f"{SETTINGS.retention_hours} hours."
-            )
-            return
-        state.remember_ticket(raw)
-        _render_job(job, job_manager())
-
-    known = state.known_tickets()
-    if known:
-        st.divider()
-        st.caption("Tickets issued in this session")
-        for ticket in known:
-            st.code(ticket, language=None)
-    else:
+    manager = job_manager()
+    jobs = manager.list_jobs()
+    if not jobs:
         empty_state(
-            "No ticket yet.",
-            "Start an extraction from the Video tab and one will be issued.",
+            "No extraction yet.",
+            "Start one from the Video tab; it will appear here and in the bar "
+            "at the top of the page.",
         )
+        return
+    for job in jobs:
+        _render_job(job, manager)

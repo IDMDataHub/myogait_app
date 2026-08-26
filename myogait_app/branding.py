@@ -55,11 +55,13 @@ class Branding:
     ink_muted_light: str = "#5b6461"
     border_light: str = "#b9b6ac"
 
-    surface_dark: str = "#e8e8e2"
-    surface_dark_secondary: str = "#dedcd4"
-    ink_dark: str = "#16181a"
-    ink_muted_dark: str = "#5b6461"
-    border_dark: str = "#b9b6ac"
+    # "Nocturne" dark ground -- the art-directed dark world (bg / surface /
+    # near-white ink / neutral-500 muted / neutral-800 hairline).
+    surface_dark: str = "#161826"
+    surface_dark_secondary: str = "#232532"
+    ink_dark: str = "#e9e9ed"
+    ink_muted_dark: str = "#9397ab"
+    border_dark: str = "#3f424d"
 
     #: The one saturated colour in the interface chrome, reserved for the
     #: active/interactive element only -- never scattered as page texture.
@@ -67,7 +69,9 @@ class Branding:
     #: primaries (red/blue/black all pair with near-white) -- see
     #: ``accent_ink_for`` below and its call sites.
     accent: str = "#e0a80f"
-    accent_dark: str = "#e0a80f"
+    #: Nocturne's single accent voice: blurple, sits at accent-500 on the
+    #: dark ground (the paper world keeps the Bauhaus gold above).
+    accent_dark: str = "#9184d9"
     accent_soft: str = "#f0d386"
     #: Same hue as ``accent``, darkened (OKLCH L 0.763 -> 0.465) for any
     #: use as a *mark on the paper ground itself* rather than a filled
@@ -78,7 +82,8 @@ class Branding:
     #: vanishing into the paper. 5.8:1 on surface_light, 5.2:1 on
     #: surface_light_secondary -- see scripts/validate_palette.py.
     accent_mark: str = "#7f4c00"
-    accent_mark_dark: str = "#7f4c00"
+    #: Accent-400: a blurple mark that stays legible on the dark ground.
+    accent_mark_dark: str = "#b5abfc"
 
     # ── Data-viz palette: unchanged by this redesign ────────────────
     #
@@ -126,19 +131,23 @@ class Branding:
     #: ink rather than a second saturated hue. Large lightness *and* hue
     #: separation, so it survives protan/deutan simulation same as the
     #: pair it replaces -- reconfirm with scripts/validate_palette.py.
+    #: Left / right limb on the Nocturne dark ground: a blue and an orange,
+    #: both at a lightness that clears 3:1 on #161826 and the safest
+    #: protan/deutan pair -- reconfirm with scripts/validate_palette.py.
     side_colors: dict = field(
-        default_factory=lambda: {"left": "#1c4fb0", "right": "#16181a"}
+        default_factory=lambda: {"left": "#4a90e2", "right": "#e8894e"}
     )
 
     #: Normative band. Deliberately achromatic: the reference is context,
     #: not a series, and must never compete with the patient curve.
     normative: str = "#898781"
 
-    #: Chart chrome, matched to this redesign's warm paper ground.
+    #: Chart chrome. Light values for the paper ground; dark values are a
+    #: whisper of grid on the Nocturne ground, not the bright paper lines.
     grid: str = "#c9c7bf"
-    grid_dark: str = "#c9c7bf"
+    grid_dark: str = "#2a2d3a"
     axis: str = "#b9b6ac"
-    axis_dark: str = "#b9b6ac"
+    axis_dark: str = "#3f424d"
     #: Kept for call sites that do not (yet) branch on ``dark`` -- prefer
     #: ``ink_muted_light``/``ink_muted_dark`` in any new code.
     ink_muted: str = "#5b6461"

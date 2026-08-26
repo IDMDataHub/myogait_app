@@ -23,11 +23,10 @@ from ..branding import BRANDING
 TEMPLATE_LIGHT = "myogait_light"
 TEMPLATE_DARK = "myogait_dark"
 
-#: Helvetica Neue: the international-typographic-style workhorse this
-#: identity's world is built from (see .streamlit/config.toml, which
-#: loads it for the whole UI too, so charts and chrome read as one
+#: Inter: the Nocturne identity's typeface (see .streamlit/config.toml,
+#: which loads it for the whole UI too, so charts and chrome read as one
 #: typeface, not two).
-_FONT = "Helvetica Neue, Helvetica, Arial, -apple-system, 'Segoe UI', sans-serif"
+_FONT = "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif"
 
 
 def _build(dark: bool) -> go.layout.Template:

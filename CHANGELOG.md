@@ -5,6 +5,22 @@ yet tag releases, so entries are dated rather than versioned. Newest first.
 Every entry below is attributed to its actual author; where that is not
 stated, it is Romain Feigean.
 
+## 0.3.0 — 2026-08-26 (Frédéric Fer)
+
+- **"Nocturne" visual identity.** A dark Bauhaus/constructivist ground with a
+  single blurple accent and Inter throughout: an underlined, capitalised
+  wordmark with a geometric mark; page navigation as real pressed-button
+  pills; outlined buttons; rules that fade to transparent at both ends;
+  tracked-uppercase micro-labels; cards and metrics as hairline surfaces; and
+  the walker illustration dimmed to a faint fixed texture behind the app.
+  New `theme_css` module; `.streamlit/config.toml` and `branding` mirror the
+  tokens (charts and chrome share Inter and the dark ground).
+- **Jobs, not tickets.** The "Recover a job" tab is now a **Jobs** list that
+  shows every extraction directly (Analyse / Stop inline) — no ticket to type.
+- **Credits & links.** A discreet footer with the AIM and Téléthon marks
+  (tinted to the ground), clickable GitHub links for myogait / gaitkit / this
+  app, and a contact address; the version badge links the packages too.
+
 ## 0.2.1 — 2026-08-25 (Frédéric Fer)
 
 - **Persistent extraction status.** A running extraction now shows in a banner
