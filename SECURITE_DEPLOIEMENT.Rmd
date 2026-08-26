@@ -1,0 +1,174 @@
+---
+title: "Sécurité et déploiement de MyoGait"
+subtitle: "Recommandations pour une installation locale et une diffusion maîtrisée"
+author: "Équipe MyoGait"
+date: "2026-08-26"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: readable
+  pdf_document:
+    toc: true
+lang: fr
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+## Objet et périmètre
+
+MyoGait est un outil de recherche d'analyse de la marche. Il ne doit pas être
+présenté comme un dispositif de diagnostic ni comme une décision clinique
+automatisée. Ce document couvre ce que les dépôts `myogait` et `myogait_app`
+peuvent garantir ; l'hébergeur reste responsable de son poste, de son réseau,
+des identités et des données qu'il lui confie.
+
+La cible prioritaire est le **poste local d'un chercheur**. L'application doit
+alors rester accessible uniquement depuis `localhost` et son espace de travail
+doit être placé sur un volume chiffré. Une exposition réseau ou un usage par
+plusieurs personnes requiert les mesures complémentaires décrites plus bas.
+
+## État actuel
+
+Le projet possède déjà plusieurs protections utiles : processus de service non
+root, espace de travail distinct du code, rétention des fichiers, protection
+XSRF Streamlit et tests automatisés. Ces mesures ne remplacent cependant ni
+l'authentification, ni le chiffrement du poste, ni une installation
+reproductible.
+
+Les données de mouvement et les vidéos peuvent constituer des données
+personnelles sensibles. Il ne faut ni les ajouter au dépôt Git, ni les copier
+dans une synchronisation cloud non approuvée.
+
+## Priorité P0 — installation reproductible et contrôlée
+
+### Interdire les installations implicites pendant une analyse
+
+Un job ne doit jamais exécuter `pip install` ou télécharger du code depuis GitHub
+sans action explicite de l'utilisateur. Une telle installation dépend de l'état
+instantané d'un dépôt distant, modifie l'environnement d'analyse et empêche de
+reproduire facilement un résultat.
+
+Les fonctionnalités lourdes restent disponibles, mais sont installées une fois,
+avant l'analyse, comme composants optionnels. L'interface peut proposer un
+bouton d'installation ; il doit alors afficher la version, la taille attendue,
+l'exigence d'accès Internet et le résultat de l'opération. Il ne doit installer
+qu'une distribution ou un commit immuable préalablement déclaré.
+
+### Dépendances et modèles
+
+- publier et installer des wheels versionnés ;
+- produire un fichier de verrouillage avec versions et hashes pour les
+  installations de production ;
+- vérifier les hashes avec `pip install --require-hashes` ;
+- conserver les modèles téléchargés avec leur version, leur empreinte SHA-256,
+  leur licence et leur source ;
+- enregistrer dans chaque export les versions de Python, `myogait`,
+  `myogait_app`, des dépendances, du modèle et de la configuration ;
+- fournir une procédure d'installation hors ligne (wheelhouse) lorsque le poste
+  de recherche ne peut pas accéder à Internet.
+
+Un bouton « Vérifier les composants » et un bouton « Mettre à jour » doivent
+être distincts de l'action « Analyser ». La mise à jour doit pouvoir être
+refusée afin de conserver un environnement d'étude stable.
+
+## Priorité P0 — documents et gouvernance du projet
+
+Les dépôts doivent fournir les éléments suivants :
+
+- `SECURITY.md` : versions maintenues, canal de signalement privé et délai de
+  réponse indicatif ;
+- guide administrateur : installation, mise à jour, sauvegarde, restauration,
+  emplacement des données et procédure d'incident ;
+- guide utilisateur : limites scientifiques, données nécessaires et rappel
+  explicite « recherche / non diagnostique » ;
+- politique de release : version sémantique, notes de version, tests exigés,
+  artefacts signés ou vérifiables ;
+- inventaire des dépendances (SBOM) joint à chaque release ;
+- modèle de menace concis, révisé lorsqu'une nouvelle source de données ou un
+  nouveau backend est ajouté.
+
+## Uploads et analyses : responsabilités partagées
+
+Le logiciel doit conserver des validations pragmatiques qui ne bloquent pas les
+flux scientifiques : extensions autorisées, taille maximale configurable,
+fichiers stockés sous un nom généré, contrôles de structure des JSON/C3D et
+messages d'erreur compréhensibles. La validation du type envoyé par le navigateur
+ne suffit pas seule.
+
+L'antivirus, l'isolation forte des parseurs, les quotas de disque ou de CPU et
+la politique réseau sont des contrôles de l'environnement de déploiement. Le
+projet doit les documenter et offrir des réglages adaptés, sans prétendre les
+imposer depuis GitHub.
+
+## Déploiement local recommandé
+
+```bash
+# Répertoire hors dépôt, sur un volume chiffré et accessible au seul utilisateur.
+export MYOGAIT_APP_WORKSPACE="$HOME/Documents/myogait-workspace"
+export MYOGAIT_APP_RETENTION_HOURS=24
+streamlit run app.py --server.address 127.0.0.1
+```
+
+- utiliser un compte utilisateur individuel et verrouiller la session ;
+- préserver uniquement les exports autorisés dans une sauvegarde chiffrée ;
+- ne pas synchroniser les vidéos brutes vers un cloud personnel ;
+- limiter le dossier surveillé aux projets prévus ;
+- garder l'application et les modèles à jour selon une fenêtre de maintenance
+  documentée, jamais au milieu d'une étude reproductible.
+
+## Déploiement institutionnel : prérequis hors dépôt
+
+Avant toute exposition au réseau ou ouverture à plusieurs utilisateurs :
+
+- HTTPS, pare-feu et accès VPN ou réseau institutionnel ;
+- authentification OIDC et autorisations par utilisateur/projet ;
+- séparation des espaces de travail et journal d'audit ne contenant pas de
+  données cliniques brutes ;
+- chiffrement des volumes et des sauvegardes, avec restauration testée ;
+- compte de service dédié, permissions restrictives et limites de ressources ;
+- reverse proxy avec limites de taille et de débit adaptées aux usages ;
+- analyse par un DPO/juriste lorsque des données de santé sont traitées.
+
+Le service systemd fourni est une base. Son durcissement doit être adapté au
+matériel : par exemple, l'accès à un GPU peut être incompatible avec une règle
+générale `PrivateDevices=true`. Il faut appliquer le principe du moindre
+privilège au cas de déploiement réel, et tester chaque profil matériel.
+
+## Qualité, vérification et publication
+
+Chaque modification doit exécuter les tests relatifs au dépôt modifié. La CI
+doit au minimum construire le wheel, l'installer dans un environnement propre,
+exécuter les tests unitaires et les tests d'interface, puis vérifier les
+vulnérabilités des dépendances. Les évolutions de parseurs, de chemins de
+fichiers, de stockage et d'installation méritent des tests de sécurité dédiés.
+
+Avant une release :
+
+1. tests, linter et vérification de types réussis ;
+2. installation propre validée depuis le wheel ;
+3. dépendances et modèles inventoriés ;
+4. notes de version et compatibilités renseignées ;
+5. procédure de retour arrière documentée ;
+6. aucun fichier de participant, secret ou jeton dans l'artefact.
+
+## Références
+
+- OWASP, *File Upload Cheat Sheet* : validation en profondeur et stockage sûr
+  des fichiers transmis par les utilisateurs.
+- pip, *Secure installs* : verrouillage, hashes et installations répétables.
+- Streamlit, *User authentication and information* : authentification OIDC ;
+  elle doit être complétée par les autorisations applicatives.
+- Commission européenne, *When is a DPIA required?* : une AIPD/DPIA est requise
+  lorsqu'un traitement est susceptible d'engendrer un risque élevé, notamment
+  pour des données sensibles à grande échelle.
+
+## Décision de produit
+
+La prochaine étape maintient toutes les fonctionnalités de MyoGait : installer
+les composants depuis l'interface reste possible, mais devient une action
+volontaire, versionnée et journalisée, séparée de l'analyse. Le projet fournit
+des outils fiables et une documentation complète ; la sécurité de l'hébergement
+partagé reste la responsabilité conjointe de l'institution qui le déploie.
