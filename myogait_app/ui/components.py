@@ -405,3 +405,88 @@ def empty_state(message: str, hint: str = "") -> None:
     st.info(message)
     if hint:
         st.caption(hint)
+
+
+def source_loader(message: str, hint: str = "") -> None:
+    """An empty state that can actually load a recording, not just explain.
+
+    Every analysis page reads one source from session state; with none set
+    the page used to dead-end on a message and send the user off to Data.
+    This offers the two ways in on the spot -- pick a finished extraction, or
+    jump to Data to start or upload one -- so nobody has to leave to get
+    unstuck. Safe to drop on any single-source page.
+    """
+    from ..jobs import DONE, JobManager  # lazy: keep the import graph shallow
+
+    st.info(message)
+    if hint:
+        st.caption(hint)
+
+    done = [j for j in JobManager(SETTINGS).list_jobs() if j.status == DONE]
+    with st.container(border=True):
+        if done:
+            st.markdown("**Load a finished extraction**")
+
+            def _label(job) -> str:
+                study = job.study or {}
+                meta = " · ".join(
+                    x for x in (study.get("patient_id"), study.get("condition")) if x
+                )
+                text = f"{job.video_name} — {job.model}"
+                return f"{text}  ({meta})" if meta else text
+
+            choice = st.selectbox(
+                "Finished extractions", done, format_func=_label,
+                key=f"loader_pick_{message}", label_visibility="collapsed",
+            )
+            columns = st.columns([3, 2])
+            if columns[0].button(
+                "Load this recording", type="primary", use_container_width=True,
+                key=f"loader_load_{message}",
+            ):
+                path = choice.result_path(SETTINGS)
+                if path:
+                    _install_pivot(path, f"{choice.video_name} [{choice.model}]")
+                else:
+                    st.error("The result file is gone - it may have been purged.")
+            _to_data(columns[1], key=f"loader_data_{message}")
+        else:
+            st.caption("No finished extraction on this machine yet.")
+            _to_data(st, key=f"loader_data_{message}")
+
+
+def _to_data(container, key: str) -> None:
+    """A button that jumps to the Data page (start or upload a recording)."""
+    if container.button(
+        "Go to Data", use_container_width=True, key=key,
+    ):
+        st.session_state["nav_page"] = "Data"
+        st.rerun()
+
+
+def _install_pivot(path, name: str) -> None:
+    """Read a pivot file and install it as the current source."""
+    from ..validation import validate_pivot
+
+    try:
+        from myogait import load_json
+
+        data = load_json(str(path))
+    except Exception as exc:
+        st.error(f"Could not read the pivot file: {type(exc).__name__}: {exc}")
+        return
+
+    errors = validate_pivot(data)
+    if errors:
+        st.error("Invalid myogait pivot: " + " ".join(errors))
+        return
+
+    model = str((data.get("extraction") or {}).get("model") or "unknown")
+    state.set_source(
+        state.Source(
+            kind="json", name=name, data=data,
+            key=state.source_key(name, (path.stat().st_size, path.stat().st_mtime)),
+            model=model, path=path,
+        )
+    )
+    st.rerun()

@@ -24,7 +24,7 @@ from ..runtime import get_runtime
 from ..settings import SETTINGS
 from ..storage import path_is_within_root
 from . import state
-from .components import empty_state, page_header
+from .components import page_header, source_loader
 
 DEGRADATION_HELP = {
     "target_fps": "Resample to this frame rate before extraction.",
@@ -69,10 +69,10 @@ def _vicon_tab(runtime) -> None:
 
     source = state.get_source()
     if source is None:
-        empty_state(
+        source_loader(
             "Nothing loaded.",
-            "The alignment compares a myogait result against a VICON trial - load "
-            "the myogait side first.",
+            "The alignment compares a myogait result against a VICON trial - "
+            "pick the myogait side below, or go to Data to load it.",
         )
         return
 

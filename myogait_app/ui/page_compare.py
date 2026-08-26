@@ -29,7 +29,7 @@ from ..pipeline import (
 )
 from ..runtime import get_runtime
 from . import state
-from .components import chart, empty_state, is_dark, page_header
+from .components import chart, empty_state, is_dark, page_header, source_loader
 
 #: Parameters a sweep can vary, each as (label, stage, field, values-builder).
 SWEEP_SPECS = {
@@ -60,9 +60,10 @@ def render() -> None:
 def _sweep_tab() -> None:
     source = state.get_source()
     if source is None:
-        empty_state(
+        source_loader(
             "Nothing loaded.",
-            "A sweep varies one parameter on a fixed recording - load one first.",
+            "A sweep varies one parameter on a fixed recording - pick a "
+            "finished extraction below, or go to Data to load one.",
         )
         return
 

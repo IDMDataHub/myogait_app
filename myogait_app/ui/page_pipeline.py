@@ -27,6 +27,7 @@ from .components import (
     is_dark,
     page_header,
     reproducibility_panel,
+    source_loader,
     source_summary,
     stage_status,
 )
@@ -39,9 +40,10 @@ def render() -> None:
     source = state.get_source()
     if source is None:
         page_header("Pipeline explorer")
-        empty_state(
+        source_loader(
             "Nothing loaded.",
-            "Open the Data page and load a pivot JSON or a video.",
+            "Pick a finished extraction below, or go to Data to load a pivot "
+            "JSON or a video.",
         )
         return
 

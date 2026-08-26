@@ -870,7 +870,10 @@ def _selection_actions(selected: list) -> None:
 
     if len(selected) == 1:
         job = selected[0]
-        if st.button("Analyse", type="primary", use_container_width=True):
+        if st.button(
+            "Analyse", type="primary", use_container_width=True,
+            key="sel_action_analyse",
+        ):
             path = job.result_path(SETTINGS)
             if path:
                 _load_pivot(path, f"{job.video_name} [{job.model}]")
@@ -881,7 +884,9 @@ def _selection_actions(selected: list) -> None:
     # Two or more: the feasible move is a pooled read -- which compares
     # conditions on its own when the selection spans several.
     label = "Compare conditions" if len(conditions) >= 2 else "Open as cohort"
-    if st.button(label, type="primary", use_container_width=True):
+    if st.button(
+        label, type="primary", use_container_width=True, key="sel_action_cohort",
+    ):
         from ..pooling import load_runs
 
         paths = [p for p in (j.result_path(SETTINGS) for j in selected) if p]

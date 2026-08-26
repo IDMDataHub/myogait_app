@@ -22,7 +22,7 @@ from ..provenance import write_provenance
 from ..runtime import get_runtime
 from ..settings import SETTINGS
 from . import state
-from .components import empty_state, page_header, reproducibility_panel
+from .components import page_header, reproducibility_panel, source_loader
 
 #: myogait plotting functions, with what each one needs.
 FIGURE_SPECS: dict[str, dict] = {
@@ -50,7 +50,10 @@ def render() -> None:
     source = state.get_source()
     if source is None:
         page_header("Export")
-        empty_state("Nothing loaded.", "Load a recording on the Data page first.")
+        source_loader(
+            "Nothing loaded.",
+            "Pick a finished extraction below, or go to Data to load one.",
+        )
         return
 
     config = state.get_config()
