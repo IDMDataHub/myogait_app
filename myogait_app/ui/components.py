@@ -115,13 +115,17 @@ def chart(fig, key: str | None = None) -> None:
 #: added later, or page_pool.render() called with a title not yet wired
 #: into app.py's nav) still renders correctly via the "--" fallback.
 _PAGE_META: dict[str, tuple[str, str]] = {
-    "Data": ("01", "Load & inspect"),
+    # Top-level screens carry the folio the nav reads by.
+    "New assessment": ("01", "Capture"),
+    "Analysis": ("02", "Read the study"),
+    "Advanced": ("03", "Research tools"),
+    "Reference": ("04", "Function reference"),
+    # Nested views (shown inside a tab or a scope) keep their own eyebrow.
     "Pipeline explorer": ("02", "Parametric explorer"),
     "Comparator": ("03", "Colour encodes method"),
     "Longitudinal": ("04", "Track over time"),
     "Export": ("05", "Data & figures out"),
     "Experimental": ("06", "AIM benchmark"),
-    "Reference": ("07", "Function reference"),
     "Cohort": ("08", "Study by condition"),
 }
 
