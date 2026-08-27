@@ -88,11 +88,6 @@ class RunResult:
         return self.kind == "vicon"
 
     @property
-    def pair_key(self) -> tuple[str, str]:
-        """Identity a video run and its marker reference share."""
-        return (self.patient, self.run)
-
-    @property
     def n_cycles(self) -> int:
         return len((self.cycles or {}).get("cycles", []))
 
