@@ -27,8 +27,8 @@ from ..charts import kinematics as K
 from ..pipeline import (
     PipelineRunner,
 )
+from ..pivot_io import load_uploaded_pivot
 from ..runtime import get_runtime
-from ..storage import store_uploaded_file
 from . import state
 from .components import chart, empty_state, is_dark, page_header, source_loader
 
@@ -196,11 +196,8 @@ def _models_tab() -> None:
 
     progress = st.progress(0.0, text="Processing...")
     for index, item in enumerate(uploaded):
-        target = store_uploaded_file(workspace, item, item.name)
         try:
-            from myogait import load_json
-
-            data = load_json(str(target))
+            data = load_uploaded_pivot(workspace, item, item.name)
         except Exception as exc:
             st.caption(f"`{item.name}` could not be read: {exc}")
             continue
