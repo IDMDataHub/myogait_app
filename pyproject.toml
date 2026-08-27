@@ -43,13 +43,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Every pose backend myogait implements, in one shot. Deliberately not
-# myogait's own [all]/[full] shorthand: those bundle two extras that break
-# a plain `pip install` (ezc3d>=2.0, never published; intel-extension-for-
-# pytorch, not on PyPI) -- see requirements.txt for the full reasoning.
-# Small, explicit profiles. Select only the pose backend needed for a study:
-# model stacks pull sizeable frameworks (notably torch), so they must not be
-# implied by the standard local install.
+# Small, explicit profiles. Select only the backend needed for a study.
 mediapipe = ["myogait[mediapipe]>=0.8.2"]
 yolo = ["myogait[yolo]>=0.8.2"]
 research = ["myogait[excel,yaml,loess,wavelet]>=0.8.2"]

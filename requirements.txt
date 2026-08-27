@@ -2,36 +2,8 @@
 streamlit>=1.38
 plotly>=5.24
 
-# Core toolkit -- tracked from the repository as requested, so the app
-# always exercises the latest myogait rather than a frozen PyPI release.
-# Pin to a tag here if a study needs a reproducible environment.
-#
-# Every pose backend myogait implements is requested here, so the Data
-# page's model picker is usable out of the box rather than needing a
-# per-backend install after the fact -- deliberately not via myogait's
-# own [all]/[full] shorthand, because both bundle two extras that break
-# a plain `pip install` outright:
-#
-# - [c3d] pins ezc3d>=2.0, and PyPI has never published an ezc3d 2.x
-#   wheel (1.7.2 is the latest as of this writing) -- requesting it
-#   fails the entire install with "No matching distribution found for
-#   ezc3d>=2.0" on every platform. C3D import only needs ezc3d itself
-#   (any version it can resolve); C3D export needs the separate `c3d`
-#   package. Both are listed below, unbundled, so both features work
-#   without pulling in the broken pin.
-# - [intel] (intel-extension-for-pytorch) has no distribution on PyPI
-#   under any version for a plain `pip install` to find -- confirmed
-#   with `pip install "myogait[full]" --dry-run`, which fails outright
-#   on it before even reaching anything else. It stays a documented
-#   manual step below, for the machines that can actually use it.
-#
-# [mmpose] is left out for a different reason: myogait's own [all]/
-# [full] extras -- which bundle everything else, including the other
-# heavy GPU backends -- exclude it too. OpenMMLab's usual install path
-# resolves mmcv through its own `mim install`, not plain pip, and a
-# bare `pip install mmpose` frequently cannot resolve a matching mmcv
-# build at all. Matching the upstream author's own exclusion here
-# rather than second-guessing it; it stays a documented manual step.
+# Experimental all-backends profile. Normal installs should use
+# `pip install .`; compatibility notes and manual backends are in README.
 myogait[mediapipe,yolo,vitpose,rtmw,sapiens,sapiens2,alphapose,detectron2,excel,yaml,loess,wavelet] @ git+https://github.com/IDMDataHub/myogait.git@master
 ezc3d
 c3d>=0.5
@@ -42,15 +14,7 @@ numpy>=1.24
 pandas>=2.0
 matplotlib>=3.7
 
-# Left out above, on purpose -- see the long comment on the core toolkit
-# line for why each one specifically:
+# Manual backends (see README for supported versions):
 #   pip install mmpose mmdet openmim   # RTMPose-m / HRNet-W48 (openmim recommended over plain pip)
 #   pip install intel-extension-for-pytorch   # Intel Arc / Xe acceleration
 #   pip install "git+https://github.com/facebookresearch/detectron2.git"  # Keypoint R-CNN; not on PyPI, needs a C++ toolchain
-#
-# Sapiens 2 weights are a separate, multi-gigabyte download from the
-# package install above -- not a manual step, though: the app fetches a
-# size's weights automatically the first time it is selected for an
-# extraction (myogait_app/jobs.py::_fetch_sapiens2_weights), and every
-# later extraction with that size finds them already cached. See the
-# README's Model licenses section before using Sapiens or Sapiens 2.
