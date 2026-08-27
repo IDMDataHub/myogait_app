@@ -86,30 +86,34 @@ _CSS = """
   font-size: 0.68rem !important; font-weight: 700 !important;
   letter-spacing: 1.6px; text-transform: uppercase;
 }}
+/* Main-area toggles are OUTLINED boxes with a small colour square when active
+   -- like the joint/side and filter-order selectors in the reference visual --
+   not a solid dark fill. Idle: hairline border. Active: ink border + a subtle
+   paper lift + a yellow marker square. (The sidebar nav overrides this with
+   its own numbered-list treatment.) */
+[data-testid="stPills"] button {{
+  border-color: var(--rule) !important; color: var(--ink) !important;
+}}
 [data-testid="stPills"] button[aria-checked="true"],
 [data-testid="stPills"] button[aria-selected="true"],
-[data-testid="stPills"] button[kind="pillsActive"] {{
-  background: var(--ink) !important; color: var(--paper) !important;
-  box-shadow: none !important;
+[data-testid="stPills"] button[kind="pillsActive"],
+[data-testid="stSegmentedControl"] button[aria-checked="true"],
+[data-testid="stSegmentedControl"] button[aria-selected="true"] {{
+  background: var(--paper) !important; color: var(--ink) !important;
+  border: 2px solid var(--ink) !important; box-shadow: none !important;
 }}
-
-/* Active toggles carry a small yellow marker square, like the joint/side and
-   order selectors -- the constructivist "you are here". Segmented control
-   too. The sidebar nav overrides this with its own positioned square. */
 [data-testid="stPills"] button[aria-checked="true"]::after,
+[data-testid="stPills"] button[aria-selected="true"]::after,
+[data-testid="stPills"] button[kind="pillsActive"]::after,
 [data-testid="stSegmentedControl"] button[aria-checked="true"]::after,
 [data-testid="stSegmentedControl"] button[aria-selected="true"]::after {{
-  content: ""; display: inline-block; width: 9px; height: 9px;
+  content: ""; display: inline-block; width: 10px; height: 10px;
   margin-left: 0.55rem; background: var(--yellow); flex-shrink: 0;
 }}
 [data-testid="stSegmentedControl"] button {{
-  border-radius: 0 !important; border: 2px solid var(--ink) !important;
+  border-radius: 0 !important; border: 2px solid var(--rule) !important;
   background: transparent !important; color: var(--ink) !important;
   font-weight: 700 !important; letter-spacing: 1.4px; text-transform: uppercase;
-}}
-[data-testid="stSegmentedControl"] button[aria-checked="true"],
-[data-testid="stSegmentedControl"] button[aria-selected="true"] {{
-  background: var(--ink) !important; color: var(--paper) !important;
 }}
 
 /* Sidebar nav as a numbered list (folio + label), like the config sections:
