@@ -93,33 +93,34 @@ _CSS = """
   box-shadow: none !important;
 }}
 
-/* Sidebar nav pills get a Bauhaus colour each -- outlined when idle, filled
-   with the same colour when active. New assessment=red, Analysis=blue,
-   Advanced=yellow, Reference=ink. Scoped to the sidebar so the Analysis
-   scope-pills in the main column keep the plain ink treatment above. */
-[data-testid="stSidebar"] [data-testid="stPills"] button:nth-of-type(1) {{
-  border-color: var(--red) !important; color: var(--red) !important;
+/* Sidebar nav as a numbered list (folio + label), like the config sections:
+   a muted monospace folio, an uppercase label, and the active row lifted to
+   the lighter paper with a small yellow marker. Scoped to the sidebar so the
+   Analysis scope-pills in the main column keep the plain pressed-box look. */
+[data-testid="stSidebar"] [data-testid="stPills"] {{ width: 100%; }}
+[data-testid="stSidebar"] [data-testid="stPills"] button {{
+  display: flex !important; width: 100% !important;
+  justify-content: flex-start !important; align-items: center;
+  border: none !important; border-bottom: 1px solid var(--rule) !important;
+  background: transparent !important; color: var(--ink) !important;
+  padding: 0.62rem 0.55rem !important; position: relative;
+  font-size: 0.72rem !important; letter-spacing: 1.6px;
 }}
-[data-testid="stSidebar"] [data-testid="stPills"] button:nth-of-type(2) {{
-  border-color: var(--blue) !important; color: var(--blue) !important;
+[data-testid="stSidebar"] [data-testid="stPills"] button::before {{
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  color: var(--muted); font-weight: 700; font-size: 0.7rem;
+  margin-right: 0.9rem; min-width: 1.4em;
 }}
-[data-testid="stSidebar"] [data-testid="stPills"] button:nth-of-type(3) {{
-  border-color: var(--mark) !important; color: var(--mark) !important;
+[data-testid="stSidebar"] [data-testid="stPills"] button:nth-of-type(1)::before {{ content: "01"; }}
+[data-testid="stSidebar"] [data-testid="stPills"] button:nth-of-type(2)::before {{ content: "02"; }}
+[data-testid="stSidebar"] [data-testid="stPills"] button:nth-of-type(3)::before {{ content: "03"; }}
+[data-testid="stSidebar"] [data-testid="stPills"] button:nth-of-type(4)::before {{ content: "04"; }}
+[data-testid="stSidebar"] [data-testid="stPills"] button[aria-checked="true"] {{
+  background: var(--paper) !important; color: var(--ink) !important;
 }}
-[data-testid="stSidebar"] [data-testid="stPills"] button:nth-of-type(4) {{
-  border-color: var(--ink) !important; color: var(--ink) !important;
-}}
-[data-testid="stSidebar"] [data-testid="stPills"] button:nth-of-type(1)[aria-checked="true"] {{
-  background: var(--red) !important; color: var(--paper) !important; border-color: var(--ink) !important;
-}}
-[data-testid="stSidebar"] [data-testid="stPills"] button:nth-of-type(2)[aria-checked="true"] {{
-  background: var(--blue) !important; color: var(--paper) !important; border-color: var(--ink) !important;
-}}
-[data-testid="stSidebar"] [data-testid="stPills"] button:nth-of-type(3)[aria-checked="true"] {{
-  background: var(--yellow) !important; color: var(--ink) !important; border-color: var(--ink) !important;
-}}
-[data-testid="stSidebar"] [data-testid="stPills"] button:nth-of-type(4)[aria-checked="true"] {{
-  background: var(--ink) !important; color: var(--paper) !important;
+[data-testid="stSidebar"] [data-testid="stPills"] button[aria-checked="true"]::after {{
+  content: ""; position: absolute; right: 9px; top: 50%;
+  width: 12px; height: 12px; margin-top: -6px; background: var(--yellow);
 }}
 
 /* Numbered sidebar sections: "1." .. "4." get the folio treatment. */
