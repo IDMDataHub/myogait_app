@@ -19,6 +19,7 @@ import streamlit as st
 
 from ..pipeline import PipelineResult
 from ..provenance import write_provenance
+from ..quality import assess_quality
 from ..runtime import get_runtime
 from ..settings import SETTINGS
 from . import state
@@ -476,13 +477,25 @@ def _run_export(
         st.error(f"{label} failed: {type(exc).__name__}: {exc}")
         return
 
+    source = state.get_source()
+    result = state.get_runner().run(state.get_config()) if source else PipelineResult()
+    provenance_context = {
+        "source_data": source.data if source else None,
+        "source_key": source.key if source else None,
+        "source_kind": source.kind if source else None,
+        "model": source.model if source else None,
+        "quality": assess_quality(result.data, result.cycles),
+    }
+
     if zip_directory:
         import shutil
 
         if not target.is_dir():
             st.error(f"{label} reported success but wrote no directory.")
             return
-        provenance_path = write_provenance(target / "provenance.json", state.get_config())
+        provenance_path = write_provenance(
+            target / "provenance.json", state.get_config(), **provenance_context
+        )
         archive = shutil.make_archive(str(target), "zip", root_dir=str(target))
         payload = Path(archive).read_bytes()
         filename = Path(archive).name
@@ -492,7 +505,9 @@ def _run_export(
             st.error(f"{label} reported success but wrote no file.")
             return
         provenance_path = write_provenance(
-            target.with_suffix(target.suffix + ".provenance.json"), state.get_config()
+            target.with_suffix(target.suffix + ".provenance.json"),
+            state.get_config(),
+            **provenance_context,
         )
         payload = target.read_bytes()
         filename = target.name
