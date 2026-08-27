@@ -491,8 +491,9 @@ def _load_c3d(
 def _video_tab() -> None:
     runtime = get_runtime()
     runtime_badge(runtime)
+    availability = runtime.backend_availability()
 
-    if not runtime.available_backends:
+    if not any(availability.values()):
         st.warning(
             "No pose backend's package is installed yet -- pick one below and "
             "install it, for example: `pip install \"myogait[mediapipe]\"`."
@@ -501,7 +502,7 @@ def _video_tab() -> None:
     labels = {
         b.name: f"{b.label} - {b.keypoints} kp"
         + (f" [{b.weight}]" if b.weight != "light" else "")
-        + ("" if b.available else " (not installed)")
+        + ("" if availability[b.name] else " (not installed)")
         for b in BACKENDS
     }
     model = st.selectbox(
@@ -524,7 +525,7 @@ def _video_tab() -> None:
     if chosen and chosen.note:
         st.caption(chosen.note)
 
-    if chosen and not chosen.available:
+    if chosen and not availability[chosen.name]:
         st.warning(f"**{chosen.label}** is not installed. {chosen.install_hint}")
 
     device_choice = st.selectbox(

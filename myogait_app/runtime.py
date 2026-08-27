@@ -138,7 +138,12 @@ class BackendInfo:
 
     @property
     def available(self) -> bool:
-        live = _myogait_backend_availability()
+        return self.is_available()
+
+    def is_available(self, live: dict[str, bool] | None = None) -> bool:
+        """Return availability, optionally from one shared registry probe."""
+        if live is None:
+            live = _myogait_backend_availability()
         if live is not None and self.name in live:
             return live[self.name]
         return all(_has(module) for module in self.requires)
@@ -563,11 +568,24 @@ class Runtime:
 
     @property
     def available_backends(self) -> tuple[BackendInfo, ...]:
-        return tuple(b for b in BACKENDS if b.available)
+        availability = self.backend_availability()
+        return tuple(b for b in BACKENDS if availability[b.name])
 
     @property
     def unavailable_backends(self) -> tuple[BackendInfo, ...]:
-        return tuple(b for b in BACKENDS if not b.available)
+        availability = self.backend_availability()
+        return tuple(b for b in BACKENDS if not availability[b.name])
+
+    def backend_availability(self) -> dict[str, bool]:
+        """Snapshot backend availability with one registry probe per rerun.
+
+        The snapshot deliberately lives only for this call. A setup job can
+        install a component while the Streamlit process remains alive, so the
+        next rerun must probe again; caching this across reruns would leave the
+        model picker stale.
+        """
+        live = _myogait_backend_availability()
+        return {backend.name: backend.is_available(live) for backend in BACKENDS}
 
     @property
     def accelerated(self) -> bool:
