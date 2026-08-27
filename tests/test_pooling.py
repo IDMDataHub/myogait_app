@@ -17,6 +17,7 @@ from myogait_app.pooling import (
     condition_agreement,
     condition_summary,
     group_by_condition,
+    overall_agreement,
 )
 
 _HIP = (np.sin(np.linspace(0, np.pi, 101)) * 30).tolist()
@@ -104,6 +105,30 @@ def test_condition_agreement_requires_a_reference():
     assert agreement["n_reference"] == 1
     assert agreement["by_joint"]["hip"]["rmse"] == pytest.approx(0.0, abs=1e-9)
     assert agreement["by_joint"]["hip"]["shape_r"] == pytest.approx(1.0)
+
+
+def test_overall_agreement_pairs_by_patient_across_conditions():
+    # Same patient, markerless and marker in DIFFERENT conditions.
+    runs = [
+        _run("video", "iphone", "P1", "r1"),
+        _run("vicon", "lab", "P1", "r2"),
+        _run("video", "iphone", "P2", "r1"),  # P2 has no reference
+    ]
+    agreement = overall_agreement(runs)
+    assert agreement is not None
+    assert agreement["n_patients"] == 1  # only P1 has both kinds
+    assert agreement["n_video"] == 1 and agreement["n_reference"] == 1
+    assert "hip" in agreement["by_joint"]
+
+    # condition_agreement finds nothing here: the two kinds never share a
+    # condition. Pairing by patient is what makes accuracy appear automatically.
+    for _cond, cond_runs in group_by_condition(runs).items():
+        assert condition_agreement(cond_runs) is None
+
+
+def test_overall_agreement_none_without_any_reference():
+    runs = [_run("video", "iphone", "P1", "r1"), _run("video", "iphone", "P2", "r1")]
+    assert overall_agreement(runs) is None
 
 
 def test_summarize_agreement_drops_uncorrelated():

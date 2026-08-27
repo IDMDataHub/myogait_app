@@ -22,6 +22,10 @@ APP_PY = Path(__file__).resolve().parent.parent / "app.py"
 )
 def test_page_renders_with_demo_data(page: str) -> None:
     pytest.importorskip("streamlit")
+    # Rendering a chart page runs the pipeline, which needs myogait; the CI
+    # image omits it (heavy pose-estimation deps), so skip cleanly there rather
+    # than error, the same way the longitudinal test skips without matplotlib.
+    pytest.importorskip("myogait")
     from streamlit.testing.v1 import AppTest
 
     from myogait_app.demo import make_demo_data

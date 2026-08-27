@@ -23,6 +23,7 @@ from ..pooling import (
     condition_summary,
     group_by_condition,
     load_runs,
+    overall_agreement,
 )
 from ..settings import SETTINGS
 from ..storage import store_uploaded_file
@@ -78,6 +79,7 @@ def render(show_header: bool = True) -> None:
         return
 
     _overview(groups)
+    _overall_accuracy(runs)
     st.divider()
 
     labels = list(groups)
@@ -264,8 +266,36 @@ def _accuracy_section(label: str, runs: list) -> None:
         "removes that offset; waveform r and CMC are shape matches (CMC, unlike "
         "r, is penalised by a constant offset)."
     )
+    _agreement_table(agreement["by_joint"])
+
+
+def _overall_accuracy(runs: list) -> None:
+    """Automatic accuracy vs Vicon, paired by patient across the whole batch.
+
+    Appears on its own whenever the loaded batch holds, for the same patient,
+    both a markerless and a marker (C3D) recording -- no condition tagging
+    needed. It complements the per-condition accuracy below.
+    """
+    agreement = overall_agreement(runs)
+    if agreement is None:
+        return
+    st.divider()
+    st.subheader("Accuracy vs Vicon — paired automatically by patient")
+    st.caption(
+        f"{agreement['n_patients']} patient(s) with both kinds: "
+        f"{agreement['n_video']} markerless vs {agreement['n_reference']} marker "
+        "recording(s). Each patient's mean markerless curve is compared with "
+        "their own mean Vicon curve, then averaged per joint — the report's "
+        "battery (bias signed, centred RMSE removes the offset, CMC is an "
+        "offset-sensitive shape match)."
+    )
+    _agreement_table(agreement["by_joint"])
+
+
+def _agreement_table(by_joint: dict) -> None:
+    """Render one per-joint agreement battery as a table (shared)."""
     rows = []
-    for joint, m in agreement["by_joint"].items():
+    for joint, m in by_joint.items():
         rows.append({
             "Joint": joint.title(),
             "RMSE (deg)": round(m["rmse"], 1),
