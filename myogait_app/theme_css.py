@@ -93,6 +93,25 @@ _CSS = """
   box-shadow: none !important;
 }}
 
+/* Active toggles carry a small yellow marker square, like the joint/side and
+   order selectors -- the constructivist "you are here". Segmented control
+   too. The sidebar nav overrides this with its own positioned square. */
+[data-testid="stPills"] button[aria-checked="true"]::after,
+[data-testid="stSegmentedControl"] button[aria-checked="true"]::after,
+[data-testid="stSegmentedControl"] button[aria-selected="true"]::after {{
+  content: ""; display: inline-block; width: 9px; height: 9px;
+  margin-left: 0.55rem; background: var(--yellow); flex-shrink: 0;
+}}
+[data-testid="stSegmentedControl"] button {{
+  border-radius: 0 !important; border: 2px solid var(--ink) !important;
+  background: transparent !important; color: var(--ink) !important;
+  font-weight: 700 !important; letter-spacing: 1.4px; text-transform: uppercase;
+}}
+[data-testid="stSegmentedControl"] button[aria-checked="true"],
+[data-testid="stSegmentedControl"] button[aria-selected="true"] {{
+  background: var(--ink) !important; color: var(--paper) !important;
+}}
+
 /* Sidebar nav as a numbered list (folio + label), like the config sections:
    a muted monospace folio, an uppercase label, and the active row lifted to
    the lighter paper with a small yellow marker. Scoped to the sidebar so the
@@ -136,12 +155,22 @@ h3 {{ font-size: 2.6rem !important; line-height: 0.9; border-bottom: 3px solid v
 /* Page header: numbered folio, rotated colour block, boxed last word. */
 .mg-header {{ position: relative; overflow: hidden; margin: 0 0 1.6rem; padding: 0.9rem 0 1.5rem; }}
 .mg-header-bar {{
-  position: absolute; top: 10px; right: -20px; width: 55%; max-width: 320px; height: 14px;
-  background: var(--blue); transform: rotate(-4deg); z-index: 0;
+  position: absolute; top: 8px; right: -20px; width: 55%; max-width: 320px; height: 16px;
+  background: var(--yellow); transform: rotate(-4deg); z-index: 0;
+}}
+/* A second, thinner rule under the yellow one, for depth. */
+.mg-header-bar::after {{
+  content: ""; position: absolute; top: 22px; right: 40px; width: 60%; height: 6px;
+  background: var(--red); transform: rotate(-4deg);
 }}
 .mg-header-circle {{
-  position: absolute; top: -30px; right: 4%; width: 90px; height: 90px;
-  background: var(--blue); opacity: 0.16; border-radius: 0 0 0 90px; z-index: 0;
+  position: absolute; top: -34px; right: 4%; width: 96px; height: 96px;
+  background: var(--blue); opacity: 0.9; border-radius: 0 0 0 96px; z-index: 0;
+}}
+/* A small solid square, the constructivist full stop, top-right. */
+.mg-header::after {{
+  content: ""; position: absolute; top: 64px; right: 8px; width: 16px; height: 16px;
+  background: var(--red); z-index: 0;
 }}
 .mg-header-top {{ position: relative; z-index: 1; display: flex; align-items: flex-end; gap: 0.9rem; }}
 .mg-header-num {{
@@ -153,8 +182,8 @@ h3 {{ font-size: 2.6rem !important; line-height: 0.9; border-bottom: 3px solid v
   font-size: 0.62rem; letter-spacing: 2px; text-transform: uppercase; color: var(--muted);
   align-self: stretch; padding-bottom: 2px;
 }}
-.mg-header-side {{ margin-left: auto; display: flex; flex-direction: column; width: 18px; flex-shrink: 0; }}
-.mg-header-side span {{ display: block; height: 11px; }}
+.mg-header-side {{ margin-left: auto; display: flex; flex-direction: column; width: 22px; flex-shrink: 0; }}
+.mg-header-side span {{ display: block; height: 18px; }}
 .mg-header-title {{
   position: relative; z-index: 1; text-transform: uppercase; letter-spacing: -1px;
   font-weight: 700; font-size: 3rem !important; line-height: 0.92; margin: 0.4rem 0 0.55rem;
