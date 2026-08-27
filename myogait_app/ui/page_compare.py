@@ -28,6 +28,7 @@ from ..pipeline import (
     PipelineRunner,
 )
 from ..runtime import get_runtime
+from ..storage import store_uploaded_file
 from . import state
 from .components import chart, empty_state, is_dark, page_header, source_loader
 
@@ -195,8 +196,7 @@ def _models_tab() -> None:
 
     progress = st.progress(0.0, text="Processing...")
     for index, item in enumerate(uploaded):
-        target = workspace.path_for(item.name)
-        target.write_bytes(item.getbuffer())
+        target = store_uploaded_file(workspace, item, item.name)
         try:
             from myogait import load_json
 

@@ -111,15 +111,6 @@ class Workspace:
         except OSError:
             pass
 
-    def path_for(self, filename: str) -> Path:
-        """Return a path inside the workspace for *filename*.
-
-        The name is reduced to its stem so an uploaded file cannot write
-        outside the workspace through a crafted path.
-        """
-        safe = Path(str(filename)).name or "file"
-        return self.uploads / safe
-
     def size_bytes(self) -> int:
         return sum(f.stat().st_size for f in self.root.rglob("*") if f.is_file())
 
