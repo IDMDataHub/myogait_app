@@ -27,6 +27,7 @@ import numpy as np
 from .agreement import curve_metrics, summarize_agreement
 from .clinical import clinical_scores, select_stratum
 from .pipeline import PipelineConfig, PipelineRunner, SubjectConfig
+from .step_length import STEP_LENGTH_M_RANGE, step_length_m_from_markers
 
 #: The sagittal joints every figure and summary is built around.
 SAGITTAL_JOINTS = ("hip", "knee", "ankle")
@@ -186,18 +187,7 @@ def load_run(path, config: PipelineConfig | None = None) -> RunResult:
             error=reason, config_note=note,
         )
 
-    # A marker pivot carries the real metric step length; read it off the 3-D
-    # markers automatically so a Cohort with a reference shows a length, not a
-    # dash. Best-effort: a failure here must not sink an otherwise-good run.
-    marker_step_length_m = None
-    markers = data.get("c3d_markers_3d")
-    if markers:
-        try:
-            from .step_length import step_length_m_from_markers
-
-            marker_step_length_m = step_length_m_from_markers(markers)
-        except Exception:  # noqa: BLE001 - advisory metric, never fatal
-            marker_step_length_m = None
+    marker_step_length_m = step_length_m_from_markers(data.get("c3d_markers_3d") or {})
 
     return RunResult(
         name=name, study=study, ok=True, kind=kind, duration_s=duration_s,
@@ -259,13 +249,6 @@ def _spatiotemporal(run: RunResult) -> dict:
     return (run.stats or {}).get("spatiotemporal") or {}
 
 
-#: Physiological human step-length bounds (m). The femur/height scale is a
-#: video-pixel calibration; on a marker (C3D) pivot the landmarks are in
-#: projected units, so it can produce an absurd value (metres in the hundreds)
-#: -- clamp to the plausible range and drop the rest rather than show it.
-_STEP_LENGTH_M_RANGE = (0.2, 1.2)
-
-
 def _mean_metric_step_length(runs: list[RunResult]) -> float | None:
     """Mean step length in metres, marker-derived first, else calibrated video.
 
@@ -274,7 +257,7 @@ def _mean_metric_step_length(runs: list[RunResult]) -> float | None:
     contribute their calibrated ``step_length`` only when its unit is metres
     and the value is physiologically plausible.
     """
-    lo, hi = _STEP_LENGTH_M_RANGE
+    lo, hi = STEP_LENGTH_M_RANGE
 
     # 1) Markers: a real length, preferred whenever any run has one.
     marker_values = [

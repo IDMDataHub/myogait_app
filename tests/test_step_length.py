@@ -74,6 +74,13 @@ def test_missing_markers_return_none():
     assert step_length_m_from_markers(None) is None
 
 
+def test_malformed_marker_values_return_none():
+    markers = _walk()
+    markers["LEFT_HEEL"] = "not marker coordinates"
+
+    assert step_length_m_from_markers(markers) is None
+
+
 def test_implausibly_small_steps_are_dropped():
     # 2 * 0.05 = 0.1 m, below the physiological floor -> nothing survives.
     assert step_length_m_from_markers(_walk(amplitude=0.05)) is None

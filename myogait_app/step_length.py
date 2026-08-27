@@ -20,16 +20,18 @@ from __future__ import annotations
 
 import numpy as np
 
-#: Physiological human step-length bounds (m); values outside are treated as
-#: detection noise and dropped, matching the Cohort's own clamp.
-_STEP_LENGTH_M_RANGE = (0.2, 1.2)
+#: Physiological human step-length bounds (m).
+STEP_LENGTH_M_RANGE = (0.2, 1.2)
 
 
-def _as_array(markers: dict, name: str):
+def _as_array(markers: dict, name: str) -> np.ndarray | None:
     value = markers.get(name)
     if value is None:
         return None
-    arr = np.asarray(value, dtype=float)
+    try:
+        arr = np.asarray(value, dtype=float)
+    except (TypeError, ValueError):
+        return None
     return arr if arr.ndim == 2 and arr.shape[1] == 3 else None
 
 
@@ -97,7 +99,7 @@ def step_length_m_from_markers(markers: dict) -> float | None:
             if np.isfinite(distance):
                 steps.append(float(distance))
 
-    lo, hi = _STEP_LENGTH_M_RANGE
+    lo, hi = STEP_LENGTH_M_RANGE
     plausible = [s for s in steps if lo <= s <= hi]
     if len(plausible) < 2:
         return None
