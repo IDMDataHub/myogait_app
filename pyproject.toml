@@ -35,12 +35,10 @@ dependencies = [
     "streamlit>=1.38",
     "plotly>=5.24",
     "myogait>=0.8.2",
-    "gaitkit>=1.4.8",
     "ezc3d",
     "c3d>=0.5",
     "numpy>=1.24",
     "pandas>=2.0",
-    "scipy>=1.11",
     "matplotlib>=3.7",
 ]
 

@@ -36,14 +36,10 @@ myogait[mediapipe,yolo,vitpose,rtmw,sapiens,sapiens2,alphapose,detectron2,excel,
 ezc3d
 c3d>=0.5
 
-# myogait requires >=1.4.8 for the gk_* event detectors used by the
-# comparator. Stated explicitly because older environments carry 1.3.x.
-gaitkit>=1.4.8
-
-# Scientific stack (also pulled by myogait, listed for clarity)
+# Scientific stack used directly by the application. myogait installs its
+# own scipy and gaitkit dependencies.
 numpy>=1.24
 pandas>=2.0
-scipy>=1.11
 matplotlib>=3.7
 
 # Left out above, on purpose -- see the long comment on the core toolkit
