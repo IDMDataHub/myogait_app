@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 #: Vicon Plug-in Gait: the other marker set in wide clinical use, alongside
@@ -142,14 +143,24 @@ def _matches(remainder: str, rules: list[tuple[str, str]]) -> bool:
 def read_c3d_labels(c3d_path: str | Path) -> list[str]:
     """Return the POINT labels a C3D file declares, without building a pivot.
 
-    Cheap enough to run on every upload: unlike ``load_c3d`` this skips
-    projecting or normalising any coordinate, it only reads the parameter
-    block.
+    Results are cached by path and file fingerprint. Streamlit reruns the C3D
+    page whenever a mapping control changes; re-opening a large trial just to
+    rediscover the unchanged parameter block needlessly stalls that interface.
     """
+    path = Path(c3d_path).resolve()
+    stat = path.stat()
+    return list(_read_c3d_labels_cached(str(path), stat.st_mtime_ns, stat.st_size))
+
+
+@lru_cache(maxsize=32)
+def _read_c3d_labels_cached(
+    path: str, modified_ns: int, size_bytes: int
+) -> tuple[str, ...]:
+    """Read one immutable C3D fingerprint; kept separate for safe caching."""
     import ezc3d
 
-    c3d = ezc3d.c3d(str(c3d_path))
-    return [lbl.strip() for lbl in c3d["parameters"]["POINT"]["LABELS"]["value"]]
+    c3d = ezc3d.c3d(path)
+    return tuple(lbl.strip() for lbl in c3d["parameters"]["POINT"]["LABELS"]["value"])
 
 
 def auto_detect_mapping(
