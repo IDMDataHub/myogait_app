@@ -131,6 +131,15 @@ def test_overall_agreement_none_without_any_reference():
     assert overall_agreement(runs) is None
 
 
+def test_overall_agreement_does_not_pair_runs_without_a_patient_identifier():
+    video = _run("video", "iphone", "P1", "r1")
+    reference = _run("vicon", "lab", "P2", "r1")
+    video.study.pop("patient_id")
+    reference.study.pop("patient_id")
+
+    assert overall_agreement([video, reference]) is None
+
+
 def test_summarize_agreement_drops_uncorrelated():
     good = {"joint": "hip", "shape_r": 0.9, "rmse": 2.0, "mae": 1.6, "bias": 1.0,
             "rmse_centered": 1.0, "cmc": 0.95, "rom_err": 1.0, "peak_t_err": 2.0}

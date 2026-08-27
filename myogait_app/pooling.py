@@ -415,7 +415,7 @@ def overall_agreement(runs: list[RunResult]) -> dict | None:
     """
     by_patient: dict[str, list[RunResult]] = {}
     for run in runs:
-        if run.ok:
+        if run.ok and run.patient != "?":
             by_patient.setdefault(run.patient, []).append(run)
 
     per_joint_side: list[dict] = []
