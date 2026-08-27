@@ -34,6 +34,22 @@ from .storage import is_ticket, job_dir, new_ticket, read_json, write_json_atomi
 
 logger = logging.getLogger(__name__)
 
+
+def _is_segmentation_load_error(exc: Exception) -> bool:
+    """Whether an extraction error is the Sapiens 2 segmentation-model failure.
+
+    Its weights ship only as ``*_seg.safetensors``, which myogait's shared
+    loader tries to map through the pose config -- raising a FileNotFoundError
+    that names the seg file. Auxiliary to gait, so callers drop it and retry
+    pose-only rather than fail. Matched on the message so a myogait internals
+    change surfaces as a normal failure, not a silently swallowed one.
+    """
+    text = f"{type(exc).__name__}: {exc}".lower()
+    return "seg" in text and (
+        "sapiens" in text or "safetensors" in text or "segmentation" in text
+    )
+
+
 QUEUED = "queued"
 RUNNING = "running"
 DONE = "done"
@@ -413,17 +429,59 @@ class JobManager:
                         self._fetch_sapiens2_weights(job, ticket, size, kind="pose")
                     # with_seg loads a second, independently-cached model
                     # file -- see _fetch_sapiens2_weights' docstring for
-                    # how this was discovered.
+                    # how this was discovered. Segmentation is auxiliary (body
+                    # masks / part labels), and its weights ship only as
+                    # .safetensors, which myogait's shared loader maps through
+                    # the *pose* config -- so a *_seg file cannot be mapped and
+                    # preparing it can fail. Gait kinematics do not need it, so
+                    # drop segmentation and keep going rather than fail the job.
                     if extract_kwargs.get("with_seg") and not sapiens2_seg_weights_ready(model):
-                        self._fetch_sapiens2_weights(job, ticket, size, kind="seg")
+                        try:
+                            self._fetch_sapiens2_weights(job, ticket, size, kind="seg")
+                        except Exception as seg_exc:  # noqa: BLE001
+                            logger.warning(
+                                "Segmentation weights unavailable for %s (%s) "
+                                "- continuing pose-only.", ticket, seg_exc,
+                            )
+                            extract_kwargs = {
+                                k: v for k, v in extract_kwargs.items() if k != "with_seg"
+                            }
+                            job.message = (
+                                "Segmentation model unavailable - continuing "
+                                "with pose only."
+                            )
+                            self._write(job)
 
-                data = extract(
-                    str(video_path),
-                    model=model,
-                    progress_callback=on_progress,
-                    show_progress=False,
-                    **extract_kwargs,
-                )
+                try:
+                    data = extract(
+                        str(video_path),
+                        model=model,
+                        progress_callback=on_progress,
+                        show_progress=False,
+                        **extract_kwargs,
+                    )
+                except Exception as extract_exc:  # noqa: BLE001
+                    # A segmentation-model load failure must not sink an
+                    # otherwise-fine pose extraction: retry once without it.
+                    if extract_kwargs.get("with_seg") and _is_segmentation_load_error(extract_exc):
+                        logger.warning(
+                            "Segmentation failed during extraction %s (%s) "
+                            "- retrying pose-only.", ticket, extract_exc,
+                        )
+                        job.message = "Segmentation failed - retrying pose-only."
+                        self._write(job)
+                        pose_only = {
+                            k: v for k, v in extract_kwargs.items() if k != "with_seg"
+                        }
+                        data = extract(
+                            str(video_path),
+                            model=model,
+                            progress_callback=on_progress,
+                            show_progress=False,
+                            **pose_only,
+                        )
+                    else:
+                        raise
 
             # Study identifiers travel with the pivot so a pooled,
             # multi-recording analysis can group and label each output JSON.
