@@ -93,6 +93,35 @@ _CSS = """
   box-shadow: none !important;
 }}
 
+/* Sidebar nav pills get a Bauhaus colour each -- outlined when idle, filled
+   with the same colour when active. New assessment=red, Analysis=blue,
+   Advanced=yellow, Reference=ink. Scoped to the sidebar so the Analysis
+   scope-pills in the main column keep the plain ink treatment above. */
+[data-testid="stSidebar"] [data-testid="stPills"] button:nth-of-type(1) {{
+  border-color: var(--red) !important; color: var(--red) !important;
+}}
+[data-testid="stSidebar"] [data-testid="stPills"] button:nth-of-type(2) {{
+  border-color: var(--blue) !important; color: var(--blue) !important;
+}}
+[data-testid="stSidebar"] [data-testid="stPills"] button:nth-of-type(3) {{
+  border-color: var(--mark) !important; color: var(--mark) !important;
+}}
+[data-testid="stSidebar"] [data-testid="stPills"] button:nth-of-type(4) {{
+  border-color: var(--ink) !important; color: var(--ink) !important;
+}}
+[data-testid="stSidebar"] [data-testid="stPills"] button:nth-of-type(1)[aria-checked="true"] {{
+  background: var(--red) !important; color: var(--paper) !important; border-color: var(--ink) !important;
+}}
+[data-testid="stSidebar"] [data-testid="stPills"] button:nth-of-type(2)[aria-checked="true"] {{
+  background: var(--blue) !important; color: var(--paper) !important; border-color: var(--ink) !important;
+}}
+[data-testid="stSidebar"] [data-testid="stPills"] button:nth-of-type(3)[aria-checked="true"] {{
+  background: var(--yellow) !important; color: var(--ink) !important; border-color: var(--ink) !important;
+}}
+[data-testid="stSidebar"] [data-testid="stPills"] button:nth-of-type(4)[aria-checked="true"] {{
+  background: var(--ink) !important; color: var(--paper) !important;
+}}
+
 /* Numbered sidebar sections: "1." .. "4." get the folio treatment. */
 [data-testid="stExpander"] summary p {{
   font-size: 0.7rem; letter-spacing: 2.2px; text-transform: uppercase; font-weight: 700;

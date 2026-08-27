@@ -60,6 +60,9 @@ PAGES = {
 def main() -> None:
     _startup()
     state.init()
+    # Only the top-level screen shows a folio; nested pages (Advanced tabs,
+    # Analysis scopes) set this flag to skip theirs. Reset it every run.
+    st.session_state["_embedded_header"] = False
     st.markdown(theme_css.inject(), unsafe_allow_html=True)
     st.markdown(theme_css.background_css(), unsafe_allow_html=True)
 

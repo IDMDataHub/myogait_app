@@ -33,6 +33,8 @@ def render() -> None:
     ) or _STUDY
 
     st.divider()
+    # The Analysis folio is enough; the view below must not add its own.
+    st.session_state["_embedded_header"] = True
     if scope == _STUDY:
         page_pool.render(show_header=False)
     elif scope == _PATIENT:

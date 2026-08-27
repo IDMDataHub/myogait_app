@@ -26,6 +26,8 @@ def render() -> None:
     if SETTINGS.enable_experimental:
         labels.append("Method validation")
 
+    # The Advanced folio is enough; the pages in the tabs must not add theirs.
+    st.session_state["_embedded_header"] = True
     tabs = st.tabs(labels)
     with tabs[0]:
         page_pipeline.render()

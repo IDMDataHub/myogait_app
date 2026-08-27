@@ -130,8 +130,20 @@ _PAGE_META: dict[str, tuple[str, str]] = {
 }
 
 
+#: Set by a screen that hosts other pages in its tabs/scopes (Advanced,
+#: Analysis) so those nested pages skip their own folio -- the parent screen
+#: already carries the number. Reset each run in app.main.
+_K_EMBEDDED = "_embedded_header"
+
+
 def page_header(title: str, description: str = "") -> None:
     st.session_state[_K_FIGURE_COUNTER] = 0
+    if st.session_state.get(_K_EMBEDDED):
+        # Nested inside another screen -- the parent showed the folio, so drop
+        # the numbered block here and keep only the one-line description.
+        if description:
+            st.caption(description)
+        return
     num, eyebrow = _PAGE_META.get(title, ("--", ""))
     left = BRANDING.side_colors["left"]
     right = BRANDING.side_colors["right"]
