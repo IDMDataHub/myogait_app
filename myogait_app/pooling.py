@@ -389,6 +389,17 @@ def condition_agreement(runs: list[RunResult]) -> dict | None:
     if not video_runs or not vicon_runs:
         return None
 
+    per_joint_side = _paired_curve_metrics(video_runs, vicon_runs)
+    return {
+        "n_video": len(video_runs),
+        "n_reference": len(vicon_runs),
+        "per_joint_side": per_joint_side,
+        "by_joint": summarize_agreement(per_joint_side),
+    }
+
+
+def _paired_curve_metrics(video_runs: list, vicon_runs: list) -> list[dict]:
+    """Per joint/side agreement between two pooled sets of runs."""
     video_pooled = pool_cycles(video_runs)
     vicon_pooled = pool_cycles(vicon_runs)
 
@@ -405,10 +416,43 @@ def condition_agreement(runs: list[RunResult]) -> dict | None:
             if metrics:
                 metrics.update(joint=joint, side=side)
                 per_joint_side.append(metrics)
+    return per_joint_side
 
+
+def overall_agreement(runs: list[RunResult]) -> dict | None:
+    """Accuracy vs the marker reference, paired automatically by patient.
+
+    Unlike :func:`condition_agreement` (which needs the markerless and marker
+    recordings to share a *condition*), this pairs them by ``patient_id`` alone:
+    for every patient that has both a markerless and a marker recording, the
+    two mean cycle curves are compared, and the per-joint battery is averaged
+    over all such patients. So dropping a batch of videos plus that subject's
+    Vicon C3D into the Cohort surfaces accuracy on its own, with no condition
+    tagging. Returns ``None`` when no patient has both kinds.
+    """
+    by_patient: dict[str, list[RunResult]] = {}
+    for run in runs:
+        if run.ok:
+            by_patient.setdefault(run.patient, []).append(run)
+
+    per_joint_side: list[dict] = []
+    n_patients = n_video = n_reference = 0
+    for patient_runs in by_patient.values():
+        videos = [r for r in patient_runs if not r.is_reference]
+        vicons = [r for r in patient_runs if r.is_reference]
+        if not videos or not vicons:
+            continue
+        n_patients += 1
+        n_video += len(videos)
+        n_reference += len(vicons)
+        per_joint_side.extend(_paired_curve_metrics(videos, vicons))
+
+    if not n_patients:
+        return None
     return {
-        "n_video": len(video_runs),
-        "n_reference": len(vicon_runs),
+        "n_patients": n_patients,
+        "n_video": n_video,
+        "n_reference": n_reference,
         "per_joint_side": per_joint_side,
         "by_joint": summarize_agreement(per_joint_side),
     }
