@@ -179,6 +179,13 @@ class CyclesConfig:
     #: (myogait >= 0.8.1, needs NormalizeConfig.coherence enabled upstream
     #: for a coherence score to exist at all). None disables the gate.
     min_coherence: float | None = None
+    #: Drop the against-direction cycle group on a there-and-back walkway
+    #: (myogait's own ``run_pipeline`` does this, but the app calls
+    #: ``segment_cycles`` directly and otherwise keeps BOTH passes, whose
+    #: mirrored angles pollute the ROM / symmetry averages). Enabled
+    #: automatically by ``autoconfig.detect_config`` when a reversal is
+    #: detected; a single-direction walk leaves it a harmless no-op.
+    filter_direction: bool = False
 
 
 #: myogait's own femur-to-height ratio (Drillis, Contini & Bluestein,
@@ -535,7 +542,21 @@ def _apply_cycles(data: dict, cfg: CyclesConfig) -> dict:
             if isinstance(coherence, dict):
                 frame["coherence"] = coherence.get("score")
 
-    return segment_cycles(source, **cycles_kwargs)
+    cycles = segment_cycles(source, **cycles_kwargs)
+
+    if cfg.filter_direction:
+        # Keep only the dominant walking-direction group (drops mirrored
+        # return-pass cycles on a there-and-back). Reuse myogait's own
+        # implementation so the app matches library run_pipeline() behaviour;
+        # tolerate an older myogait that lacks it.
+        try:
+            from myogait.pipeline import _filter_cycles_by_direction
+        except ImportError:
+            _filter_cycles_by_direction = None
+        if _filter_cycles_by_direction is not None:
+            cycles = _filter_cycles_by_direction(data, cycles)
+
+    return cycles
 
 
 def _apply_subject(data: dict, cfg: SubjectConfig) -> dict:

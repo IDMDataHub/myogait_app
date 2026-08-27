@@ -81,7 +81,9 @@ def test_condition_summary_drops_implausible_metric_step_lengths(monkeypatch) ->
         "unit": "m", "step_length_left": 0.20, "step_length_right": 1.20,
     })
     implausible = _run(step_length={
-        "unit": "m", "step_length_left": 0.19, "step_length_right": 12.0,
+        # 0.02 m is below the 0.05 m floor (lowered from 0.2 for pathological
+        # gait) and 12.0 m is above the 1.2 m ceiling -> both dropped.
+        "unit": "m", "step_length_left": 0.02, "step_length_right": 12.0,
     })
 
     summary = condition_summary([plausible, implausible])
