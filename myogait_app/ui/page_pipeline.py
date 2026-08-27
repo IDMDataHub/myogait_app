@@ -43,8 +43,9 @@ def render() -> None:
         page_header("Pipeline explorer")
         source_loader(
             "Nothing loaded.",
-            "Pick a finished extraction below, or go to Data to load a pivot "
-            "JSON or a video.",
+            "Pick a finished extraction below, or go to New assessment to load "
+            "a pivot JSON or a video.",
+            slot="pipeline",
         )
         return
 

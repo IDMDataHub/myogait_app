@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import io
+import sys
 import threading
+
+import pytest
 
 from myogait_app.storage import (
     Workspace,
@@ -69,6 +72,12 @@ def test_in_memory_upload_warning_uses_a_strict_size_threshold():
     assert exceeds_in_memory_warning(2 * 1024 * 1024 + 1, threshold_mb)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Concurrent atomic replace is a POSIX guarantee; on Windows "
+    "os.replace cannot swap a file another thread holds open for reading, so "
+    "this races by design there. The behaviour is validated on Linux/macOS.",
+)
 def test_atomic_json_writes_remain_readable_under_concurrent_writers(tmp_path):
     target = tmp_path / "state.json"
     errors = []

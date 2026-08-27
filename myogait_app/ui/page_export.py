@@ -53,7 +53,9 @@ def render() -> None:
         page_header("Export")
         source_loader(
             "Nothing loaded.",
-            "Pick a finished extraction below, or go to Data to load one.",
+            "Pick a finished extraction below, or go to New assessment to load "
+            "one.",
+            slot="export",
         )
         return
 

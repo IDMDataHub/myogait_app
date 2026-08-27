@@ -54,6 +54,9 @@ def test_cohort_tab_renders_a_paired_video_and_reference_trial() -> None:
     # AppTest default on a cold import.
     app = AppTest.from_file(str(APP_PY), default_timeout=60)
     app.run()
+    # The cohort lives under Analysis -> "Study & conditions".
+    app.session_state["nav_page"] = "Analysis"
+    app.session_state["analysis_scope"] = "Study & conditions"
     app.session_state["pool_runs"] = _cohort_fixture()
     app.run()
 

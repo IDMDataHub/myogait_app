@@ -407,17 +407,22 @@ def empty_state(message: str, hint: str = "") -> None:
         st.caption(hint)
 
 
-def source_loader(message: str, hint: str = "") -> None:
+def source_loader(message: str, hint: str = "", *, slot: str = "") -> None:
     """An empty state that can actually load a recording, not just explain.
 
-    Every analysis page reads one source from session state; with none set
-    the page used to dead-end on a message and send the user off to Data.
-    This offers the two ways in on the spot -- pick a finished extraction, or
-    jump to Data to start or upload one -- so nobody has to leave to get
-    unstuck. Safe to drop on any single-source page.
+    Every analysis view reads one source from session state; with none set
+    the view used to dead-end on a message and send the user away. This offers
+    the two ways in on the spot -- pick a finished extraction, or jump to New
+    assessment to start or upload one -- so nobody has to leave to get unstuck.
+
+    ``slot`` disambiguates the widget keys so two loaders can share a screen
+    (e.g. the Advanced page renders several single-source views at once);
+    pass a unique string per call site. Defaults to the message for the common
+    one-per-screen case.
     """
     from ..jobs import DONE, JobManager  # lazy: keep the import graph shallow
 
+    token = slot or message
     st.info(message)
     if hint:
         st.caption(hint)
@@ -437,30 +442,30 @@ def source_loader(message: str, hint: str = "") -> None:
 
             choice = st.selectbox(
                 "Finished extractions", done, format_func=_label,
-                key=f"loader_pick_{message}", label_visibility="collapsed",
+                key=f"loader_pick_{token}", label_visibility="collapsed",
             )
             columns = st.columns([3, 2])
             if columns[0].button(
                 "Load this recording", type="primary", use_container_width=True,
-                key=f"loader_load_{message}",
+                key=f"loader_load_{token}",
             ):
                 path = choice.result_path(SETTINGS)
                 if path:
                     _install_pivot(path, f"{choice.video_name} [{choice.model}]")
                 else:
                     st.error("The result file is gone - it may have been purged.")
-            _to_data(columns[1], key=f"loader_data_{message}")
+            _to_new_assessment(columns[1], key=f"loader_data_{token}")
         else:
             st.caption("No finished extraction on this machine yet.")
-            _to_data(st, key=f"loader_data_{message}")
+            _to_new_assessment(st, key=f"loader_data_{token}")
 
 
-def _to_data(container, key: str) -> None:
-    """A button that jumps to the Data page (start or upload a recording)."""
+def _to_new_assessment(container, key: str) -> None:
+    """A button that jumps to New assessment (start or upload a recording)."""
     if container.button(
-        "Go to Data", use_container_width=True, key=key,
+        "Go to New assessment", use_container_width=True, key=key,
     ):
-        st.session_state["nav_page"] = "Data"
+        st.session_state["nav_page"] = "New assessment"
         st.rerun()
 
 

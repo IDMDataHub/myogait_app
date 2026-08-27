@@ -64,7 +64,8 @@ def _sweep_tab() -> None:
         source_loader(
             "Nothing loaded.",
             "A sweep varies one parameter on a fixed recording - pick a "
-            "finished extraction below, or go to Data to load one.",
+            "finished extraction below, or go to New assessment to load one.",
+            slot="compare_sweep",
         )
         return
 

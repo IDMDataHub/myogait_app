@@ -75,7 +75,8 @@ def _vicon_tab(runtime) -> None:
         source_loader(
             "Nothing loaded.",
             "The alignment compares a myogait result against a VICON trial - "
-            "pick the myogait side below, or go to Data to load it.",
+            "pick the myogait side below, or go to New assessment to load it.",
+            slot="experimental",
         )
         return
 

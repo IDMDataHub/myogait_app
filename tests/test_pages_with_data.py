@@ -18,7 +18,10 @@ APP_PY = Path(__file__).resolve().parent.parent / "app.py"
 
 @pytest.mark.parametrize(
     "page",
-    ["Pipeline explorer", "Comparator", "Longitudinal", "Export"],
+    # Advanced hosts the chart-bearing pages (Pipeline explorer, Comparator,
+    # Export) as tabs; AppTest executes every tab body, so rendering it with a
+    # loaded source draws all those figures in one go.
+    ["Advanced"],
 )
 def test_page_renders_with_demo_data(page: str) -> None:
     pytest.importorskip("streamlit")
