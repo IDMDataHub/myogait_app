@@ -19,6 +19,7 @@ import streamlit as st
 from ..charts import advanced as A
 from ..charts import kinematics as K
 from ..pipeline import PipelineResult
+from ..quality import assess_quality
 from ..runtime import get_runtime
 from . import state
 from .components import (
@@ -60,6 +61,15 @@ def render() -> None:
 
     if not result.ok:
         st.stop()
+
+    assessment = assess_quality(result.data, result.cycles)
+    if assessment.status == "rejected":
+        st.error(
+            "Derived metrics should not be interpreted for this recording: "
+            + " ".join(assessment.reasons)
+        )
+    elif assessment.status == "warning":
+        st.warning(" ".join(assessment.reasons))
 
     tab_kinematics, tab_cycles, tab_spatio, tab_advanced, tab_quality = st.tabs(
         ["Kinematics", "Cycles", "Spatio-temporal", "Advanced analysis", "Signal quality"]
