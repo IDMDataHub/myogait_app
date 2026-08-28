@@ -547,3 +547,139 @@ def merged_c3d_mapping(
     if isb_mapping:
         merged.update(isb_mapping)
     return merged, base_diag, isb_mapping, isb_diag
+
+
+# ── ISB anatomical markers: lazy, on-the-fly fallback ────────────────
+#
+# resolve_isb_mapping/merged_c3d_mapping above are the *primary* path:
+# resolved once at C3D-load time and fed into load_c3d's own
+# marker_mapping, so the paired landmarks ride along in c3d_markers_3d
+# from the first read -- what makes tier 2/3 calibration (which need
+# static/.vsk/.prot files collected at that same load time) possible at
+# all. The pair below is a fallback for the same 18 landmarks, resolved
+# lazily by re-reading the source C3D file directly, for a pivot that
+# reached the angles stage without going through that load-time path (a
+# JSON re-import of an old export, or a caller driving PipelineRunner
+# directly). pipeline._apply_isb_reconstruction tries this only when
+# c3d_markers_3d is still missing landmarks tier 1 needs.
+#
+# ``reconstruct_isb_angles`` needs the *paired* medial and lateral
+# markers as separate points -- not the single averaged joint centre
+# ``load_c3d`` resolves for hip/knee/ankle. It reads them from
+# ``data["c3d_markers_3d"]`` under fixed ISB names (see
+# ``myogait.isb.ISB_REQUIRED_LANDMARKS``). This table maps those names to
+# the raw C3D labels the marker sets we have seen actually use: the Bath
+# BioCV convention (``ASIS_R``, ``KNEE_LAT_R``, ``MTP1_R`` ...), Vicon
+# Plug-in Gait with its optional medial markers, and the ISB/CAST codes of
+# the Nature multimodal set. First present candidate wins, same policy as
+# the mapping resolver above. MTP1 (1st metatarsal head) is medial, MTP5
+# (5th) is lateral.
+#: Hand-maintained candidates (Bath BioCV, Plug-in Gait's optional medial
+#: set, ISB/CAST). Kept separate from ISB_MYOKINESIS_ALIASES /
+#: ISB_BATH_ALIASES / ISB_NATURE_MULTIMODAL_ALIASES above -- rather than
+#: merged into a single literal -- as the historical record of this
+#: table's own origin (an independent implementation of the same idea
+#: that landed in parallel on main), but ISB_MARKER_ALIASES itself, below,
+#: unions this with all three of those so the two ISB marker-resolution
+#: paths can never again silently diverge in coverage the way they did
+#: before reconciliation (LFMH1/LFMH5, Myokinesis's own 1st/5th-metatarsal-
+#: head codes, were only in ISB_MYOKINESIS_ALIASES until this fix -- caught
+#: by an end-to-end check against real Myokinesis data during
+#: reconciliation, not by either alias table's own tests).
+_ISB_MARKER_ALIASES_BASE: dict[str, list[str]] = {
+    "LEFT_ASIS": ["ASIS_L", "LASI", "L_IAS", "LASIS"],
+    "RIGHT_ASIS": ["ASIS_R", "RASI", "R_IAS", "RASIS"],
+    "LEFT_PSIS": ["PSIS_L", "LPSI", "L_IPS", "LPSIS"],
+    "RIGHT_PSIS": ["PSIS_R", "RPSI", "R_IPS", "RPSIS"],
+    "LEFT_KNEE_LATERAL": ["KNEE_LAT_L", "LKNE", "L_FLE", "LLFE", "LLEK"],
+    "LEFT_KNEE_MEDIAL": ["KNEE_MED_L", "LKNM", "L_FME", "LMFE", "LMEK"],
+    "RIGHT_KNEE_LATERAL": ["KNEE_LAT_R", "RKNE", "R_FLE", "RLFE", "RLEK"],
+    "RIGHT_KNEE_MEDIAL": ["KNEE_MED_R", "RKNM", "R_FME", "RMFE", "RMEK"],
+    "LEFT_ANKLE_LATERAL": ["MAL_LAT_L", "LANK", "L_FAL", "LLM", "LLMAL"],
+    "LEFT_ANKLE_MEDIAL": ["MAL_MED_L", "LMED", "LMMA", "L_TAM", "LMM"],
+    "RIGHT_ANKLE_LATERAL": ["MAL_LAT_R", "RANK", "R_FAL", "RLM", "RLMAL"],
+    "RIGHT_ANKLE_MEDIAL": ["MAL_MED_R", "RMED", "RMMA", "R_TAM", "RMM"],
+    "LEFT_HEEL": ["HEEL_L", "LHEE", "L_FCC", "LCAL"],
+    "RIGHT_HEEL": ["HEEL_R", "RHEE", "R_FCC", "RCAL"],
+    "LEFT_FOOT_INDEX_MEDIAL": ["MTP1_L", "L_FM1", "LMT1", "LFM1"],
+    "LEFT_FOOT_INDEX_LATERAL": ["MTP5_L", "L_FM5", "LMT5", "LFM5"],
+    "RIGHT_FOOT_INDEX_MEDIAL": ["MTP1_R", "R_FM1", "RMT1", "RFM1"],
+    "RIGHT_FOOT_INDEX_LATERAL": ["MTP5_R", "R_FM5", "RMT5", "RFM5"],
+}
+
+
+def _merged_isb_marker_aliases() -> dict[str, list[str]]:
+    merged: dict[str, list[str]] = {
+        landmark: list(candidates) for landmark, candidates in _ISB_MARKER_ALIASES_BASE.items()
+    }
+    for table in (ISB_MYOKINESIS_ALIASES, ISB_BATH_ALIASES, ISB_NATURE_MULTIMODAL_ALIASES):
+        for landmark, candidates in table.items():
+            bucket = merged.setdefault(landmark, [])
+            for candidate in candidates:
+                if candidate not in bucket:
+                    bucket.append(candidate)
+    return merged
+
+
+#: The candidate raw-label list per ISB landmark that resolve_isb_markers
+#: (the lazy, on-the-fly fallback) matches against -- every convention
+#: known to either ISB marker-resolution path, unioned. See
+#: _merged_isb_marker_aliases's docstring above for why this is computed
+#: rather than hand-maintained as a second literal.
+ISB_MARKER_ALIASES: dict[str, list[str]] = _merged_isb_marker_aliases()
+
+
+def resolve_isb_markers(labels: list[str]) -> dict[str, str]:
+    """Map each ISB anatomical landmark to the raw C3D label present in *labels*.
+
+    Returns ``{isb_name: raw_label}`` for every ISB landmark this file can
+    supply, matched case- and separator-insensitively (so ``ASIS_R``,
+    ``asis-r`` and ``ASISR`` all resolve). A landmark with no matching
+    candidate is simply absent from the result; the caller decides whether
+    the subset is enough (myogait's reconstruction needs all of them).
+    """
+    norm_to_raw: dict[str, str] = {}
+    for lbl in labels:
+        norm_to_raw.setdefault(_normalize(lbl), lbl)
+    resolved: dict[str, str] = {}
+    for isb_name, candidates in ISB_MARKER_ALIASES.items():
+        for cand in candidates:
+            raw = norm_to_raw.get(_normalize(cand))
+            if raw is not None:
+                resolved[isb_name] = raw
+                break
+    return resolved
+
+
+def inject_isb_markers(data: dict, c3d_path) -> list[str]:
+    """Add the paired ISB anatomical markers to ``data["c3d_markers_3d"]``.
+
+    Re-reads *c3d_path* for the raw, per-label 3-D trajectories
+    (``load_c3d`` only keeps the six averaged joint centres) and copies the
+    ISB anatomical markers in under their canonical names, leaving the 2-D
+    pivot and its normalisation untouched. Idempotent and non-fatal:
+    returns the list of ISB landmark names injected (empty if the file has
+    none, or myogait is too old to expose ``load_raw_c3d_markers``).
+    """
+    try:
+        from myogait import load_raw_c3d_markers
+    except Exception:
+        return []
+    try:
+        markers, _fps = load_raw_c3d_markers(str(c3d_path))
+    except Exception:
+        return []
+    resolved = resolve_isb_markers(list(markers.keys()))
+    if not resolved:
+        return []
+    m3d = data.setdefault("c3d_markers_3d", {})
+    injected: list[str] = []
+    for isb_name, raw_label in resolved.items():
+        arr = markers.get(raw_label)
+        if arr is not None:
+            # (n_frames, 3) raw XYZ -- the same axis order load_c3d stores
+            # its averaged joint centres in, so ISB reconstruction reads a
+            # consistent frame.
+            m3d[isb_name] = arr
+            injected.append(isb_name)
+    return injected

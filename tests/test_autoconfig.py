@@ -51,6 +51,21 @@ def test_there_and_back_walkway_takes_the_overground_recipe():
     assert any("there-and-back" in r for r in reasons)
 
 
+def test_there_and_back_enables_direction_filter():
+    """A reversal must switch on cycle direction filtering, so the mirrored
+    return-pass cycles are dropped instead of polluting the averages."""
+    xs = list(np.linspace(0.30, 0.80, 30)) + list(np.linspace(0.80, 0.30, 30))
+    cfg, reasons = detect_config({"frames": _frames(xs)})
+    assert cfg.cycles.filter_direction is True
+    assert any("return-pass" in r for r in reasons)
+
+
+def test_single_direction_leaves_direction_filter_off():
+    xs = [0.30] * 25 + list(np.linspace(0.30, 0.70, 35))  # stand, then walk one way
+    cfg, _ = detect_config({"frames": _frames(xs)})
+    assert cfg.cycles.filter_direction is False
+
+
 def test_detect_config_keeps_the_base_subject():
     from dataclasses import replace
 

@@ -122,7 +122,14 @@ def detect_config(data: dict, base: PipelineConfig | None = None) -> tuple[Pipel
 
     if is_c3d or reversal or not static_start:
         reasons.append("overground recipe: standstill kept, cycle bounds 0.8-1.8 s")
-        return _overground(base), reasons
+        config = _overground(base)
+        if reversal:
+            # Drop the mirrored return-pass cycles so they don't pollute the
+            # ROM / symmetry averages (myogait run_pipeline does this; the app
+            # pipeline otherwise keeps both passes).
+            config = replace(config, cycles=replace(config.cycles, filter_direction=True))
+            reasons.append("return-pass cycles filtered out (dominant direction kept)")
+        return config, reasons
 
     reasons.append("clean standing-start clip: default recipe")
     return base, reasons

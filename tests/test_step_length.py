@@ -82,5 +82,6 @@ def test_malformed_marker_values_return_none():
 
 
 def test_implausibly_small_steps_are_dropped():
-    # 2 * 0.05 = 0.1 m, below the physiological floor -> nothing survives.
-    assert step_length_m_from_markers(_walk(amplitude=0.05)) is None
+    # 2 * 0.02 = 0.04 m, below the 0.05 m physiological floor (lowered from
+    # 0.2 m to admit genuinely short pathological steps) -> nothing survives.
+    assert step_length_m_from_markers(_walk(amplitude=0.02)) is None

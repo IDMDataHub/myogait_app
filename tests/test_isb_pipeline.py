@@ -1,13 +1,16 @@
 """AnglesConfig.isb_reconstruction's dispatch through the pipeline.
 
 Complements myogait's own tests/test_isb.py (the reconstruction math
-itself) -- these are about the app-side wiring: off by default leaves
-compute_angles' result untouched, on-but-incapable degrades gracefully
-instead of failing the whole angles stage, and on-and-capable actually
-overwrites hip/knee/ankle. See CLAUDE.md's ISB reconstruction section.
+itself) -- these are about the app-side wiring: on by default (a
+correctness fix, not a feature toggle -- see the field's own docstring)
+but a no-op wherever the pivot is not ISB-capable, so it never fails the
+whole angles stage; on-and-capable actually overwrites hip/knee/ankle.
+See CLAUDE.md's ISB reconstruction section.
 """
 
 from __future__ import annotations
+
+from dataclasses import replace
 
 import pytest
 
@@ -144,6 +147,51 @@ def test_apply_angles_calls_isb_reconstruction_only_when_enabled():
     data_on = _synthetic_isb_pivot()
     data_on = _apply_angles(data_on, AnglesConfig(isb_reconstruction=True), isb_context={})
     assert data_on["angles"]["isb_reference"] == "isb_3d_direct"
+
+
+def test_isb_reconstruction_defaults_on_and_config_stays_hashable():
+    from myogait_app.pipeline import AnglesConfig
+
+    cfg = AnglesConfig()
+    # On by default: a no-op on any source that doesn't resolve the paired
+    # anatomical markers (gated on c3d_markers_3d downstream), so it only
+    # ever acts on a full-marker C3D -- see the field's own docstring.
+    assert cfg.isb_reconstruction is True
+    # Frozen dataclass with only scalar/tuple fields -- the angles-stage
+    # cache key can hash it, and flipping the flag changes the key.
+    assert hash(cfg) == hash(AnglesConfig())
+    assert hash(replace(cfg, isb_reconstruction=False)) != hash(cfg)
+
+
+def test_isb_reconstruction_injects_markers_lazily_when_missing(monkeypatch):
+    """A pivot that reaches the angles stage without merged_c3d_mapping
+    having run at load time (e.g. a JSON re-import) still gets ISB
+    reconstruction, via marker_presets.inject_isb_markers re-reading the
+    source file recorded in extraction.source_file. This is the "on the
+    fly" fallback pipeline._apply_isb_reconstruction tries before falling
+    through to tier 1 as usual.
+    """
+    pytest.importorskip("myogait.isb")
+    from myogait_app import marker_presets
+    from myogait_app.pipeline import _apply_isb_reconstruction
+
+    data = _synthetic_isb_pivot()
+    # No paired landmarks at all in c3d_markers_3d -- as if this pivot
+    # never went through merged_c3d_mapping at load time -- but a source
+    # file is on record, the way any real load_c3d pivot carries one.
+    data["c3d_markers_3d"] = {}
+    data["extraction"] = {"source_file": "trial_07.c3d"}
+
+    injected_from = {}
+
+    def fake_inject(pivot: dict, path) -> list[str]:
+        injected_from["path"] = path
+        return []  # not asserting recovery here, just that it was tried
+
+    monkeypatch.setattr(marker_presets, "inject_isb_markers", fake_inject)
+
+    _apply_isb_reconstruction(data, {})
+    assert injected_from["path"] == "trial_07.c3d"
 
 
 # ── Cycle-time enrichment for the 2 extra ISB DOF ──────────────────────

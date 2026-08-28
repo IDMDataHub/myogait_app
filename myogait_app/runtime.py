@@ -435,11 +435,10 @@ OPTIONAL_FEATURES: dict[str, tuple[str, str]] = {
     "longitudinal": ("myogait.plotting", "plot_longitudinal"),
     "skeleton_video": ("myogait.video", "render_skeleton_video"),
     "stickfigure": ("myogait.video", "render_stickfigure_animation"),
-    # Not yet in a released myogait version -- lives on the
-    # feat/isb-3d-angles-tier1 branch (see CLAUDE.md's ISB reconstruction
-    # section). Presence-checked like every other OPTIONAL_FEATURES entry
-    # rather than version-gated: there is no released version number to
-    # compare against yet.
+    # myogait >= 0.8.6 (merged from feat/isb-3d-angles-tier1). Presence-
+    # checked like every other OPTIONAL_FEATURES entry rather than
+    # version-gated, so an older install degrades cleanly instead of
+    # failing an import at click time.
     "isb_reconstruction": ("myogait.isb", "reconstruct_isb_angles"),
     "isb_reconstruction_tier2": ("myogait.vicon_calibration", "reconstruct_isb_angles_tier2"),
     "isb_reconstruction_tier3": ("myogait.vicon_calibration", "reconstruct_isb_angles_tier3"),

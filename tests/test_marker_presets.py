@@ -8,10 +8,13 @@ from types import SimpleNamespace
 import pytest
 
 from myogait_app.marker_presets import (
+    ISB_MARKER_ALIASES,
     _read_c3d_labels_cached,
+    inject_isb_markers,
     merged_c3d_mapping,
     read_c3d_labels,
     resolve_isb_mapping,
+    resolve_isb_markers,
 )
 
 
@@ -178,3 +181,89 @@ def test_merged_c3d_mapping_is_just_the_base_when_not_isb_capable():
     assert isb_mapping is None
     # Nothing ISB-only got merged in when there was nothing to merge.
     assert merged == base_only
+
+
+# ── resolve_isb_markers / inject_isb_markers ───────────────────────────
+#
+# pipeline._apply_isb_reconstruction's lazy, on-the-fly fallback for a
+# pivot that reached the angles stage without going through
+# merged_c3d_mapping at load time (see marker_presets.py's own comment
+# just above ISB_MARKER_ALIASES). Ported from an earlier, independent
+# implementation of the same idea that landed in parallel on main and was
+# reconciled into this cascade -- see CLAUDE.md's ISB reconstruction
+# section for the full accounting.
+
+# The Bath BioCV convention, the set the parallel implementation's own
+# accuracy characterisation ran on.
+_BATH_BIOCV_LABELS = [
+    "ASIS_L", "ASIS_R", "PSIS_L", "PSIS_R",
+    "KNEE_LAT_L", "KNEE_LAT_R", "KNEE_MED_L", "KNEE_MED_R",
+    "MAL_LAT_L", "MAL_LAT_R", "MAL_MED_L", "MAL_MED_R",
+    "HEEL_L", "HEEL_R", "MTP1_L", "MTP1_R", "MTP5_L", "MTP5_R",
+    "C7", "CLAV", "T10",  # non-anatomical extras that must be ignored
+]
+
+
+def test_resolve_isb_markers_resolves_all_eighteen_on_bath_biocv_labels():
+    resolved = resolve_isb_markers(_BATH_BIOCV_LABELS)
+    assert set(resolved) == set(ISB_MARKER_ALIASES)
+    # MTP1 is the 1st metatarsal head = medial; MTP5 the 5th = lateral.
+    assert resolved["LEFT_FOOT_INDEX_MEDIAL"] == "MTP1_L"
+    assert resolved["LEFT_FOOT_INDEX_LATERAL"] == "MTP5_L"
+    assert resolved["RIGHT_ANKLE_LATERAL"] == "MAL_LAT_R"
+    assert resolved["RIGHT_ANKLE_MEDIAL"] == "MAL_MED_R"
+
+
+def test_resolve_isb_markers_is_case_and_separator_insensitive():
+    scrambled = [lbl.lower().replace("_", "-") for lbl in _BATH_BIOCV_LABELS]
+    resolved = resolve_isb_markers(scrambled)
+    assert set(resolved) == set(ISB_MARKER_ALIASES)
+
+
+def test_resolve_isb_markers_plugingait_medial_markers_resolve_when_present():
+    # PiG names the joint markers LKNE/RKNE etc.; medial markers are the
+    # optional KAD/medial set, here given the CAST epicondyle codes.
+    labels = [
+        "LASI", "RASI", "LPSI", "RPSI",
+        "LKNE", "RKNE", "LMFE", "RMFE",
+        "LANK", "RANK", "LMMA", "RMMA",
+        "LHEE", "RHEE", "LFM1", "RFM1", "LFM5", "RFM5",
+    ]
+    resolved = resolve_isb_markers(labels)
+    assert resolved["LEFT_KNEE_LATERAL"] == "LKNE"
+    assert resolved["LEFT_KNEE_MEDIAL"] == "LMFE"
+    assert resolved["RIGHT_ASIS"] == "RASI"
+
+
+def test_resolve_isb_markers_partial_labels_resolve_only_what_is_present():
+    resolved = resolve_isb_markers(["ASIS_L", "ASIS_R", "HEEL_L"])
+    assert set(resolved) == {"LEFT_ASIS", "RIGHT_ASIS", "LEFT_HEEL"}
+
+
+@pytest.mark.parametrize("isb_name", list(ISB_MARKER_ALIASES))
+def test_every_isb_marker_alias_has_at_least_one_candidate(isb_name):
+    assert ISB_MARKER_ALIASES[isb_name], f"{isb_name} has no candidate labels"
+
+
+def test_inject_isb_markers_is_non_fatal_on_a_bad_path():
+    data: dict = {"c3d_markers_3d": {}}
+    assert inject_isb_markers(data, "does/not/exist.c3d") == []
+    assert data["c3d_markers_3d"] == {}
+
+
+def test_resolve_isb_markers_resolves_all_eighteen_on_myokinesis_labels():
+    # Regression test for a real coverage gap caught during reconciliation:
+    # the independent implementation's own ISB_MARKER_ALIASES table (now
+    # unioned into this one, see _merged_isb_marker_aliases) never had
+    # Myokinesis's LFMH1/LFMH5 (1st/5th metatarsal head) candidates, so a
+    # real Myokinesis C3D resolved only 14/18 landmarks through it -- found
+    # end-to-end against real data, not by either alias table's own tests,
+    # since each one only ever exercised the convention it was written for.
+    labels = [
+        "LASIS", "RASIS", "LPSIS", "RPSIS",
+        "LLFE", "LMFE", "RLFE", "RMFE",
+        "LLM", "LMM", "RLM", "RMM",
+        "LCAL", "RCAL", "LFMH1", "LFMH5", "RFMH1", "RFMH5",
+    ]
+    resolved = resolve_isb_markers(labels)
+    assert set(resolved) == set(ISB_MARKER_ALIASES)

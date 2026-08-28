@@ -420,9 +420,14 @@ def _angles_section(cfg: AnglesConfig, runtime, source=None) -> AnglesConfig:
                     f"trunk-referenced 2-D projection -- a different "
                     f"definition of the angle, not just a precision gap "
                     f"(audit: r>=0.99 between the two, but a 10-17 degree "
-                    f"constant offset on hip/knee). Tier available for this "
+                    f"constant offset on hip/knee; confirmed for hip/knee "
+                    f"specifically across the Bath BioCV cohort, 356 trial x "
+                    f"joint x side -- a clean, subject-specific level shift, "
+                    f"waveform r=0.975 preserved). Tier available for this "
                     f"source: {isb_tier_label}, decided by which calibration "
-                    f"files were attached in the C3D tab."
+                    f"files were attached in the C3D tab. A no-op on any "
+                    f"source that doesn't resolve the paired landmarks, so "
+                    f"safe to leave on."
                 )
             isb_reconstruction = st.checkbox(
                 "ISB reconstruction (hip/knee/ankle)",

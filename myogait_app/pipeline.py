@@ -110,17 +110,26 @@ class AnglesConfig:
     #: long walk. Applied after the perspective correction.
     detrend: bool = False
     #: Recompute hip/knee/ankle from proper ISB pelvis/thigh/shank/foot
-    #: anatomical frames (myogait.isb, on an unmerged branch as of this
-    #: writing) instead of this method's trunk-referenced 2-D projection --
-    #: a different definition of hip/knee flexion, not just a precision
-    #: gap (audit: r>=0.99 between the two, but a 10-17 degree constant
-    #: offset on hip/knee). Only takes effect when the loaded source
-    #: actually resolved the paired medial/lateral landmarks this needs
-    #: (marker_presets.resolve_isb_mapping) -- off, or unavailable, leaves
-    #: this method's own result untouched. The tier used (direct / static-
-    #: only / VSK-calibrated) follows from which calibration files were
-    #: attached at load time, not a separate choice here.
-    isb_reconstruction: bool = False
+    #: anatomical frames (myogait >= 0.8.6's reconstruct_isb_angles)
+    #: instead of this method's trunk-referenced 2-D projection -- a
+    #: different definition of the angle, not just a precision gap: the
+    #: 2-D angle references flexion to the trunk (shoulder->hip), ISB to
+    #: the pelvis, leaving a ~10-17 degree constant offset against a
+    #: Visual3D/Vicon reference (audit: r>=0.99 between the two methods).
+    #: Confirmed for hip/knee specifically across the Bath BioCV cohort
+    #: (356 trial x joint x side): a clean, subject-specific level shift
+    #: (waveform r=0.975 preserved, hip offset -6 to -22 deg, consistent
+    #: within each subject but not a fixed constant across subjects). On
+    #: by default, matching this app's "correctness fixes default on"
+    #: rule (see README.md) -- it is a no-op (falls back to the sagittal
+    #: angle) on any source that doesn't resolve the paired medial/
+    #: lateral landmarks this needs (marker_presets.resolve_isb_mapping,
+    #: or the lazy pipeline._apply_isb_reconstruction fallback), including
+    #: every video source, so it only ever acts on a full-marker C3D. The
+    #: tier used (direct / static-only / VSK-calibrated) follows from
+    #: which calibration files were attached at load time, not a separate
+    #: choice here -- see CLAUDE.md's ISB reconstruction section.
+    isb_reconstruction: bool = True
 
 
 @dataclass(frozen=True)
@@ -194,6 +203,13 @@ class CyclesConfig:
     #: (myogait >= 0.8.1, needs NormalizeConfig.coherence enabled upstream
     #: for a coherence score to exist at all). None disables the gate.
     min_coherence: float | None = None
+    #: Drop the against-direction cycle group on a there-and-back walkway
+    #: (myogait's own ``run_pipeline`` does this, but the app calls
+    #: ``segment_cycles`` directly and otherwise keeps BOTH passes, whose
+    #: mirrored angles pollute the ROM / symmetry averages). Enabled
+    #: automatically by ``autoconfig.detect_config`` when a reversal is
+    #: detected; a single-direction walk leaves it a harmless no-op.
+    filter_direction: bool = False
 
 
 #: myogait's own femur-to-height ratio (Drillis, Contini & Bluestein,
@@ -285,6 +301,12 @@ class PipelineConfig:
     cycles: CyclesConfig = field(default_factory=CyclesConfig)
     bias: BiasConfig = field(default_factory=BiasConfig)
     subject: SubjectConfig = field(default_factory=SubjectConfig)
+    #: Restore the markerless ankle push-off the pose estimator attenuates
+    #: (myogait >= 0.8.6 calibrated deconvolution, mean-restoration). Opt-in:
+    #: it halves the ankle ROM bias vs Vicon while preserving inter-cycle
+    #: variability, and makes no healthy-gait assumption. See
+    #: ``myogait.restore_ankle_dynamics``.
+    restore_ankle_dynamics: bool = False
 
     def with_stage(self, stage: str, value: Any) -> "PipelineConfig":
         return replace(self, **{stage: value})
@@ -477,8 +499,35 @@ def _apply_isb_reconstruction(data: dict, isb_context: dict) -> dict:
     untouched -- the same "gate the control, explain the absence, degrade
     to the existing correct path" contract runtime.py's OPTIONAL_FEATURES
     already uses everywhere else in this app.
+
+    Before dispatching to a tier, tops up ``data["c3d_markers_3d"]`` with
+    the paired landmarks by re-reading the source file directly
+    (``marker_presets.inject_isb_markers``), when they are not already
+    there and the pivot carries ``extraction.source_file``. This is a
+    convenience fallback, not the primary path: the primary path is
+    resolving the ISB landmarks into ``load_c3d``'s own marker_mapping at
+    C3D-load time (``marker_presets.merged_c3d_mapping``, wired through
+    ``ui.page_data._build_isb_context``), which is what makes tier 2/3
+    possible at all (they need calibration files collected at load time,
+    which a lazy re-read cannot reconstruct). This fallback exists so tier
+    1 also works on a pivot that reached this stage some other way -- a
+    JSON re-import of an old export, or a caller driving PipelineRunner
+    directly -- without requiring a trip back through that C3D tab.
     """
     try:
+        m3d = data.get("c3d_markers_3d")
+        if m3d is not None:
+            try:
+                from myogait.isb import ISB_REQUIRED_LANDMARKS
+            except ImportError:
+                ISB_REQUIRED_LANDMARKS = ()
+            if ISB_REQUIRED_LANDMARKS and any(lm not in m3d for lm in ISB_REQUIRED_LANDMARKS):
+                src = (data.get("extraction") or {}).get("source_file")
+                if src:
+                    from .marker_presets import inject_isb_markers
+
+                    inject_isb_markers(data, src)
+
         tier3_calibration = isb_context.get("tier3_calibration")
         if tier3_calibration is not None and isb_context.get("dynamic_raw"):
             from myogait import reconstruct_isb_angles_tier3
@@ -597,7 +646,25 @@ def _apply_cycles(data: dict, cfg: CyclesConfig) -> dict:
             if isinstance(coherence, dict):
                 frame["coherence"] = coherence.get("score")
 
-    return _enrich_cycles_with_isb_dof(data, segment_cycles(source, **cycles_kwargs))
+    cycles = segment_cycles(source, **cycles_kwargs)
+
+    if cfg.filter_direction:
+        # Keep only the dominant walking-direction group (drops mirrored
+        # return-pass cycles on a there-and-back). Reuse myogait's own
+        # implementation so the app matches library run_pipeline() behaviour;
+        # tolerate an older myogait that lacks it. Runs *before* the ISB
+        # enrichment below so a dropped cycle's DOF are never computed, and
+        # so the enrichment's own per-side mean/std only aggregate the
+        # cycles that survive -- matching what this function's own
+        # (myogait-computed) summary reflects for hip/knee/ankle/trunk.
+        try:
+            from myogait.pipeline import _filter_cycles_by_direction
+        except ImportError:
+            _filter_cycles_by_direction = None
+        if _filter_cycles_by_direction is not None:
+            cycles = _filter_cycles_by_direction(data, cycles)
+
+    return _enrich_cycles_with_isb_dof(data, cycles)
 
 
 #: Extra per-frame DOF keys reconstruct_isb_angles adds (see AnglesConfig.
@@ -897,6 +964,7 @@ class PipelineRunner:
         key_stats = key_final + (
             "analysis",
             (subj.height_m, subj.femur_length_mm, subj.foot_length_mm),
+            ("restore_ankle", config.restore_ankle_dynamics),
         )
 
         def _run_analysis() -> dict:
@@ -907,6 +975,16 @@ class PipelineRunner:
                 source_data, source_cycles = cached
             else:
                 source_data, source_cycles = self._cache[key_events], cached
+            # Opt-in ankle push-off restoration: correct the cycles here so
+            # BOTH the displayed angle curves and the stats reflect it (and
+            # expose the corrected cycles on the result).
+            if config.restore_ankle_dynamics:
+                try:
+                    from myogait import restore_ankle_dynamics as _rad
+                    source_cycles = _rad(source_cycles)
+                    result.cycles = source_cycles
+                except ImportError:
+                    pass
             return self._analyze(source_data, source_cycles, config)
 
         stats, outcome = self._stage("analysis", key_stats, _run_analysis)
@@ -937,6 +1015,8 @@ class PipelineRunner:
             # so height_m x 0.245 reproduces the measured femur instead.
             kwargs["height_m"] = subj.calibration_height_m
 
+        # Note: ankle push-off restoration is applied to the cycles upstream
+        # (in _run_analysis) so the exposed curves and the stats stay in sync.
         return analyze_gait(copy.deepcopy(data), cycles, **kwargs)
 
     def _stage(

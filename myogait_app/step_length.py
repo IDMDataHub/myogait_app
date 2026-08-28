@@ -20,8 +20,12 @@ from __future__ import annotations
 
 import numpy as np
 
-#: Physiological human step-length bounds (m).
-STEP_LENGTH_M_RANGE = (0.2, 1.2)
+#: Plausible step-length bounds (m). The floor is deliberately low: this app
+#: reads pathological gait (Institut de Myologie), where genuinely short steps
+#: -- well under a healthy 0.2 m -- are clinically real and must not be dropped
+#: as noise. The 1.2 m ceiling still rejects the absurd values a mis-scaled
+#: (e.g. raw-marker) calibration produces.
+STEP_LENGTH_M_RANGE = (0.05, 1.2)
 
 
 def _as_array(markers: dict, name: str) -> np.ndarray | None:

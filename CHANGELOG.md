@@ -14,9 +14,10 @@ stated, it is Romain Feigean.
   different angle *definition*, not just a precision gap (an internal audit
   against BATH and a Myokinesis clinical recording found r >= 0.99 between
   the two methods but a 10–17° constant offset on hip/knee, traced to the
-  reference-segment difference). Off by default; a new "ISB reconstruction
-  (hip/knee/ankle)" checkbox in the sidebar's Angles section turns it on.
-  Degrades silently and safely to the existing sagittal result wherever the
+  reference-segment difference). **On by default as of the reconciliation
+  below** — a new "ISB reconstruction (hip/knee/ankle)" checkbox in the
+  sidebar's Angles section still controls it. Degrades silently and safely
+  to the existing sagittal result wherever the
   source can't support it (no `myogait.isb` yet, or the C3D's marker
   convention doesn't resolve enough of the paired medial/lateral landmarks
   ISB needs) — never fails the pipeline over this.
@@ -62,11 +63,29 @@ stated, it is Romain Feigean.
     (`ubuntu-latest`/`windows-latest` × Python 3.10–3.12).
   - Depends on `myogait.isb`/`myogait.vicon_calibration`
     (`reconstruct_isb_angles`/`_tier2`/`_tier3`, `calibrate_technical_frames`,
-    Harrington HJC regression — 23 tests of its own), **not yet merged into
-    myogait's own `master`** — lives on `feat/isb-3d-angles-tier1` of
-    `github.com/IDMDataHub/myogait` until that PR lands and this repo's pin
-    is bumped. See CLAUDE.md's "ISB reconstruction" section for the full
-    architecture writeup.
+    Harrington HJC regression — 23 tests of its own), **merged into
+    myogait's own `master` as of 0.8.6**. See CLAUDE.md's "ISB
+    reconstruction" section for the full architecture writeup.
+  - **Reconciled with a parallel, independent implementation of the same
+    feature** that landed on `main` while this branch was in flight (same
+    contributor as the earlier Nocturne visual identity, again in parallel
+    without coordination): hip/knee-only, tier-1-equivalent, on by default,
+    characterised across the Bath BioCV cohort (356 trial x joint x side —
+    a clean, subject-specific level shift, waveform r=0.975 preserved,
+    hip offset -6 to -22 deg). Kept this branch's architecture as the base
+    (3 tiers, all of hip/knee/ankle, the hard bias-correction block) and
+    folded in what was additive: its lazy, re-read-the-source-file marker
+    injection now survives as a fallback for a pivot that never went
+    through this branch's load-time marker cascade, its marker-alias table
+    is unioned into this branch's own (computed, not hand-duplicated, after
+    finding the two tables had already silently diverged — the parallel
+    version's table alone resolved only 14/18 landmarks on a real
+    Myokinesis C3D, missing its `LFMH1`/`LFMH5` codes), and its config
+    fields/sidebar checkbox/codegen block/test file were removed as a
+    strict subset of this branch's own. `codegen.python_snippet` picked up
+    a genuine improvement from it: a literal, runnable tier-1 reproduction
+    instead of a comment-only note. Full suite green (154 passed, 1
+    pre-existing skip) against real myogait 0.8.6, `ruff check` clean.
 - **Reconciled with "Nocturne": back to the paper-light Bauhaus identity.**
   0.3.0 below landed a second, independently art-directed visual identity
   (dark ground, blurple, Inter) on the same files as an in-progress
