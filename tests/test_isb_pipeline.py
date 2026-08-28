@@ -48,8 +48,6 @@ def _synthetic_isb_pivot(n_frames: int = 3) -> dict:
 
 
 def test_isb_reconstruction_off_leaves_result_untouched():
-    from myogait_app.pipeline import _apply_isb_reconstruction
-
     data = _synthetic_isb_pivot()
     before = dict(data["angles"]["frames"][0])
     # Not calling _apply_isb_reconstruction at all is the "off" case --
