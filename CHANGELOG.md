@@ -1,11 +1,29 @@
 # Changelog
 
-All notable changes to this project, grouped by date. This project does not
-yet tag releases, so entries are dated rather than versioned. Newest first.
-Every entry below is attributed to its actual author; where that is not
-stated, it is Romain Feigean.
+All notable changes to this project, grouped by date. Newest first. Every
+entry below is attributed to its actual author; where that is not stated, it
+is Romain Feigean.
 
-## Unreleased — 2026-08-26 to 2026-08-28 (Romain Feigean)
+## [0.6.0] — 2026-08-28
+
+First tagged release since 0.5.0. It ships two clinical-standard corrections
+**on by default**, each behind a visible sidebar switch: ISB-convention 3-D
+hip/knee/ankle reconstruction for full-marker C3D sources (a no-op on video),
+and calibrated restoration of the markerless ankle push-off. Both trace to
+`myogait` 0.8.6. The detailed, author-attributed log follows.
+
+- **Ankle push-off restoration on by default (Frédéric Fer).** The 2-D pose
+  estimator low-passes the ankle waveform and flattens the fast push-off,
+  under-reading ankle ROM by ~11° vs Vicon; `restore_ankle_dynamics` inverts
+  that filter (calibrated once against Vicon, applied cadence-adaptively in Hz)
+  and adds the systematic per-phase deficit back to every cycle, leaving
+  inter-cycle variability untouched. Flipped on by default and given its first
+  sidebar toggle (it had none). Robustness probes: restored ROM stays 30–33°
+  across 60–150 steps/min (out-of-band harmonics clamp, they do not
+  extrapolate); a simulated slow walk under-corrects at every cadence and never
+  overshoots; a cycle whose push-off is suppressed is not reinvented (frequency
+  domain, template-free). Not yet validated on pathological gait. Codegen emits
+  the restore step so an exported script reproduces it.
 
 - **`feat/isb-marker-cascade` merged into `main`** (fast-forward, commit
   `8e4600a` — CI green on all 6 matrix cells, 154 passed/1 unrelated skip,
