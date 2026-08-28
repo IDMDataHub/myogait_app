@@ -7,6 +7,26 @@ stated, it is Romain Feigean.
 
 ## Unreleased — 2026-08-26 to 2026-08-28 (Romain Feigean)
 
+- **`feat/isb-marker-cascade` merged into `main`** (fast-forward, commit
+  `8e4600a` — CI green on all 6 matrix cells, 154 passed/1 unrelated skip,
+  ruff clean; branch deleted after merge). Re-verified today against
+  `myogait` master (0.8.6) itself: its own CI-equivalent commands
+  (`ruff check myogait/ tests/ --select E,W,F --ignore E501`,
+  `pytest tests/ --cov=myogait --cov-fail-under=75`) pass locally —
+  1377 passed, 78.4% coverage.
+  - **Two verification notes** (`Claude/test_fred/verification_by_claude/`,
+    not tracked in this repo, same convention as Fred's own
+    `ankle_dynamics_report.pdf`) re-run both of the parallel-work features
+    against real Bath BioCV data available locally, rather than the
+    synthetic fixtures either side's own unit tests use. ISB tier 1 on
+    P03 (18/18 landmarks resolved): hip/knee offset and r reproduce the
+    10–17° / r>=0.99 pattern documented below almost exactly. Ankle-dynamics
+    restoration on P03/P04/P06/P08 (4 of Fred's 9 subjects; P03 is the only
+    one with a local Vicon reference, and only 1 cycle/side — too few
+    trials to confirm or refute his pooled 9-subject numbers): the
+    correction deepened push-off in 5 of 6 video-only sides tested, with
+    one real counter-example (P04 left, ROM −3.5°) flagged rather than
+    hidden. Full method, caveats and figures in the notes themselves.
 - **ISB-convention 3-D angle reconstruction (`feat/isb-marker-cascade`, on top
   of myogait's `feat/isb-3d-angles-tier1`).** Hip/knee/ankle can now be
   computed from proper ISB pelvis/thigh/shank/foot anatomical frames instead
