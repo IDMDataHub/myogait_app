@@ -18,10 +18,13 @@ an exception escape, so the interface can say which stage broke and why.
 from __future__ import annotations
 
 import copy
+import logging
 import time
 from collections import OrderedDict
 from dataclasses import asdict, dataclass, field, replace
 from typing import Any, Callable
+
+logger = logging.getLogger(__name__)
 
 #: Stage names, in execution order.
 #:
@@ -96,6 +99,20 @@ class AnglesConfig:
     #: the data, not on a source-kind flag, so the toggle is safe to leave
     #: on regardless of what is currently loaded.
     c3d_reference_ankle: bool = True
+    #: Recomputes hip and knee from ISB anatomical segment frames built out
+    #: of the paired medial/lateral C3D markers (myogait >= 0.8.6's
+    #: reconstruct_isb_angles), instead of the 2-D trunk-referenced
+    #: sagittal angle. The 2-D angle references flexion to the trunk
+    #: (shoulder->hip) whereas ISB references the pelvis: a real anatomical
+    #: difference that leaves a ~10-17 degree constant offset on hip/knee
+    #: against a Visual3D/Vicon reference, closed by this step. Off by
+    #: default -- it needs the paired anatomical markers, so it is a no-op
+    #: (falls back to the sagittal angle) on any file that lacks them,
+    #: including every video source. Only hip and knee: the ankle keeps its
+    #: own 3-D reference / deconvolution path.
+    c3d_isb_angles: bool = False
+    #: Joints reconstruct_isb_angles recomputes when c3d_isb_angles is on.
+    c3d_isb_joints: tuple[str, ...] = ("hip", "knee")
     #: Frontal-plane angles, only meaningful when depth data is present.
     frontal: bool = False
     #: M1 projection correction for hip and knee. Zero-parameter pure
@@ -434,6 +451,35 @@ def _apply_angles(data: dict, cfg: AnglesConfig) -> dict:
         data = _correction(
             "compute_c3d_reference_angles", "myogait.experimental_vicon"
         )(data, joints=("ankle",))
+
+    # ISB hip/knee from the paired anatomical markers, same "call after
+    # compute_angles, overwrite flex_ext in place" shape as the C3D ankle
+    # reference above. The paired medial/lateral markers are not among the
+    # six averaged joint centres load_c3d keeps, so pull them from the
+    # source file first; if the file has none (or is not a C3D at all), the
+    # reconstruction raises InsufficientLandmarksForISBError and we keep the
+    # sagittal hip/knee unchanged.
+    if cfg.c3d_isb_angles and "c3d_markers_3d" in data:
+        try:
+            from myogait.isb import (
+                ISB_REQUIRED_LANDMARKS,
+                InsufficientLandmarksForISBError,
+                reconstruct_isb_angles,
+            )
+        except ImportError:
+            logger.info("ISB angles requested but myogait is too old; skipping.")
+        else:
+            m3d = data.get("c3d_markers_3d") or {}
+            if any(lm not in m3d for lm in ISB_REQUIRED_LANDMARKS):
+                src = (data.get("extraction") or {}).get("source_file")
+                if src:
+                    from .marker_presets import inject_isb_markers
+
+                    inject_isb_markers(data, src)
+            try:
+                data = reconstruct_isb_angles(data, joints=tuple(cfg.c3d_isb_joints))
+            except InsufficientLandmarksForISBError as exc:
+                logger.info("ISB angles unavailable, keeping sagittal hip/knee: %s", exc)
 
     # Sign convention: every correction below (perspective, drift, bias)
     # assumes a flexion-positive signal, and canonicalize_angle_signs is

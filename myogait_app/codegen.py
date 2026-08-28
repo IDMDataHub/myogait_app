@@ -117,10 +117,19 @@ def python_snippet(
         and c3d_options is not None
         and _myogait_has("myogait.experimental_vicon", "compute_c3d_reference_angles")
     )
+    use_isb = (
+        ang.c3d_isb_angles
+        and c3d_options is not None
+        and _myogait_has("myogait.isb", "reconstruct_isb_angles")
+        and _myogait_has("myogait.vicon_calibration", "load_raw_c3d_markers")
+    )
 
     imports = ["normalize", "compute_angles", "segment_cycles", "analyze_gait"]
     if use_c3d_reference:
         imports.append("compute_c3d_reference_angles")
+    if use_isb:
+        imports.append("reconstruct_isb_angles")
+        imports.append("load_raw_c3d_markers")
     if use_signs:
         imports.append("canonicalize_angle_signs")
     imports.append("event_consensus" if ev.is_consensus else "detect_events")
@@ -257,6 +266,28 @@ def python_snippet(
         lines.append("# 2-D sagittal projection collapses the ankle (r ~ 0.4 vs a")
         lines.append("# Vicon 3-D reference); recompute it from the 3-D markers.")
         lines.append('data = compute_c3d_reference_angles(data, joints=("ankle",))')
+
+    if use_isb:
+        from .marker_presets import ISB_MARKER_ALIASES
+
+        joints = tuple(ang.c3d_isb_joints)
+        lines.append("")
+        lines.append("# ISB hip/knee: the 2-D angle references the trunk, ISB the")
+        lines.append("# pelvis (~10-17 deg constant offset vs a Visual3D/Vicon ref).")
+        lines.append("# The paired medial/lateral markers ISB needs are not among the")
+        lines.append("# six averaged joint centres load_c3d keeps, so pull them from")
+        lines.append("# the source file and add them under their ISB names.")
+        lines.append(f"_isb_aliases = {ISB_MARKER_ALIASES!r}")
+        lines.append('_raw_markers, _ = load_raw_c3d_markers(data["extraction"]["source_file"])')
+        lines.append('_norm = lambda s: "".join(c for c in s.upper() if c.isalnum())')
+        lines.append("_present = {_norm(k): k for k in _raw_markers}")
+        lines.append('data.setdefault("c3d_markers_3d", {})')
+        lines.append("for _isb_name, _cands in _isb_aliases.items():")
+        lines.append("    for _cand in _cands:")
+        lines.append("        if _norm(_cand) in _present:")
+        lines.append('            data["c3d_markers_3d"][_isb_name] = _raw_markers[_present[_norm(_cand)]]')
+        lines.append("            break")
+        lines.append(f"data = reconstruct_isb_angles(data, joints={joints!r})")
 
     if use_signs:
         lines.append("")
@@ -490,6 +521,12 @@ def yaml_config(
         lines.append(
             "  # No config key -- for a C3D source only, after compute_angles(): "
             'compute_c3d_reference_angles(data, joints=("ankle",))  # myogait >= 0.8.0'
+        )
+    if ang.c3d_isb_angles:
+        lines.append(
+            "  # No config key -- for a C3D source with paired anatomical markers, "
+            f"after compute_angles(): reconstruct_isb_angles(data, joints={tuple(ang.c3d_isb_joints)!r})  "
+            "# myogait >= 0.8.6"
         )
     post_angles = [
         (ang.frontal, "compute_frontal_angles(data)"),

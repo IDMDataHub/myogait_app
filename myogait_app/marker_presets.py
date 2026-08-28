@@ -317,4 +317,94 @@ def resolve_c3d_mapping(labels: list[str]) -> tuple[dict[str, list[str]], Mappin
     n_resolved = sum(1 for lm in REQUIRED_LANDMARKS if lm in mapping)
     return mapping, MappingDiagnostics(method="fuzzy", n_resolved=n_resolved, source=source)
 
-    return mapping, source
+
+# ── ISB anatomical markers (paired medial/lateral, kept separate) ────
+#
+# myogait's ISB reconstruction (``reconstruct_isb_angles``) builds a true
+# anatomical segment frame per joint, which needs the *paired* medial and
+# lateral markers as separate points -- not the single averaged joint
+# centre ``load_c3d`` resolves for hip/knee/ankle. It reads them from
+# ``data["c3d_markers_3d"]`` under fixed ISB names (see
+# ``myogait.isb.ISB_REQUIRED_LANDMARKS``). This table maps those names to
+# the raw C3D labels the marker sets we have seen actually use: the Bath
+# BioCV convention (``ASIS_R``, ``KNEE_LAT_R``, ``MTP1_R`` ...), Vicon
+# Plug-in Gait with its optional medial markers, and the ISB/CAST codes of
+# the Nature multimodal set. First present candidate wins, same policy as
+# the mapping resolver above. MTP1 (1st metatarsal head) is medial, MTP5
+# (5th) is lateral.
+ISB_MARKER_ALIASES: dict[str, list[str]] = {
+    "LEFT_ASIS": ["ASIS_L", "LASI", "L_IAS", "LASIS"],
+    "RIGHT_ASIS": ["ASIS_R", "RASI", "R_IAS", "RASIS"],
+    "LEFT_PSIS": ["PSIS_L", "LPSI", "L_IPS", "LPSIS"],
+    "RIGHT_PSIS": ["PSIS_R", "RPSI", "R_IPS", "RPSIS"],
+    "LEFT_KNEE_LATERAL": ["KNEE_LAT_L", "LKNE", "L_FLE", "LLFE", "LLEK"],
+    "LEFT_KNEE_MEDIAL": ["KNEE_MED_L", "LKNM", "L_FME", "LMFE", "LMEK"],
+    "RIGHT_KNEE_LATERAL": ["KNEE_LAT_R", "RKNE", "R_FLE", "RLFE", "RLEK"],
+    "RIGHT_KNEE_MEDIAL": ["KNEE_MED_R", "RKNM", "R_FME", "RMFE", "RMEK"],
+    "LEFT_ANKLE_LATERAL": ["MAL_LAT_L", "LANK", "L_FAL", "LLM", "LLMAL"],
+    "LEFT_ANKLE_MEDIAL": ["MAL_MED_L", "LMED", "LMMA", "L_TAM", "LMM"],
+    "RIGHT_ANKLE_LATERAL": ["MAL_LAT_R", "RANK", "R_FAL", "RLM", "RLMAL"],
+    "RIGHT_ANKLE_MEDIAL": ["MAL_MED_R", "RMED", "RMMA", "R_TAM", "RMM"],
+    "LEFT_HEEL": ["HEEL_L", "LHEE", "L_FCC", "LCAL"],
+    "RIGHT_HEEL": ["HEEL_R", "RHEE", "R_FCC", "RCAL"],
+    "LEFT_FOOT_INDEX_MEDIAL": ["MTP1_L", "L_FM1", "LMT1", "LFM1"],
+    "LEFT_FOOT_INDEX_LATERAL": ["MTP5_L", "L_FM5", "LMT5", "LFM5"],
+    "RIGHT_FOOT_INDEX_MEDIAL": ["MTP1_R", "R_FM1", "RMT1", "RFM1"],
+    "RIGHT_FOOT_INDEX_LATERAL": ["MTP5_R", "R_FM5", "RMT5", "RFM5"],
+}
+
+
+def resolve_isb_markers(labels: list[str]) -> dict[str, str]:
+    """Map each ISB anatomical landmark to the raw C3D label present in *labels*.
+
+    Returns ``{isb_name: raw_label}`` for every ISB landmark this file can
+    supply, matched case- and separator-insensitively (so ``ASIS_R``,
+    ``asis-r`` and ``ASISR`` all resolve). A landmark with no matching
+    candidate is simply absent from the result; the caller decides whether
+    the subset is enough (myogait's reconstruction needs all of them).
+    """
+    norm_to_raw: dict[str, str] = {}
+    for lbl in labels:
+        norm_to_raw.setdefault(_normalize(lbl), lbl)
+    resolved: dict[str, str] = {}
+    for isb_name, candidates in ISB_MARKER_ALIASES.items():
+        for cand in candidates:
+            raw = norm_to_raw.get(_normalize(cand))
+            if raw is not None:
+                resolved[isb_name] = raw
+                break
+    return resolved
+
+
+def inject_isb_markers(data: dict, c3d_path) -> list[str]:
+    """Add the paired ISB anatomical markers to ``data["c3d_markers_3d"]``.
+
+    Re-reads *c3d_path* for the raw, per-label 3-D trajectories
+    (``load_c3d`` only keeps the six averaged joint centres) and copies the
+    ISB anatomical markers in under their canonical names, leaving the 2-D
+    pivot and its normalisation untouched. Idempotent and non-fatal:
+    returns the list of ISB landmark names injected (empty if the file has
+    none, or myogait is too old to expose ``load_raw_c3d_markers``).
+    """
+    try:
+        from myogait import load_raw_c3d_markers
+    except Exception:
+        return []
+    try:
+        markers, _fps = load_raw_c3d_markers(str(c3d_path))
+    except Exception:
+        return []
+    resolved = resolve_isb_markers(list(markers.keys()))
+    if not resolved:
+        return []
+    m3d = data.setdefault("c3d_markers_3d", {})
+    injected: list[str] = []
+    for isb_name, raw_label in resolved.items():
+        arr = markers.get(raw_label)
+        if arr is not None:
+            # (n_frames, 3) raw XYZ -- the same axis order load_c3d stores
+            # its averaged joint centres in, so ISB reconstruction reads a
+            # consistent frame.
+            m3d[isb_name] = arr
+            injected.append(isb_name)
+    return injected

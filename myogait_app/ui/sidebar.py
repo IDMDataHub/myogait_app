@@ -387,6 +387,21 @@ def _angles_section(cfg: AnglesConfig, runtime) -> AnglesConfig:
                 if c3d_ref_ok else runtime.missing_feature_hint("c3d_reference_angles"),
             )
 
+            isb_ok = runtime.has("isb_angles")
+            c3d_isb_angles = st.checkbox(
+                "ISB hip/knee reference for C3D sources",
+                value=cfg.c3d_isb_angles and isb_ok,
+                disabled=not isb_ok,
+                help="The 2-D angle references hip/knee flexion to the trunk "
+                     "(shoulder->hip); ISB references the pelvis, a real anatomical "
+                     "difference that leaves a ~10-17 degree constant offset against a "
+                     "Visual3D/Vicon reference. Rebuilds hip and knee from the paired "
+                     "medial/lateral C3D markers using ISB segment frames. A no-op on "
+                     "any file without those anatomical markers (every video source, "
+                     "and sparse marker sets), so it is safe to leave on."
+                if isb_ok else runtime.missing_feature_hint("isb_angles"),
+            )
+
             st.divider()
             frontal_ok = runtime.has("frontal_angles")
             frontal = st.checkbox(
@@ -426,6 +441,7 @@ def _angles_section(cfg: AnglesConfig, runtime) -> AnglesConfig:
         calibration_max_offset_deg=float(calibration_max_offset_deg),
         canonicalize_signs=canonicalize_signs,
         c3d_reference_ankle=c3d_reference_ankle,
+        c3d_isb_angles=c3d_isb_angles,
         correct_ankle_sliding=ankle_sliding,
         apply_aspect_ratio=aspect,
         frontal=frontal,

@@ -429,6 +429,7 @@ OPTIONAL_FEATURES: dict[str, tuple[str, str]] = {
     "c3d_import": ("myogait.experimental_vicon", "load_c3d"),
     "c3d_convention": ("myogait.experimental_vicon", "detect_c3d_convention"),
     "c3d_reference_angles": ("myogait.experimental_vicon", "compute_c3d_reference_angles"),
+    "isb_angles": ("myogait.isb", "reconstruct_isb_angles"),
     "canonicalize_signs": ("myogait.angles", "canonicalize_angle_signs"),
     "opensim": ("myogait.opensim", "export_opensim_scale_setup"),
     "report": ("myogait.report", "generate_report"),
