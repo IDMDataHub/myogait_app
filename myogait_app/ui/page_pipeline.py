@@ -154,8 +154,18 @@ def _cycles_tab(result: PipelineResult, config) -> None:
         )
         return
 
+    isb_joints = _available_isb_cycle_joints(result.cycles)
+    joint_options = list(K.SAGITTAL_JOINTS) + isb_joints
+
     columns = st.columns([1, 1, 1, 1])
-    joint = columns[0].selectbox("Joint", K.SAGITTAL_JOINTS, index=1, key="cyc_joint")
+    joint = columns[0].selectbox(
+        "Joint", joint_options, index=1, key="cyc_joint",
+        format_func=lambda j: K.JOINT_LABELS.get(j, j.title()),
+        help="Hip/knee/ankle abd-add and rotation appear here once ISB "
+             "reconstruction (Angles section, sidebar) is on and the loaded "
+             "source has the marker convention it needs." if not isb_joints
+             else None,
+    )
     show_individual = columns[1].checkbox("Individual cycles", value=True, key="cyc_ind")
     show_sd = columns[2].checkbox("SD band", value=True, key="cyc_sd")
     reference = columns[3].selectbox(
@@ -198,10 +208,34 @@ def _cycles_tab(result: PipelineResult, config) -> None:
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 
+def _available_isb_cycle_joints(cycles: dict) -> list[str]:
+    """Which of K.ISB_CYCLE_JOINTS actually have data in *cycles*.
+
+    pipeline._enrich_cycles_with_isb_dof is a no-op whenever ISB
+    reconstruction did not run (or the source lacked the landmarks it
+    needs), so this checks the summary it would have written rather than
+    assuming the keys exist -- keeps the joint picker honest about what
+    this particular run actually has.
+    """
+    summary = (cycles or {}).get("summary") or {}
+    left, right = summary.get("left") or {}, summary.get("right") or {}
+    return [
+        j for j in K.ISB_CYCLE_JOINTS
+        if f"{j}_mean" in left or f"{j}_mean" in right
+    ]
+
+
 def _resolve_normative(choice: str, joint: str, config) -> dict | None:
     """Return the reference band for *joint*, from whichever source is picked."""
     if choice == "None":
         return None
+
+    # ISB DOF use myogait's own, differently-named normative joints where
+    # one exists (K.ISB_NORMATIVE_JOINT) -- ankle abd/add and every
+    # rotation DOF have none, so this falls through to get_normative_band
+    # raising ValueError below, caught the same way as any other unknown
+    # joint name.
+    normative_joint = K.ISB_NORMATIVE_JOINT.get(joint, joint)
 
     if choice == "Perry & Burnfield":
         runtime = get_runtime()
@@ -218,7 +252,7 @@ def _resolve_normative(choice: str, joint: str, config) -> dict | None:
                 index=strata.index(default) if default in strata else 0,
                 key="norm_stratum",
             )
-            return get_normative_band(joint, stratum=stratum)
+            return get_normative_band(normative_joint, stratum=stratum)
         except Exception as exc:
             st.caption(f"No normative band for {joint}: {exc}")
             return None

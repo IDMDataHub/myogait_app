@@ -597,7 +597,103 @@ def _apply_cycles(data: dict, cfg: CyclesConfig) -> dict:
             if isinstance(coherence, dict):
                 frame["coherence"] = coherence.get("score")
 
-    return segment_cycles(source, **cycles_kwargs)
+    return _enrich_cycles_with_isb_dof(data, segment_cycles(source, **cycles_kwargs))
+
+
+#: Extra per-frame DOF keys reconstruct_isb_angles adds (see AnglesConfig.
+#: isb_reconstruction's docstring). myogait's own segment_cycles has no
+#: idea these exist -- it is hardcoded to a fixed hip/knee/ankle/trunk
+#: flex/ext set plus a small frontal one (myogait.cycles._JOINT_KEYS/
+#: _FRONTAL_KEYS) -- so this is this app's own cycle-time-normalization
+#: for them, reusing exactly the interpolate-then-resample-to-n_points
+#: approach segment_cycles itself uses (myogait.cycles._normalize_to_percent).
+_ISB_EXTRA_DOF = ("abd_add_deg", "int_ext_rot_deg")
+
+
+def _enrich_cycles_with_isb_dof(data: dict, cycles: dict) -> dict:
+    """Add ISB's abd/add and rotation DOF to *cycles* in the exact shape
+    segment_cycles already uses for flex/ext (``cycles["cycles"][i]
+    ["angles_normalized"][key]`` and ``cycles["summary"][side]
+    [f"{key}_mean"/"_std"]``), so every existing chart --
+    ``charts.kinematics.cycle_overlay`` in particular -- can plot them
+    with zero changes. See CLAUDE.md's ISB reconstruction section.
+
+    A no-op whenever isb_reconstruction was not on for this run (the DOF
+    keys are then simply absent from the angle frames), so this is safe
+    to call unconditionally rather than threading an extra flag through
+    _apply_cycles's signature just to gate it.
+    """
+    import numpy as np  # local, like every other heavy import in this file
+
+    angle_frames = (data.get("angles") or {}).get("frames") or []
+    all_cycles = cycles.get("cycles") or []
+    if not angle_frames or not all_cycles:
+        return cycles
+
+    present = {
+        f"{joint}_{side}_{dof}"
+        for joint in ("hip", "knee", "ankle")
+        for side in ("L", "R")
+        for dof in _ISB_EXTRA_DOF
+        if any(af.get(f"{joint}_{side}_{dof}") is not None for af in angle_frames)
+    }
+    if not present:
+        return cycles
+
+    frame_by_idx = {af.get("frame_idx", i): af for i, af in enumerate(angle_frames)}
+    # Keyed on whatever cycle["side"] actually is, not preseeded to
+    # "left"/"right" -- segment_cycles is the only source of that value
+    # and this stays correct even if it ever used different labels.
+    by_side: dict[str, dict[str, list[np.ndarray]]] = {}
+
+    for cycle in all_cycles:
+        side = cycle.get("side")
+        side_letter = "L" if side == "left" else "R"
+        start, end = cycle.get("start_frame"), cycle.get("end_frame")
+        if start is None or end is None:
+            continue
+        span = [frame_by_idx[i] for i in range(start, end + 1) if i in frame_by_idx]
+        if len(span) < 10:
+            continue
+        # Match myogait's own n_points for this cycle rather than assuming
+        # 101 -- CyclesConfig.n_points is a real, user-adjustable control.
+        existing = next(iter((cycle.get("angles_normalized") or {}).values()), None)
+        n_points = len(existing) if existing else 101
+        target = np.linspace(0, 100, n_points)
+
+        angles_normalized = cycle.setdefault("angles_normalized", {})
+        for joint in ("hip", "knee", "ankle"):
+            for dof in _ISB_EXTRA_DOF:
+                key = f"{joint}_{side_letter}_{dof}"
+                if key not in present:
+                    continue
+                values = np.array(
+                    [np.nan if af.get(key) is None else float(af[key]) for af in span]
+                )
+                nans = np.isnan(values)
+                if nans.all():
+                    continue
+                if nans.any():
+                    x = np.arange(len(values))
+                    values[nans] = np.interp(x[nans], x[~nans], values[~nans])
+
+                out_key = f"{joint}_{dof}"  # cycle is already side-scoped
+                original = np.linspace(0, 100, len(values))
+                normalized = np.interp(target, original, values)
+                angles_normalized[out_key] = normalized.tolist()
+                by_side.setdefault(side, {}).setdefault(out_key, []).append(normalized)
+
+    summary = cycles.setdefault("summary", {})
+    for side, keyed_arrays in by_side.items():
+        if not keyed_arrays:
+            continue
+        side_summary = summary.setdefault(side, {})
+        for out_key, arrs in keyed_arrays.items():
+            stacked = np.stack(arrs)
+            side_summary[f"{out_key}_mean"] = np.mean(stacked, axis=0).tolist()
+            side_summary[f"{out_key}_std"] = np.std(stacked, axis=0).tolist()
+
+    return cycles
 
 
 def _apply_subject(data: dict, cfg: SubjectConfig) -> dict:

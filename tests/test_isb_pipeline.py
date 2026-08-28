@@ -144,3 +144,94 @@ def test_apply_angles_calls_isb_reconstruction_only_when_enabled():
     data_on = _synthetic_isb_pivot()
     data_on = _apply_angles(data_on, AnglesConfig(isb_reconstruction=True), isb_context={})
     assert data_on["angles"]["isb_reference"] == "isb_3d_direct"
+
+
+# ── Cycle-time enrichment for the 2 extra ISB DOF ──────────────────────
+#
+# myogait's own segment_cycles/_extract_cycle_angles never look at
+# *_abd_add_deg/*_int_ext_rot_deg (hardcoded to hip/knee/ankle/trunk
+# flex-ext, see CLAUDE.md), so _enrich_cycles_with_isb_dof is this app's
+# own cycle-percent resampling for them. These tests exercise it directly
+# against hand-built data/cycles dicts rather than a full pipeline run,
+# mirroring how myogait.cycles._normalize_to_percent itself is exercised.
+
+
+def _frames_with_isb_dof(n_frames: int) -> list[dict]:
+    return [
+        {
+            "frame_idx": i,
+            "hip_L_abd_add_deg": 5.0 + i * 0.1,
+            "hip_R_abd_add_deg": -5.0 - i * 0.1,
+            "knee_L_int_ext_rot_deg": 2.0,
+        }
+        for i in range(n_frames)
+    ]
+
+
+def test_enrich_cycles_with_isb_dof_is_a_noop_without_isb_angle_keys():
+    from myogait_app.pipeline import _enrich_cycles_with_isb_dof
+
+    data = {"angles": {"frames": [{"frame_idx": i, "hip_L": 1.0} for i in range(20)]}}
+    cycles = {
+        "cycles": [
+            {"cycle_id": 1, "side": "left", "start_frame": 0, "end_frame": 19,
+             "angles_normalized": {"hip": [0.0] * 101}},
+        ],
+        "summary": {},
+    }
+    result = _enrich_cycles_with_isb_dof(data, cycles)
+    assert result is cycles  # early return, unchanged object
+    assert "hip_abd_add_deg" not in result["cycles"][0]["angles_normalized"]
+    assert result["summary"] == {}
+
+
+def test_enrich_cycles_with_isb_dof_adds_normalized_curve_and_summary():
+    from myogait_app.pipeline import _enrich_cycles_with_isb_dof
+
+    n = 20
+    data = {"angles": {"frames": _frames_with_isb_dof(n)}}
+    cycles = {
+        "cycles": [
+            {"cycle_id": 1, "side": "left", "start_frame": 0, "end_frame": n - 1,
+             "angles_normalized": {"hip": [0.0] * 101}},
+            {"cycle_id": 2, "side": "right", "start_frame": 0, "end_frame": n - 1,
+             "angles_normalized": {"hip": [0.0] * 101}},
+        ],
+        "summary": {},
+    }
+    result = _enrich_cycles_with_isb_dof(data, cycles)
+
+    left, right = result["cycles"][0], result["cycles"][1]
+    # Present for the side/joint combination that actually had data...
+    assert len(left["angles_normalized"]["hip_abd_add_deg"]) == 101
+    assert len(left["angles_normalized"]["knee_int_ext_rot_deg"]) == 101
+    # ...resampled from an increasing 5.0..6.9 span, so the endpoints hold.
+    assert left["angles_normalized"]["hip_abd_add_deg"][0] == pytest.approx(5.0, abs=0.05)
+    assert left["angles_normalized"]["hip_abd_add_deg"][-1] == pytest.approx(6.9, abs=0.05)
+    # ...and not fabricated for a joint that was never in the frames at all.
+    assert "ankle_abd_add_deg" not in left["angles_normalized"]
+    # Right side has hip_R_abd_add_deg but no knee_R_int_ext_rot_deg.
+    assert len(right["angles_normalized"]["hip_abd_add_deg"]) == 101
+    assert "knee_int_ext_rot_deg" not in right["angles_normalized"]
+
+    left_summary = result["summary"]["left"]
+    assert len(left_summary["hip_abd_add_deg_mean"]) == 101
+    assert len(left_summary["hip_abd_add_deg_std"]) == 101
+    # A single left cycle -> zero spread.
+    assert left_summary["hip_abd_add_deg_std"] == pytest.approx([0.0] * 101, abs=1e-9)
+
+
+def test_enrich_cycles_with_isb_dof_skips_a_too_short_cycle():
+    from myogait_app.pipeline import _enrich_cycles_with_isb_dof
+
+    data = {"angles": {"frames": _frames_with_isb_dof(20)}}
+    cycles = {
+        "cycles": [
+            {"cycle_id": 1, "side": "left", "start_frame": 0, "end_frame": 4,  # 5 frames < 10
+             "angles_normalized": {"hip": [0.0] * 101}},
+        ],
+        "summary": {},
+    }
+    result = _enrich_cycles_with_isb_dof(data, cycles)
+    assert "hip_abd_add_deg" not in result["cycles"][0]["angles_normalized"]
+    assert result["summary"] == {}

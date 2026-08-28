@@ -27,6 +27,35 @@ JOINT_LABELS = {
     "pelvis_list": "Pelvis list",
     "hip_adduction": "Hip adduction",
     "knee_valgus": "Knee valgus",
+    # ISB reconstruction's extra DOF (AnglesConfig.isb_reconstruction) --
+    # distinct keys from "hip_adduction"/"knee_valgus" above on purpose:
+    # those two are an orphaned, never-wired-up depth-based frontal-angle
+    # feature (compute_frontal_angles/angles_frontal), not this pipeline.
+    "hip_abd_add_deg": "Hip abd/add (ISB)",
+    "knee_abd_add_deg": "Knee abd/add (ISB)",
+    "ankle_abd_add_deg": "Ankle abd/add (ISB)",
+    "hip_int_ext_rot_deg": "Hip rotation (ISB)",
+    "knee_int_ext_rot_deg": "Knee rotation (ISB)",
+    "ankle_int_ext_rot_deg": "Ankle rotation (ISB)",
+}
+
+#: cycle_overlay joint keys that pipeline._enrich_cycles_with_isb_dof adds
+#: on top of myogait's own hip/knee/ankle flex-ext, in proximal-to-distal,
+#: abd/add-before-rotation order -- the order UI joint pickers should
+#: offer them in, when present in a given run's cycles.
+ISB_CYCLE_JOINTS = (
+    "hip_abd_add_deg", "knee_abd_add_deg", "ankle_abd_add_deg",
+    "hip_int_ext_rot_deg", "knee_int_ext_rot_deg", "ankle_int_ext_rot_deg",
+)
+
+#: Where a normative reference exists for one of the ISB DOF above --
+#: myogait.normative only covers hip/knee abd-add (as "hip_adduction"/
+#: "knee_valgus"; a naming mismatch predating this feature, kept as-is
+#: since it is myogait's own public joint name); ankle abd/add and every
+#: rotation DOF have no normative band anywhere in myogait yet.
+ISB_NORMATIVE_JOINT = {
+    "hip_abd_add_deg": "hip_adduction",
+    "knee_abd_add_deg": "knee_valgus",
 }
 
 #: myogait stores per-frame angles under these keys.
