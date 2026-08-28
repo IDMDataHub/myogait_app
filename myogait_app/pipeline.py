@@ -105,12 +105,17 @@ class AnglesConfig:
     #: sagittal angle. The 2-D angle references flexion to the trunk
     #: (shoulder->hip) whereas ISB references the pelvis: a real anatomical
     #: difference that leaves a ~10-17 degree constant offset on hip/knee
-    #: against a Visual3D/Vicon reference, closed by this step. Off by
-    #: default -- it needs the paired anatomical markers, so it is a no-op
-    #: (falls back to the sagittal angle) on any file that lacks them,
-    #: including every video source. Only hip and knee: the ankle keeps its
-    #: own 3-D reference / deconvolution path.
-    c3d_isb_angles: bool = False
+    #: against a Visual3D/Vicon reference, closed by this step. On by
+    #: default: it is a no-op (falls back to the sagittal angle) on any file
+    #: that lacks the paired anatomical markers, including every video
+    #: source, so it only ever acts on a full-marker C3D -- where the ISB
+    #: pelvis reference is the clinical standard. Characterised across the
+    #: Bath BioCV cohort (356 trial x joint x side): the correction is a
+    #: clean, subject-specific level shift (waveform r = 0.975 preserved,
+    #: hip offset -6 to -22 deg, consistent within each subject), so it
+    #: cannot be replaced by a fixed constant. Only hip and knee: the ankle
+    #: keeps its own 3-D reference / deconvolution path.
+    c3d_isb_angles: bool = True
     #: Joints reconstruct_isb_angles recomputes when c3d_isb_angles is on.
     c3d_isb_joints: tuple[str, ...] = ("hip", "knee")
     #: Frontal-plane angles, only meaningful when depth data is present.

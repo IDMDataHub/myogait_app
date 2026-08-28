@@ -75,13 +75,16 @@ def test_inject_is_non_fatal_on_a_bad_path():
     assert data["c3d_markers_3d"] == {}
 
 
-def test_config_defaults_off_and_stays_hashable():
+def test_config_default_on_for_c3d_and_stays_hashable():
     cfg = AnglesConfig()
-    assert cfg.c3d_isb_angles is False
+    # On by default: a no-op on any source without paired anatomical
+    # markers (gated on c3d_markers_3d downstream), so only ever acts on a
+    # full-marker C3D, where the ISB pelvis reference is the standard.
+    assert cfg.c3d_isb_angles is True
     assert cfg.c3d_isb_joints == ("hip", "knee")
     # Frozen + tuple field -> the angles-stage cache key can hash it.
     assert hash(cfg) == hash(AnglesConfig())
-    assert hash(replace(cfg, c3d_isb_angles=True)) != hash(cfg)
+    assert hash(replace(cfg, c3d_isb_angles=False)) != hash(cfg)
 
 
 def test_codegen_emits_isb_reconstruction_for_a_c3d_source():
@@ -102,8 +105,9 @@ def test_codegen_emits_isb_reconstruction_for_a_c3d_source():
 def test_codegen_omits_isb_when_off():
     from myogait_app.codegen import python_snippet
 
+    cfg = replace(PipelineConfig(), angles=replace(PipelineConfig().angles, c3d_isb_angles=False))
     src = python_snippet(
-        PipelineConfig(), source="trial.c3d", from_json=True,
+        cfg, source="trial.c3d", from_json=True,
         c3d_options={"marker_mapping": None, "ap_axis": 0, "vertical_axis": 2,
                      "fix_aspect_ratio": False, "ranges": None},
     )
