@@ -5,6 +5,8 @@ from __future__ import annotations
 import sys
 from types import SimpleNamespace
 
+import pytest
+
 from myogait_app.marker_presets import (
     _read_c3d_labels_cached,
     read_c3d_labels,
@@ -66,6 +68,7 @@ _MEDIAPIPE_STYLE_LABELS = [
 
 
 def test_resolve_isb_mapping_myokinesis_convention():
+    pytest.importorskip("myogait.isb")
     mapping, diag = resolve_isb_mapping(_MYOKINESIS_LABELS)
     assert diag.is_isb_capable
     assert diag.method == "alias"
@@ -74,6 +77,7 @@ def test_resolve_isb_mapping_myokinesis_convention():
 
 
 def test_resolve_isb_mapping_bath_convention():
+    pytest.importorskip("myogait.isb")
     mapping, diag = resolve_isb_mapping(_BATH_LOWER_LIMB_LABELS)
     assert diag.is_isb_capable
     assert diag.method == "alias"
@@ -82,6 +86,7 @@ def test_resolve_isb_mapping_bath_convention():
 
 
 def test_resolve_isb_mapping_nature_multimodal_convention():
+    pytest.importorskip("myogait.isb")
     mapping, diag = resolve_isb_mapping(_NATURE_MULTIMODAL_LABELS)
     assert diag.is_isb_capable
     assert diag.method == "alias"
@@ -103,6 +108,7 @@ def test_resolve_isb_mapping_falls_back_to_fuzzy_for_an_unknown_convention():
     # same near-universal side + lateral/medial abbreviation style --
     # the flexibility the base resolve_c3d_mapping cascade already has,
     # extended to the richer landmark set.
+    pytest.importorskip("myogait.isb")
     labels = [
         "L_ASIS", "R_ASIS", "L_PSIS", "R_PSIS",
         "KNEE_LATERAL_L", "KNEE_MEDIAL_L", "KNEE_LATERAL_R", "KNEE_MEDIAL_R",
@@ -124,8 +130,25 @@ def test_resolve_isb_mapping_partial_coverage_is_not_capable():
     # Only a hip and a knee pair -- no ankle, no heel, no forefoot.
     # Coverage must be all-or-nothing (an anatomical frame needs the
     # whole chain), not "close enough".
+    pytest.importorskip("myogait.isb")
     labels = ["LASIS", "RASIS", "LPSIS", "RPSIS", "LLFE", "LMFE"]
     mapping, diag = resolve_isb_mapping(labels)
     assert not diag.is_isb_capable
     assert 0 < diag.n_resolved < diag.n_required
+    assert mapping is None
+
+
+def test_resolve_isb_mapping_not_capable_when_myogait_isb_is_unavailable(monkeypatch):
+    # Regression test for a real bug caught by CI (not local runs, which
+    # always had the isb.py-carrying myogait branch installed): the
+    # currently *published* myogait has no myogait.isb yet (it lives on
+    # an unmerged branch), so resolve_isb_mapping's ImportError guard
+    # returns n_resolved=0, n_required=0 -- and 0 >= 0 previously made
+    # is_isb_capable read True. sys.modules[name] = None is the
+    # documented way to force `import` to raise ImportError for one
+    # module without needing myogait.isb to actually be absent here.
+    monkeypatch.setitem(sys.modules, "myogait.isb", None)
+    mapping, diag = resolve_isb_mapping(_MYOKINESIS_LABELS)
+    assert diag.method == "unavailable"
+    assert not diag.is_isb_capable
     assert mapping is None

@@ -487,7 +487,11 @@ class IsbMappingDiagnostics:
 
     @property
     def is_isb_capable(self) -> bool:
-        return self.n_resolved >= self.n_required
+        # n_required == 0 means "unavailable" (myogait.isb isn't
+        # importable), not "nothing to resolve" -- 0 >= 0 would otherwise
+        # read as capable. Caught by CI running against the currently
+        # published myogait, which doesn't have myogait.isb yet.
+        return self.n_required > 0 and self.n_resolved >= self.n_required
 
 
 def resolve_isb_mapping(labels: list[str]) -> tuple[dict[str, list[str]] | None, IsbMappingDiagnostics]:
