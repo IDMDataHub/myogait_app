@@ -5,8 +5,68 @@ yet tag releases, so entries are dated rather than versioned. Newest first.
 Every entry below is attributed to its actual author; where that is not
 stated, it is Romain Feigean.
 
-## Unreleased — 2026-08-26 (Romain Feigean)
+## Unreleased — 2026-08-26 to 2026-08-28 (Romain Feigean)
 
+- **ISB-convention 3-D angle reconstruction (`feat/isb-marker-cascade`, on top
+  of myogait's `feat/isb-3d-angles-tier1`).** Hip/knee/ankle can now be
+  computed from proper ISB pelvis/thigh/shank/foot anatomical frames instead
+  of this app's default trunk-referenced 2-D sagittal projection — a
+  different angle *definition*, not just a precision gap (an internal audit
+  against BATH and a Myokinesis clinical recording found r >= 0.99 between
+  the two methods but a 10–17° constant offset on hip/knee, traced to the
+  reference-segment difference). Off by default; a new "ISB reconstruction
+  (hip/knee/ankle)" checkbox in the sidebar's Angles section turns it on.
+  Degrades silently and safely to the existing sagittal result wherever the
+  source can't support it (no `myogait.isb` yet, or the C3D's marker
+  convention doesn't resolve enough of the paired medial/lateral landmarks
+  ISB needs) — never fails the pipeline over this.
+  - **Three calibration tiers, chosen automatically from whichever files are
+    attached in the C3D tab** — not a separate control. Tier 1 (no file)
+    needs only the trial C3D itself. Tier 2 adds a static trial (Harrington
+    et al. 2007 hip-joint-centre regression). Tier 3 adds a `.vsk` + `.prot`
+    on top for a full CGM/Plug-in-Gait-equivalent technical-cluster
+    calibration — measured, real accuracy improvement over tier 2 confirmed
+    on real Myokinesis data (hip HJC RMSE 2.76/1.72° → 0.47/0.61°). The
+    "New assessment" C3D tab gained an "ISB calibration files (optional)"
+    expander for the static/`.vsk`/`.prot` uploads, all optional; providing
+    none keeps today's exact behaviour.
+  - **Marker-convention resolution is auto-detected**, the same way this
+    app already does for the base 6-landmark C3D mapping: a new
+    `resolve_isb_mapping` cascade (alias tables for Myokinesis/BATH/Nature
+    conventions first, a lateral/medial-aware keyword scan as fallback)
+    finds the richer 18-landmark paired set ISB needs, so this works on any
+    C3D convention, not just one clinic's naming — the flexibility this
+    feature was explicitly required to keep.
+  - **Bias corrections (LASSO healthy-gait models) are hard-blocked while
+    ISB is active**, all three joints — they were fitted on the sagittal
+    method's residuals and have no scientific basis applied to ISB's
+    pelvis-referenced angles.
+  - **The 2 extra degrees of freedom ISB also reconstructs — abduction/
+    adduction and internal/external rotation — are cycle-normalised and
+    charted** in the Pipeline explorer's Cycles tab (joint picker offers
+    them only when the loaded run actually has them; a normative reference
+    band is available for hip and knee abd/add, not yet for ankle or any
+    rotation DOF — none exists anywhere in myogait yet). The CSV bundle
+    export already carries them for free; the Excel workbook does not yet
+    (hardcoded upstream in myogait's own `export.py`, not this app).
+  - Reproducibility panel notes when ISB reconstruction was on (as a
+    comment, not a literal reproducible call — which tier ran depends on
+    files attached at load time, which `codegen`'s current signature
+    doesn't carry).
+  - New `myogait_app.marker_presets.resolve_isb_mapping`/
+    `merged_c3d_mapping`, `pipeline.AnglesConfig.isb_reconstruction`,
+    `ui.page_data._build_isb_context`, `ui.state.Source.isb_context`. 22 new
+    tests across `test_marker_presets.py`, `test_isb_pipeline.py` and the
+    new `test_page_pipeline_isb.py`; full suite green (122 passed, 1
+    pre-existing skip), `ruff check` clean, CI green on every push
+    (`ubuntu-latest`/`windows-latest` × Python 3.10–3.12).
+  - Depends on `myogait.isb`/`myogait.vicon_calibration`
+    (`reconstruct_isb_angles`/`_tier2`/`_tier3`, `calibrate_technical_frames`,
+    Harrington HJC regression — 23 tests of its own), **not yet merged into
+    myogait's own `master`** — lives on `feat/isb-3d-angles-tier1` of
+    `github.com/IDMDataHub/myogait` until that PR lands and this repo's pin
+    is bumped. See CLAUDE.md's "ISB reconstruction" section for the full
+    architecture writeup.
 - **Reconciled with "Nocturne": back to the paper-light Bauhaus identity.**
   0.3.0 below landed a second, independently art-directed visual identity
   (dark ground, blurple, Inter) on the same files as an in-progress
