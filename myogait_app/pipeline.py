@@ -18,10 +18,13 @@ an exception escape, so the interface can say which stage broke and why.
 from __future__ import annotations
 
 import copy
+import logging
 import time
 from collections import OrderedDict
 from dataclasses import asdict, dataclass, field, replace
 from typing import Any, Callable
+
+logger = logging.getLogger(__name__)
 
 #: Stage names, in execution order.
 #:
@@ -106,6 +109,18 @@ class AnglesConfig:
     #: Removes the slow angular drift a fixed camera introduces over a
     #: long walk. Applied after the perspective correction.
     detrend: bool = False
+    #: Recompute hip/knee/ankle from proper ISB pelvis/thigh/shank/foot
+    #: anatomical frames (myogait.isb, on an unmerged branch as of this
+    #: writing) instead of this method's trunk-referenced 2-D projection --
+    #: a different definition of hip/knee flexion, not just a precision
+    #: gap (audit: r>=0.99 between the two, but a 10-17 degree constant
+    #: offset on hip/knee). Only takes effect when the loaded source
+    #: actually resolved the paired medial/lateral landmarks this needs
+    #: (marker_presets.resolve_isb_mapping) -- off, or unavailable, leaves
+    #: this method's own result untouched. The tier used (direct / static-
+    #: only / VSK-calibrated) follows from which calibration files were
+    #: attached at load time, not a separate choice here.
+    isb_reconstruction: bool = False
 
 
 @dataclass(frozen=True)
@@ -393,7 +408,7 @@ def _correction(name: str, module: str = "myogait.corrections"):
     return func
 
 
-def _apply_angles(data: dict, cfg: AnglesConfig) -> dict:
+def _apply_angles(data: dict, cfg: AnglesConfig, isb_context: dict | None = None) -> dict:
     from myogait import compute_angles
 
     angles_kwargs = dict(
@@ -422,6 +437,14 @@ def _apply_angles(data: dict, cfg: AnglesConfig) -> dict:
             "compute_c3d_reference_angles", "myogait.experimental_vicon"
         )(data, joints=("ankle",))
 
+    # ISB reconstruction, after the C3D ankle patch above (its own ankle
+    # overwrite, more rigorous, is meant to have the final word when it
+    # succeeds -- see the isb_reconstruction field's own docstring) and
+    # before sign canonicalization (must apply uniformly on top of
+    # whichever angle source ended up populated).
+    if cfg.isb_reconstruction:
+        data = _apply_isb_reconstruction(data, isb_context or {})
+
     # Sign convention: every correction below (perspective, drift, bias)
     # assumes a flexion-positive signal, and canonicalize_angle_signs is
     # what makes that true regardless of walking direction.
@@ -440,6 +463,45 @@ def _apply_angles(data: dict, cfg: AnglesConfig) -> dict:
     if cfg.detrend:
         data = _correction("apply_linear_detrend")(data)
     return data
+
+
+def _apply_isb_reconstruction(data: dict, isb_context: dict) -> dict:
+    """Overwrite hip/knee/ankle with an ISB reconstruction, tier decided
+    by what *isb_context* actually has (see ``PipelineRunner.__init__``'s
+    docstring for its shape).
+
+    Never raises: a source that doesn't resolve the paired medial/
+    lateral landmarks this needs (InsufficientLandmarksForISBError), or a
+    myogait install without myogait.isb yet (ImportError), leaves
+    whatever compute_angles/the C3D ankle patch already produced
+    untouched -- the same "gate the control, explain the absence, degrade
+    to the existing correct path" contract runtime.py's OPTIONAL_FEATURES
+    already uses everywhere else in this app.
+    """
+    try:
+        tier3_calibration = isb_context.get("tier3_calibration")
+        if tier3_calibration is not None and isb_context.get("dynamic_raw"):
+            from myogait import reconstruct_isb_angles_tier3
+
+            return reconstruct_isb_angles_tier3(
+                data, isb_context["dynamic_raw"], tier3_calibration
+            )
+
+        static_landmarks = isb_context.get("static_landmarks")
+        if static_landmarks:
+            from myogait import reconstruct_isb_angles_tier2
+
+            return reconstruct_isb_angles_tier2(data, static_landmarks)
+
+        from myogait import reconstruct_isb_angles
+
+        return reconstruct_isb_angles(data)
+    except ImportError:
+        logger.info("ISB reconstruction requested but myogait.isb is not installed yet.")
+        return data
+    except Exception as exc:  # noqa: BLE001 -- degrade to the existing result, never fail the stage
+        logger.info("ISB reconstruction skipped: %s: %s", type(exc).__name__, exc)
+        return data
 
 
 def _accepts(func, param_name: str) -> bool:
@@ -564,7 +626,13 @@ class PipelineRunner:
     share a prefix share the work for that prefix.
     """
 
-    def __init__(self, source: dict, source_key: str, max_entries: int = 24) -> None:
+    def __init__(
+        self,
+        source: dict,
+        source_key: str,
+        max_entries: int = 24,
+        isb_context: dict | None = None,
+    ) -> None:
         #: Never handed out directly -- every stage works on a copy so a
         #: myogait in-place mutation cannot corrupt the cached upstream.
         self._source = source
@@ -573,6 +641,18 @@ class PipelineRunner:
         self._max_entries = max_entries
         self._hits = 0
         self._misses = 0
+        #: ISB reconstruction inputs decided once at load time, not per
+        #: pipeline run -- {"static_landmarks": dict | None,
+        #: "tier3_calibration": TechnicalCalibration | None,
+        #: "dynamic_raw": dict | None}. Kept off PipelineConfig/AnglesConfig
+        #: deliberately: it holds raw numpy arrays and dataclasses with no
+        #: stable hash, and every config field doubles as a cache key.
+        #: Tied 1:1 to the source instead (same source -> same calibration
+        #: always), so it needs no cache-key participation of its own --
+        #: ui/state.py already rebuilds the whole PipelineRunner whenever
+        #: source.key changes, which callers must make happen whenever the
+        #: calibration files themselves change.
+        self._isb_context = isb_context or {}
 
     # cache plumbing ------------------------------------------------
 
@@ -637,7 +717,9 @@ class PipelineRunner:
         data, outcome = self._stage(
             "angles",
             key_angles,
-            lambda: _apply_angles(copy.deepcopy(self._cache[key_norm]), config.angles),
+            lambda: _apply_angles(
+                copy.deepcopy(self._cache[key_norm]), config.angles, self._isb_context
+            ),
         )
         result.outcomes.append(outcome)
         if not outcome.ok:

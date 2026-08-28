@@ -9,6 +9,7 @@ import pytest
 
 from myogait_app.marker_presets import (
     _read_c3d_labels_cached,
+    merged_c3d_mapping,
     read_c3d_labels,
     resolve_isb_mapping,
 )
@@ -152,3 +153,28 @@ def test_resolve_isb_mapping_not_capable_when_myogait_isb_is_unavailable(monkeyp
     assert diag.method == "unavailable"
     assert not diag.is_isb_capable
     assert mapping is None
+
+
+def test_merged_c3d_mapping_combines_base_and_isb_landmarks():
+    pytest.importorskip("myogait.isb")
+    merged, base_diag, isb_mapping, isb_diag = merged_c3d_mapping(_MYOKINESIS_LABELS)
+    assert isb_diag.is_isb_capable
+    # Base landmarks (what load_c3d needs at minimum) survive the merge...
+    assert merged["LEFT_HIP"]
+    assert merged["LEFT_KNEE"]
+    # ...alongside the ISB-enriched ones the base cascade never resolves.
+    assert merged["LEFT_KNEE_LATERAL"] == ["LLFE"]
+    assert merged["LEFT_KNEE_MEDIAL"] == ["LMFE"]
+    assert isb_mapping is not None
+    assert base_diag.method in ("native", "fuzzy")
+
+
+def test_merged_c3d_mapping_is_just_the_base_when_not_isb_capable():
+    from myogait_app.marker_presets import resolve_c3d_mapping
+
+    merged, base_diag, isb_mapping, isb_diag = merged_c3d_mapping(_MEDIAPIPE_STYLE_LABELS)
+    base_only, _ = resolve_c3d_mapping(_MEDIAPIPE_STYLE_LABELS)
+    assert not isb_diag.is_isb_capable
+    assert isb_mapping is None
+    # Nothing ISB-only got merged in when there was nothing to merge.
+    assert merged == base_only

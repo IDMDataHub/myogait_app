@@ -50,6 +50,19 @@ class Source:
     #: fix, matched/missing landmarks) -- set only when kind == "c3d", so
     #: the reproducibility panel can regenerate the exact load_c3d call.
     c3d_options: dict | None = None
+    #: ISB reconstruction inputs, decided once at load time -- see
+    #: PipelineRunner.__init__'s docstring for the shape. None/empty for
+    #: any non-ISB-capable source (unchanged behaviour). Not part of
+    #: c3d_options: those are plain, JSON-safe metadata for the
+    #: reproducibility panel, these carry raw numpy arrays and dataclass
+    #: objects that have no business in a codegen'd snippet.
+    isb_context: dict | None = None
+    #: Small, display-only summary of isb_context's capability -- what
+    #: marker_presets.resolve_isb_mapping (and, for tiers 2/3, whether a
+    #: static/.vsk/.prot file was attached) found for this source. Kept
+    #: separate from isb_context so the UI can show it without touching
+    #: the raw calibration data.
+    isb_diagnostics: dict | None = None
 
     @property
     def n_frames(self) -> int:
@@ -154,7 +167,7 @@ def get_runner() -> PipelineRunner | None:
         return None
     runner: PipelineRunner | None = st.session_state.get(K_RUNNER)
     if runner is None or runner.source_key != source.key:
-        runner = PipelineRunner(source.data, source.key)
+        runner = PipelineRunner(source.data, source.key, isb_context=source.isb_context)
         st.session_state[K_RUNNER] = runner
     return runner
 

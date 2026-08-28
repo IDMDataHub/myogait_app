@@ -60,13 +60,21 @@ def _available_filters() -> list[str]:
 _K_LAST_SUBJECT_FEMUR = "mg_last_subject_femur_mm"
 
 
-def render(config: PipelineConfig) -> PipelineConfig:
-    """Draw the controls and return the configuration they describe."""
+def render(config: PipelineConfig, source=None) -> PipelineConfig:
+    """Draw the controls and return the configuration they describe.
+
+    *source* (a ``ui.state.Source``, optional) is read-only here, for the
+    one control that needs to know something about the loaded source
+    itself rather than just the installed myogait -- whether it resolved
+    the paired landmarks ISB reconstruction needs (see the isb_reconstruction
+    checkbox in ``_angles_section``). Every other section stays config-only
+    on purpose; do not grow this into a general escape hatch.
+    """
     runtime = get_runtime()
 
     subject = _subject_section(config.subject)
     normalize = _normalize_section(config.normalize)
-    angles = _angles_section(config.angles, runtime)
+    angles = _angles_section(config.angles, runtime, source)
     bias = _bias_section(config.bias, angles, runtime)
     events = _events_section(_sync_femur_from_subject(config.events, subject), runtime)
     cycles = _cycles_section(config.cycles, runtime)
@@ -271,7 +279,7 @@ def _normalize_section(cfg: NormalizeConfig) -> NormalizeConfig:
     )
 
 
-def _angles_section(cfg: AnglesConfig, runtime) -> AnglesConfig:
+def _angles_section(cfg: AnglesConfig, runtime, source=None) -> AnglesConfig:
     components.sidebar_section_marker("02", BRANDING.primary_blue)
     with st.expander("2. Joint kinematics", expanded=True):
         methods = list(runtime.angle_methods)
@@ -387,6 +395,42 @@ def _angles_section(cfg: AnglesConfig, runtime) -> AnglesConfig:
                 if c3d_ref_ok else runtime.missing_feature_hint("c3d_reference_angles"),
             )
 
+            isb_supported = runtime.has("isb_reconstruction")
+            isb_diag = (getattr(source, "isb_diagnostics", None) or {}) if source else {}
+            isb_capable = bool(isb_diag.get("capable"))
+            isb_ok = isb_supported and isb_capable
+            isb_tier_label = {
+                "tier1": "direct, no calibration file",
+                "tier2": "static trial only",
+                "tier3": "VSK + static + protocol, calibrated",
+            }.get(isb_diag.get("tier"), "direct, no calibration file")
+            if isb_supported and source is not None and not isb_capable:
+                isb_hint = (
+                    "This source did not resolve the paired medial/lateral "
+                    "landmarks ISB needs (see the C3D tab's status message) "
+                    "-- one point per joint isn't enough to build an "
+                    "anatomical frame from."
+                )
+            elif not isb_supported:
+                isb_hint = runtime.missing_feature_hint("isb_reconstruction")
+            else:
+                isb_hint = (
+                    f"Recomputes hip/knee/ankle from proper ISB pelvis/thigh/"
+                    f"shank/foot anatomical frames instead of this method's "
+                    f"trunk-referenced 2-D projection -- a different "
+                    f"definition of the angle, not just a precision gap "
+                    f"(audit: r>=0.99 between the two, but a 10-17 degree "
+                    f"constant offset on hip/knee). Tier available for this "
+                    f"source: {isb_tier_label}, decided by which calibration "
+                    f"files were attached in the C3D tab."
+                )
+            isb_reconstruction = st.checkbox(
+                "ISB reconstruction (hip/knee/ankle)",
+                value=cfg.isb_reconstruction and isb_ok,
+                disabled=not isb_ok,
+                help=isb_hint,
+            )
+
             st.divider()
             frontal_ok = runtime.has("frontal_angles")
             frontal = st.checkbox(
@@ -426,6 +470,7 @@ def _angles_section(cfg: AnglesConfig, runtime) -> AnglesConfig:
         calibration_max_offset_deg=float(calibration_max_offset_deg),
         canonicalize_signs=canonicalize_signs,
         c3d_reference_ankle=c3d_reference_ankle,
+        isb_reconstruction=isb_reconstruction,
         correct_ankle_sliding=ankle_sliding,
         apply_aspect_ratio=aspect,
         frontal=frontal,
@@ -467,15 +512,30 @@ def _bias_section(cfg: BiasConfig, angles: AnglesConfig, runtime) -> BiasConfig:
         if not available:
             st.caption(runtime.missing_feature_hint("ankle_bias"))
 
+        # These models were fitted on the sagittal method's residuals (M1-
+        # corrected, for hip/knee). ISB reconstruction is a different
+        # angle definition entirely (pelvis-referenced 3-D, not trunk-
+        # referenced 2-D) -- applying a correction fitted on one to the
+        # other has no scientific basis, so all three are blocked outright
+        # while it is on, not just hip/knee the way the perspective
+        # requirement below is.
+        isb_active = angles.isb_reconstruction
+        if isb_active:
+            st.caption(
+                "ISB reconstruction is on: these corrections were fitted on "
+                "the sagittal method's residuals, not ISB's pelvis-referenced "
+                "angles, so all three are disabled while it is active."
+            )
+
         ankle = st.checkbox(
             "Ankle bias correction",
-            value=cfg.ankle and available,
-            disabled=not available,
+            value=cfg.ankle and available and not isb_active,
+            disabled=not available or isb_active,
             help="Fitted on the raw signal; does not require the perspective step.",
         )
 
         needs = not angles.perspective
-        if needs:
+        if needs and not isb_active:
             st.caption(
                 "Hip and knee need the M1 perspective correction enabled first - "
                 "their coefficients were fitted on M1-corrected residuals, so "
@@ -483,13 +543,13 @@ def _bias_section(cfg: BiasConfig, angles: AnglesConfig, runtime) -> BiasConfig:
             )
         hip = st.checkbox(
             "Hip bias correction",
-            value=cfg.hip and available and not needs,
-            disabled=not available or needs,
+            value=cfg.hip and available and not needs and not isb_active,
+            disabled=not available or needs or isb_active,
         )
         knee = st.checkbox(
             "Knee bias correction",
-            value=cfg.knee and available and not needs,
-            disabled=not available or needs,
+            value=cfg.knee and available and not needs and not isb_active,
+            disabled=not available or needs or isb_active,
         )
 
         if knee:

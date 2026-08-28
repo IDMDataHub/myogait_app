@@ -258,6 +258,15 @@ def python_snippet(
         lines.append("# Vicon 3-D reference); recompute it from the 3-D markers.")
         lines.append('data = compute_c3d_reference_angles(data, joints=("ankle",))')
 
+    if ang.isb_reconstruction and c3d_options is not None:
+        lines.append("")
+        lines.append("# ISB reconstruction was on for this run (myogait.isb, unreleased")
+        lines.append("# as of this writing). Not reproduced literally here: which tier")
+        lines.append("# ran (direct / static-only / VSK-calibrated) depends on which")
+        lines.append("# calibration files were attached in the C3D tab, not represented")
+        lines.append("# in this snippet's inputs. See CLAUDE.md's ISB reconstruction")
+        lines.append("# section, or: reconstruct_isb_angles(data) for the direct tier.")
+
     if use_signs:
         lines.append("")
         lines.append("# Flexion-positive convention, independent of walking direction")
@@ -490,6 +499,14 @@ def yaml_config(
         lines.append(
             "  # No config key -- for a C3D source only, after compute_angles(): "
             'compute_c3d_reference_angles(data, joints=("ankle",))  # myogait >= 0.8.0'
+        )
+    if ang.isb_reconstruction:
+        lines.append(
+            "  # No config key -- for an ISB-capable C3D source only, after "
+            "compute_angles(): reconstruct_isb_angles(data) or the tier2/"
+            "tier3 variant matching whichever calibration files were "
+            "attached in the C3D tab (myogait.isb, unreleased as of this "
+            "writing)"
         )
     post_angles = [
         (ang.frontal, "compute_frontal_angles(data)"),

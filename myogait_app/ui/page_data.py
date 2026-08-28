@@ -216,16 +216,40 @@ def _c3d_tab() -> None:
     labels: list[str] = []
     detected_mapping: dict[str, list[str]] = {}
     diagnostics = None
+    isb_diag = None
     if uploaded is not None:
         _warn_large_browser_upload(uploaded, "This C3D file")
         target = store_uploaded_file(state.workspace(), uploaded, uploaded.name)
         try:
-            from ..marker_presets import read_c3d_labels, resolve_c3d_mapping
+            from ..marker_presets import merged_c3d_mapping, read_c3d_labels
 
             labels = read_c3d_labels(target)
-            detected_mapping, diagnostics = resolve_c3d_mapping(labels)
+            # detected_mapping already includes the ISB-enriched landmarks
+            # (paired medial/lateral markers) on top of the base 6 whenever
+            # the file resolves them -- every mapping mode below (auto-
+            # detect, Structured fields, Raw JSON) gets both for free, with
+            # zero mode-specific handling.
+            detected_mapping, diagnostics, _isb_mapping, isb_diag = merged_c3d_mapping(labels)
         except Exception as exc:
             st.caption(f"Could not pre-scan marker labels: {type(exc).__name__}: {exc}")
+
+        if isb_diag is not None and isb_diag.is_isb_capable:
+            st.success(
+                "ISB reconstruction available for this file "
+                f"({isb_diag.n_resolved}/{isb_diag.n_required} landmarks via "
+                f"{isb_diag.method}) -- add a static trial and/or .vsk/.prot "
+                "below for the calibrated tiers, or turn it on as-is once "
+                "loaded (sidebar, Joint kinematics). See CLAUDE.md's ISB "
+                "reconstruction section for what each tier buys."
+            )
+        elif isb_diag is not None and isb_diag.method != "unavailable":
+            st.caption(
+                "ISB reconstruction not available for this file "
+                f"({isb_diag.n_resolved}/{isb_diag.n_required} landmarks resolved) "
+                "-- needs a marker on each side (lateral and medial) of the "
+                "knee and ankle, not just one point per joint. Falls back to "
+                "the existing sagittal method, unchanged."
+            )
 
     with st.expander("Marker mapping and axes", expanded=False):
         if uploaded is not None and diagnostics is not None:
@@ -314,13 +338,65 @@ def _c3d_tab() -> None:
                      "behaviour.",
             )
 
+    static_target: Path | None = None
+    vsk_target: Path | None = None
+    prot_target: Path | None = None
+    if uploaded is not None and isb_diag is not None and isb_diag.is_isb_capable:
+        with st.expander("ISB calibration files (optional)", expanded=False):
+            st.caption(
+                "Neither file is required -- with nothing here, ISB "
+                "reconstruction still works (direct, recomputed every frame, "
+                "no calibration). A static trial alone adds a subject-"
+                "specific hip-joint-centre regression; adding a .vsk and "
+                ".prot on top of that is the full calibrated reconstruction "
+                "-- see CLAUDE.md's ISB reconstruction section for the "
+                "measured difference between the three."
+            )
+            static_upload = st.file_uploader(
+                "Static trial (.c3d)", type=["c3d"], key="isb_static_upload",
+                help="A standing/neutral C3D from the same session, same "
+                     "marker set as the dynamic trial above.",
+            )
+            if static_upload is not None:
+                _warn_large_browser_upload(static_upload, "This static trial")
+                static_target = store_uploaded_file(
+                    state.workspace(), static_upload, static_upload.name
+                )
+
+            vsk_col, prot_col = st.columns(2)
+            vsk_upload = vsk_col.file_uploader(
+                "VSK skeleton (.vsk)", type=["vsk"], key="isb_vsk_upload",
+                help="Vicon skeleton file -- segment marker templates and "
+                     "any subject-calibrated joint centres it carries.",
+            )
+            if vsk_upload is not None:
+                vsk_target = store_uploaded_file(state.workspace(), vsk_upload, vsk_upload.name)
+            prot_upload = prot_col.file_uploader(
+                "Protocol (.prot)", type=["prot"], key="isb_prot_upload",
+                help="Segment/articulation definitions for the lab's own "
+                     "protocol.",
+            )
+            if prot_upload is not None:
+                prot_target = store_uploaded_file(state.workspace(), prot_upload, prot_upload.name)
+
+            if (vsk_target is None) != (prot_target is None):
+                st.warning(
+                    "The full calibrated tier needs both a .vsk and a .prot "
+                    "-- with only one, this load falls back to the static-"
+                    "only tier (or direct, if no static trial either)."
+                )
+
     if uploaded is not None and target is not None and st.button(
         "Load C3D", type="primary", use_container_width=True, key="c3d_load"
     ):
         if not mapping:
             st.error("Fix the marker mapping above before loading.")
             return
-        _load_c3d(target, uploaded.name, mapping, int(ap_axis), int(vertical_axis), fix_aspect)
+        _load_c3d(
+            target, uploaded.name, mapping, int(ap_axis), int(vertical_axis), fix_aspect,
+            isb_capable=bool(isb_diag and isb_diag.is_isb_capable),
+            static_path=static_target, vsk_path=vsk_target, prot_path=prot_target,
+        )
 
 
 def _c3d_diagnostics(diagnostics, n_labels: int) -> None:
@@ -412,6 +488,10 @@ def _load_c3d(
     ap_axis: int,
     vertical_axis: int,
     fix_aspect: bool,
+    isb_capable: bool = False,
+    static_path: Path | None = None,
+    vsk_path: Path | None = None,
+    prot_path: Path | None = None,
 ) -> None:
     """Load a C3D trial and install it, correcting the aspect ratio if asked."""
     try:
@@ -460,6 +540,10 @@ def _load_c3d(
     matched = sorted((data["frames"][0].get("landmarks") or {}).keys())
     missing = [lm for lm in MEDIAPIPE_LANDMARKS if lm not in matched]
 
+    isb_context, isb_diagnostics, calibration_identity = _build_isb_context(
+        path, mapping, isb_capable, ap_axis, vertical_axis, static_path, vsk_path, prot_path
+    )
+
     state.set_source(
         state.Source(
             kind="c3d",
@@ -467,7 +551,10 @@ def _load_c3d(
             data=data,
             key=state.source_key(
                 name,
-                (path.stat().st_size, path.stat().st_mtime, ap_axis, vertical_axis, fix_aspect),
+                (
+                    path.stat().st_size, path.stat().st_mtime, ap_axis, vertical_axis,
+                    fix_aspect, calibration_identity,
+                ),
             ),
             model="vicon",
             path=path,
@@ -480,9 +567,104 @@ def _load_c3d(
                 "missing_landmarks": missing,
                 "ranges": ranges,
             },
+            isb_context=isb_context,
+            isb_diagnostics=isb_diagnostics,
         )
     )
     st.rerun()
+
+
+def _build_isb_context(
+    dynamic_path: Path,
+    mapping: dict | None,
+    isb_capable: bool,
+    ap_axis: int,
+    vertical_axis: int,
+    static_path: Path | None,
+    vsk_path: Path | None,
+    prot_path: Path | None,
+) -> tuple[dict, dict, tuple]:
+    """Build the dynamic trial's ISB reconstruction inputs at load time.
+
+    Returns ``(isb_context, isb_diagnostics, calibration_identity)`` --
+    *isb_context* is what ``PipelineRunner`` needs (see its docstring),
+    *isb_diagnostics* is the small JSON-safe summary for display/codegen,
+    and *calibration_identity* is a hashable fingerprint of the
+    calibration files' identity to fold into the source's cache key, so
+    loading a different static/.vsk/.prot for the same C3D correctly
+    invalidates the cached pipeline.
+
+    Never raises: any failure downgrades to a lower tier (tier 3 -> 2 ->
+    1) with a warning shown once, rather than blocking the load a user
+    otherwise correctly filled in the dynamic-trial controls for.
+    """
+    calibration_identity: tuple = ()
+    isb_diagnostics: dict = {"capable": bool(isb_capable)}
+    if not isb_capable:
+        return {}, isb_diagnostics, calibration_identity
+
+    isb_diagnostics["tier"] = "tier1"
+    isb_context: dict = {}
+
+    if static_path is None:
+        return isb_context, isb_diagnostics, calibration_identity
+    calibration_identity += ((static_path.stat().st_size, static_path.stat().st_mtime),)
+
+    try:
+        from myogait import load_c3d
+
+        static_data = load_c3d(
+            str(static_path), marker_mapping=mapping, ap_axis=ap_axis, vertical_axis=vertical_axis
+        )
+        static_landmarks = static_data.get("c3d_markers_3d")
+        if not static_landmarks:
+            raise ValueError("static trial resolved no c3d_markers_3d")
+    except Exception as exc:
+        st.warning(
+            f"Could not use the static trial ({type(exc).__name__}: {exc}) -- "
+            "using ISB reconstruction without calibration instead."
+        )
+        return isb_context, isb_diagnostics, calibration_identity
+
+    isb_context["static_landmarks"] = static_landmarks
+    isb_diagnostics["tier"] = "tier2"
+
+    if vsk_path is None or prot_path is None:
+        return isb_context, isb_diagnostics, calibration_identity
+    calibration_identity += (
+        (vsk_path.stat().st_size, vsk_path.stat().st_mtime),
+        (prot_path.stat().st_size, prot_path.stat().st_mtime),
+    )
+
+    try:
+        from myogait import calibrate_technical_frames, load_raw_c3d_markers, parse_protocol, parse_vsk
+
+        parse_protocol(prot_path)  # validated for its own sake; segments/articulations come from the VSK
+        vsk = parse_vsk(vsk_path)
+        static_raw, _ = load_raw_c3d_markers(static_path)
+        static_raw_mean = {k: v.mean(axis=0) for k, v in static_raw.items() if len(v)}
+        static_landmarks_mean = {k: v.mean(axis=0) for k, v in static_landmarks.items() if len(v)}
+        calibration = calibrate_technical_frames(vsk, static_raw_mean, static_landmarks_mean)
+        required_segments = {"pelvis", "RightThigh", "LeftThigh", "RightTibia", "LeftTibia", "RightFoot", "LeftFoot"}
+        missing_segments = required_segments - set(calibration.segments)
+        if missing_segments:
+            raise ValueError(f"VSK/static calibration did not resolve: {sorted(missing_segments)}")
+        # Tier 3 needs every raw marker the VSK's technical clusters
+        # reference (thigh wands etc.) across the *whole* dynamic trial,
+        # not just the ISB landmarks load_c3d already kept -- see
+        # load_raw_c3d_markers's own docstring.
+        dynamic_raw, _ = load_raw_c3d_markers(dynamic_path)
+    except Exception as exc:
+        st.warning(
+            f"Could not use the .vsk/.prot calibration ({type(exc).__name__}: {exc}) -- "
+            "falling back to the static-only tier instead."
+        )
+        return isb_context, isb_diagnostics, calibration_identity
+
+    isb_context["tier3_calibration"] = calibration
+    isb_context["dynamic_raw"] = dynamic_raw
+    isb_diagnostics["tier"] = "tier3"
+    return isb_context, isb_diagnostics, calibration_identity
 
 
 # ── Video -> extraction ──────────────────────────────────────────────

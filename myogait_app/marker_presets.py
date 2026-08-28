@@ -521,4 +521,29 @@ def resolve_isb_mapping(labels: list[str]) -> tuple[dict[str, list[str]] | None,
     method = "fuzzy" if any(v == "fuzzy" for v in source.values()) else "alias"
     return mapping, IsbMappingDiagnostics(method=method, n_resolved=n_resolved, n_required=n_required, source=source)
 
-    return mapping, source
+
+def merged_c3d_mapping(
+    labels: list[str],
+) -> tuple[dict[str, list[str]], MappingDiagnostics, dict[str, list[str]] | None, IsbMappingDiagnostics]:
+    """One call for a C3D tab: the base mapping load_c3d actually needs,
+    plus whatever ISB adds on top -- merged into a single mapping so a
+    file resolved as ISB-capable gets *both* in the same load_c3d call
+    (the base landmarks compute_angles's sagittal method needs stay
+    available even when ISB reconstruction is later turned on/off).
+
+    Returns
+    -------
+    (merged_mapping, base_diagnostics, isb_mapping_or_none, isb_diagnostics)
+        *merged_mapping* is what to pass to ``load_c3d(marker_mapping=...)``
+        -- always usable, exactly resolve_c3d_mapping's own result when
+        ISB doesn't add anything. *isb_mapping_or_none* is ``None`` when
+        the file isn't ISB-capable (mirrors resolve_isb_mapping's own
+        contract) -- check *isb_diagnostics.is_isb_capable* instead of
+        this for the capability itself.
+    """
+    base_mapping, base_diag = resolve_c3d_mapping(labels)
+    isb_mapping, isb_diag = resolve_isb_mapping(labels)
+    merged = dict(base_mapping)
+    if isb_mapping:
+        merged.update(isb_mapping)
+    return merged, base_diag, isb_mapping, isb_diag

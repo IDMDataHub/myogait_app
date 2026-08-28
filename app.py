@@ -90,7 +90,7 @@ def main() -> None:
         # documentation and never needs it, loaded source or not.
         if source is not None and page in ("Analysis", "Advanced"):
             st.markdown("**Pipeline configuration**")
-            state.set_config(sidebar.render(state.get_config()))
+            state.set_config(sidebar.render(state.get_config(), source))
             if st.button("Reset to defaults", use_container_width=True):
                 state.reset_config()
                 st.rerun()
