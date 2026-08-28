@@ -129,12 +129,19 @@ def python_snippet(
         and _myogait_has("myogait", "load_raw_c3d_markers")
     )
 
+    use_restore_ankle = (
+        config.restore_ankle_dynamics
+        and _myogait_has("myogait.ankle_dynamics", "restore_ankle_dynamics")
+    )
+
     imports = ["normalize", "compute_angles", "segment_cycles", "analyze_gait"]
     if use_c3d_reference:
         imports.append("compute_c3d_reference_angles")
     if use_isb:
         imports.append("reconstruct_isb_angles")
         imports.append("load_raw_c3d_markers")
+    if use_restore_ankle:
+        imports.append("restore_ankle_dynamics")
     if use_signs:
         imports.append("canonicalize_angle_signs")
     imports.append("event_consensus" if ev.is_consensus else "detect_events")
@@ -410,6 +417,17 @@ def python_snippet(
             "cycles = " + segment_call[0],
         ]
         lines += segment_call[1:]
+
+    if use_restore_ankle:
+        lines += [
+            "",
+            "# Restore the ankle push-off the pose estimator's low-pass",
+            "# attenuates (calibrated deconvolution, mean-restoration): adds the",
+            "# systematic per-phase deficit to every cycle, inter-cycle spread",
+            "# unchanged. Cadence-adaptive and template-free, so it cannot",
+            "# fabricate a push-off that is not there.",
+            "cycles = restore_ankle_dynamics(cycles)",
+        ]
 
     if native_calibration:
         analyze_args = [

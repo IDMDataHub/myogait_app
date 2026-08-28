@@ -75,6 +75,7 @@ def render(config: PipelineConfig, source=None) -> PipelineConfig:
     subject = _subject_section(config.subject)
     normalize = _normalize_section(config.normalize)
     angles = _angles_section(config.angles, runtime, source)
+    restore_ankle = _ankle_dynamics_toggle(config.restore_ankle_dynamics, runtime)
     bias = _bias_section(config.bias, angles, runtime)
     events = _events_section(_sync_femur_from_subject(config.events, subject), runtime)
     cycles = _cycles_section(config.cycles, runtime)
@@ -86,7 +87,39 @@ def render(config: PipelineConfig, source=None) -> PipelineConfig:
         cycles=cycles,
         bias=bias,
         subject=subject,
+        restore_ankle_dynamics=restore_ankle,
     )
+
+
+def _ankle_dynamics_toggle(current: bool, runtime) -> bool:
+    """The ankle push-off restoration toggle.
+
+    Unlike the ISB reconstruction (a no-op on anything but a full-marker
+    C3D), this correction acts on *every* source, patient video included --
+    it re-adds the fast plantar-flexion the pose estimator's low-pass
+    attenuates. It is on by default because it is validated
+    (leave-one-subject-out) and cannot fabricate a push-off that is not
+    there (cadence-adaptive, frequency-domain, no template), but it stays a
+    visible switch precisely because it changes the primary measurement.
+    """
+    ok = runtime.has("ankle_dynamics")
+    with st.expander("Ankle dynamics", expanded=False):
+        return st.checkbox(
+            "Restore ankle push-off (deconvolution)",
+            value=current and ok,
+            disabled=not ok,
+            help="The 2-D pose estimator acts as a low-pass filter on the ankle "
+                 "waveform and flattens the fast push-off, under-reading ankle "
+                 "ROM by ~11 deg vs Vicon. This inverts that filter (calibrated "
+                 "once against Vicon, applied cadence-adaptively in Hz) and adds "
+                 "the systematic per-phase deficit back to every cycle, leaving "
+                 "inter-cycle variability untouched. It makes no healthy-gait "
+                 "assumption and will not invent a push-off that is absent, so it "
+                 "is safe on pathological gait -- but it does change the ankle "
+                 "numbers on every source, so it is left switchable. Halves the "
+                 "ankle ROM bias (|error| 10.8 -> 6.7 deg, leave-one-subject-out)."
+            if ok else runtime.missing_feature_hint("ankle_dynamics"),
+        )
 
 
 def _subject_section(cfg: SubjectConfig) -> SubjectConfig:

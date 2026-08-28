@@ -302,11 +302,23 @@ class PipelineConfig:
     bias: BiasConfig = field(default_factory=BiasConfig)
     subject: SubjectConfig = field(default_factory=SubjectConfig)
     #: Restore the markerless ankle push-off the pose estimator attenuates
-    #: (myogait >= 0.8.6 calibrated deconvolution, mean-restoration). Opt-in:
-    #: it halves the ankle ROM bias vs Vicon while preserving inter-cycle
-    #: variability, and makes no healthy-gait assumption. See
-    #: ``myogait.restore_ankle_dynamics``.
-    restore_ankle_dynamics: bool = False
+    #: (myogait >= 0.8.6 calibrated deconvolution, mean-restoration). On by
+    #: default: it halves the ankle ROM bias vs Vicon (|ROM err| 10.8->6.7 deg
+    #: leave-one-subject-out) while preserving inter-cycle variability exactly,
+    #: and makes no healthy-gait assumption -- the filter is cadence-adaptive
+    #: in Hz and pushes toward no template, so it cannot fabricate a push-off
+    #: that is not there (verified: a cycle with the push-off suppressed is
+    #: NOT reinvented). Robustness probes on the calibration data: restored ROM
+    #: stays 30-33 deg across 60-150 steps/min (out-of-band harmonics clamp,
+    #: they do not extrapolate), and the shipped Wiener lambda=0.08 deliberately
+    #: under-restores (32 vs Vicon 38) rather than amplify noise. Unlike the
+    #: LASSO bias models it carries no healthy-shape assumption, so it is safe
+    #: to default on; it acts on every source, including patient video, which
+    #: is why it stays visibly toggleable (see the sidebar). Not yet validated
+    #: on pathological gait -- there are good theoretical reasons (estimator
+    #: physics, not gait shape) to expect it holds, but no patho data confirms
+    #: it. See ``myogait.restore_ankle_dynamics``.
+    restore_ankle_dynamics: bool = True
 
     def with_stage(self, stage: str, value: Any) -> "PipelineConfig":
         return replace(self, **{stage: value})

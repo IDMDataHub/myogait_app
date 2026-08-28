@@ -442,6 +442,7 @@ OPTIONAL_FEATURES: dict[str, tuple[str, str]] = {
     "isb_reconstruction": ("myogait.isb", "reconstruct_isb_angles"),
     "isb_reconstruction_tier2": ("myogait.vicon_calibration", "reconstruct_isb_angles_tier2"),
     "isb_reconstruction_tier3": ("myogait.vicon_calibration", "reconstruct_isb_angles_tier3"),
+    "ankle_dynamics": ("myogait.ankle_dynamics", "restore_ankle_dynamics"),
 }
 
 
