@@ -277,6 +277,12 @@ class PipelineConfig:
     cycles: CyclesConfig = field(default_factory=CyclesConfig)
     bias: BiasConfig = field(default_factory=BiasConfig)
     subject: SubjectConfig = field(default_factory=SubjectConfig)
+    #: Restore the markerless ankle push-off the pose estimator attenuates
+    #: (myogait >= 0.8.6 calibrated deconvolution, mean-restoration). Opt-in:
+    #: it halves the ankle ROM bias vs Vicon while preserving inter-cycle
+    #: variability, and makes no healthy-gait assumption. See
+    #: ``myogait.restore_ankle_dynamics``.
+    restore_ankle_dynamics: bool = False
 
     def with_stage(self, stage: str, value: Any) -> "PipelineConfig":
         return replace(self, **{stage: value})
@@ -740,6 +746,7 @@ class PipelineRunner:
         key_stats = key_final + (
             "analysis",
             (subj.height_m, subj.femur_length_mm, subj.foot_length_mm),
+            ("restore_ankle", config.restore_ankle_dynamics),
         )
 
         def _run_analysis() -> dict:
@@ -750,6 +757,16 @@ class PipelineRunner:
                 source_data, source_cycles = cached
             else:
                 source_data, source_cycles = self._cache[key_events], cached
+            # Opt-in ankle push-off restoration: correct the cycles here so
+            # BOTH the displayed angle curves and the stats reflect it (and
+            # expose the corrected cycles on the result).
+            if config.restore_ankle_dynamics:
+                try:
+                    from myogait import restore_ankle_dynamics as _rad
+                    source_cycles = _rad(source_cycles)
+                    result.cycles = source_cycles
+                except ImportError:
+                    pass
             return self._analyze(source_data, source_cycles, config)
 
         stats, outcome = self._stage("analysis", key_stats, _run_analysis)
@@ -780,6 +797,8 @@ class PipelineRunner:
             # so height_m x 0.245 reproduces the measured femur instead.
             kwargs["height_m"] = subj.calibration_height_m
 
+        # Note: ankle push-off restoration is applied to the cycles upstream
+        # (in _run_analysis) so the exposed curves and the stats stay in sync.
         return analyze_gait(copy.deepcopy(data), cycles, **kwargs)
 
     def _stage(
