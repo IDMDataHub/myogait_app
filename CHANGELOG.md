@@ -4,6 +4,25 @@ All notable changes to this project, grouped by date. Newest first. Every
 entry below is attributed to its actual author; where that is not stated, it
 is Romain Feigean.
 
+## [0.7.0] — 2026-08-28 (Frédéric Fer)
+
+Editable pivots and a two-condition comparison.
+
+- **Edit pivot metadata in-app, with pre-fill and round-trip.** Loading a pivot
+  now pre-fills the Subject controls and a new Study / condition editor from the
+  file's stored `data["subject"]` / `data["study"]`; editing them and exporting
+  downloads a JSON that keeps the changes. Subject anthropometry (incl. the
+  measured segment lengths) and study identifiers round-trip both ways with
+  `myogait` (uses `set_subject`/`set_study` from myogait 0.8.7, with a
+  plain-dict fallback against older installs). Study lives in session state, not
+  the pipeline config, so editing it never invalidates the analysis cache.
+- **Compare two conditions against the MDC** (Cohort tab, shown with ≥2
+  conditions). Per joint: mean per-cycle ROM in each condition, the difference,
+  the 95% Minimal Detectable Change (repeatability from within-condition,
+  within-subject cycle spread), and a verdict — real change vs within noise.
+  Wires the previously unused `mdc.py`. Joint-ROM parameters only, stated in the
+  UI. Verified end-to-end on real Bath BioCV trials.
+
 ## [0.6.0] — 2026-08-28
 
 First tagged release since 0.5.0. It ships two clinical-standard corrections
