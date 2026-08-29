@@ -20,6 +20,7 @@ from ..pipeline import PipelineConfig
 from ..pooling import (
     SAGITTAL_JOINTS,
     condition_agreement,
+    condition_comparison,
     condition_summary,
     group_by_condition,
     load_runs,
@@ -79,6 +80,7 @@ def render(show_header: bool = True) -> None:
         return
 
     _overview(groups)
+    _condition_comparison(groups)
     _overall_accuracy(runs)
     st.divider()
 
@@ -145,6 +147,53 @@ def _overview(groups: dict) -> None:
             row[f"{joint.title()} ROM (deg)"] = _round(summary["rom_deg"].get(joint))
         rows.append(row)
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
+def _condition_comparison(groups: dict) -> None:
+    """Two-condition comparison: per-joint ROM change vs the MDC.
+
+    Only shown with at least two conditions. Tells a real change (beyond
+    measurement noise) from repeatability, which is what a pre/post or
+    condition-to-condition read needs.
+    """
+    labels = list(groups)
+    if len(labels) < 2:
+        return
+    st.subheader("Compare two conditions")
+    st.caption(
+        "Is the difference between two conditions real, or within measurement "
+        "noise? The 95% Minimal Detectable Change (MDC) is the repeatability "
+        "threshold estimated from within-subject cycle-to-cycle spread; a "
+        "difference below it is not distinguishable from noise. Joint-ROM "
+        "parameters only (per-cycle spatiotemporal values are not pooled yet)."
+    )
+    c1, c2 = st.columns(2)
+    a = c1.selectbox("Condition A", labels, index=0, key="cmp_a")
+    b = c2.selectbox("Condition B", labels, index=1, key="cmp_b")
+    if a == b:
+        st.info("Pick two different conditions to compare.")
+        return
+    rows = condition_comparison(groups[a], groups[b])
+    if not rows:
+        st.info("Not enough shared joint data to compare these two conditions.")
+        return
+    table = []
+    for row in rows:
+        if row["exceeds"] is None:
+            verdict = "insufficient data"
+        elif row["exceeds"]:
+            verdict = "real change (> MDC)"
+        else:
+            verdict = "within noise (< MDC)"
+        table.append({
+            "Parameter": row["parameter"],
+            f"{a}": _round(row["a"]),
+            f"{b}": _round(row["b"]),
+            "Δ (A−B)": _round(row["delta"]),
+            "MDC95": _round(row["mdc"]),
+            "Verdict": verdict,
+        })
+    st.dataframe(pd.DataFrame(table), use_container_width=True, hide_index=True)
 
 
 # ── One condition ────────────────────────────────────────────────────

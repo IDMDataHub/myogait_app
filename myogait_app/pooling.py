@@ -353,6 +353,73 @@ def _mean_or_none(values):
     return float(np.mean(nums)) if nums else None
 
 
+def rom_values_by_subject(runs: list[RunResult], joint: str) -> list[list[float]]:
+    """Per-cycle joint ROM (deg), grouped by patient.
+
+    The input shape :func:`mdc.pooled_sw` wants: one list of per-cycle scalar
+    values per subject. Here each value is a single cycle's range of motion
+    (``max - min`` of its normalised ``joint`` waveform). Cycles from all of a
+    patient's runs are pooled under that patient.
+    """
+    by_subject: dict[str, list[float]] = {}
+    for run in runs:
+        if not run.ok or not run.cycles:
+            continue
+        for cycle in run.cycles.get("cycles", []):
+            wave = (cycle.get("angles_normalized") or {}).get(joint)
+            if not wave:
+                continue
+            finite = [float(v) for v in wave if _finite_number(v)]
+            if len(finite) >= 2:
+                by_subject.setdefault(run.patient, []).append(max(finite) - min(finite))
+    return [values for values in by_subject.values() if values]
+
+
+def condition_comparison(
+    runs_a: list[RunResult],
+    runs_b: list[RunResult],
+    joints: tuple[str, ...] = SAGITTAL_JOINTS,
+) -> list[dict]:
+    """Compare two conditions joint-ROM by joint-ROM, against the MDC.
+
+    For each joint: the mean per-cycle ROM in each condition, their difference,
+    the 95% Minimal Detectable Change (repeatability estimated from within-
+    subject per-cycle spread pooled over *both* conditions), and whether the
+    difference exceeds it -- i.e. whether the change is real or within
+    measurement noise. Joints with too few cycles for an MDC estimate report a
+    ``None`` MDC and an undetermined verdict. Only joint-ROM parameters are
+    covered: the pooled cycle dict does not carry per-cycle spatiotemporal
+    values, so a spatiotemporal MDC is not available here.
+    """
+    from .mdc import exceeds_mdc, mdc95, pooled_sw
+
+    rows: list[dict] = []
+    for joint in joints:
+        vbs_a = rom_values_by_subject(runs_a, joint)
+        vbs_b = rom_values_by_subject(runs_b, joint)
+        flat_a = [v for sub in vbs_a for v in sub]
+        flat_b = [v for sub in vbs_b for v in sub]
+        if not flat_a or not flat_b:
+            continue
+        value_a = float(np.mean(flat_a))
+        value_b = float(np.mean(flat_b))
+        delta = value_a - value_b
+        # Repeatability from WITHIN-condition, within-subject cycle spread:
+        # each (patient, condition) is its own unit, so the between-condition
+        # change itself never leaks into the noise estimate.
+        sw = pooled_sw(vbs_a + vbs_b)
+        mdc = mdc95(sw)
+        rows.append({
+            "parameter": f"{joint} ROM (deg)",
+            "a": value_a,
+            "b": value_b,
+            "delta": delta,
+            "mdc": mdc,
+            "exceeds": exceeds_mdc(delta, mdc) if mdc is not None else None,
+        })
+    return rows
+
+
 def condition_agreement(runs: list[RunResult]) -> dict | None:
     """Accuracy of the markerless runs against the marker reference, if any.
 
