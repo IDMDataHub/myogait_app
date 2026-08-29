@@ -17,7 +17,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from ..pipeline import PipelineResult
+from ..pipeline import PipelineResult, apply_study
 from ..provenance import write_provenance
 from ..quality import assess_quality
 from ..runtime import get_runtime
@@ -114,7 +114,7 @@ def _data_tab(result: PipelineResult, source: state.Source) -> None:
         if st.button("Pivot JSON", use_container_width=True, key="exp_json"):
             _run_export(
                 "Pivot JSON", out / f"{stem}.json",
-                lambda path: _save_json(result.data, path),
+                lambda path: _save_json(_export_pivot(result), path),
             )
         if st.button("Summary JSON", use_container_width=True, key="exp_sumjson"):
             _run_export(
@@ -450,6 +450,22 @@ def _call(name: str, *args, **kwargs):
     if function is None:
         raise RuntimeError(f"myogait has no {name} in this version.")
     return function(*args, **kwargs)
+
+
+def _export_pivot(result: PipelineResult) -> dict:
+    """``result.data`` with the edited study identifiers merged in for download.
+
+    The subject/anthropometrics are already in ``result.data`` (applied as a
+    pipeline stage from the Subject config); study is metadata that lives in
+    session state, so it is merged here at export time. A deep copy keeps the
+    live result untouched.
+    """
+    import copy
+
+    from .sidebar import K_STUDY_EDIT
+
+    data = copy.deepcopy(result.data)
+    return apply_study(data, st.session_state.get(K_STUDY_EDIT))
 
 
 def _save_json(data: dict, path: Path) -> str:

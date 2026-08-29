@@ -24,6 +24,7 @@ from ..pipeline import (
     NormalizeConfig,
     PipelineConfig,
     SubjectConfig,
+    study_from_data,
 )
 from ..runtime import get_runtime
 from . import components
@@ -72,7 +73,9 @@ def render(config: PipelineConfig, source=None) -> PipelineConfig:
     """
     runtime = get_runtime()
 
+    config = _seed_metadata_from_source(config, source)
     subject = _subject_section(config.subject)
+    _study_section()
     normalize = _normalize_section(config.normalize)
     angles = _angles_section(config.angles, runtime, source)
     restore_ankle = _ankle_dynamics_toggle(config.restore_ankle_dynamics, runtime)
@@ -122,6 +125,78 @@ def _ankle_dynamics_toggle(current: bool, runtime) -> bool:
         )
 
 
+#: Session-state slots for the metadata round-trip.
+_K_META_SEEDED = "mg_meta_seeded_key"  # the source key we last pre-filled from
+K_STUDY_EDIT = "mg_study_edit"          # the edited study dict, read at export
+#: Every Subject + Study widget key, cleared when a new source is loaded so the
+#: controls re-initialise from the freshly seeded config instead of showing the
+#: previous file's values (Streamlit keeps keyed-widget state across reruns).
+_METADATA_WIDGET_KEYS = (
+    "subj_height", "subj_age", "subj_weight", "subj_sex", "subj_pathology",
+    "subj_femur", "subj_tibia", "subj_upper_arm", "subj_forearm",
+    "subj_trunk", "subj_foot",
+    "study_patient_edit", "study_run_edit", "study_group_edit",
+    "study_condition_edit",
+)
+
+
+def _seed_metadata_from_source(config: PipelineConfig, source) -> PipelineConfig:
+    """Pre-fill Subject + Study from a newly loaded pivot's stored metadata.
+
+    Runs once per source (guarded on ``source.key``): it seeds the Subject
+    config from ``data["subject"]`` (incl. the measured segments myogait now
+    persists) and the Study editor from ``data["study"]``, then clears the
+    metadata widget keys so the controls show the loaded values rather than
+    the previous file's. On later reruns for the same source it is a no-op, so
+    the user's own edits are preserved.
+    """
+    if source is None:
+        return config
+    key = getattr(source, "key", None) or getattr(source, "name", None)
+    if st.session_state.get(_K_META_SEEDED) == key:
+        return config
+    data = getattr(source, "data", None) or {}
+    config = replace(config, subject=SubjectConfig.from_subject_dict(data.get("subject")))
+    st.session_state[K_STUDY_EDIT] = study_from_data(data)
+    for widget_key in _METADATA_WIDGET_KEYS:
+        st.session_state.pop(widget_key, None)
+    st.session_state[_K_META_SEEDED] = key
+    return config
+
+
+def _study_section() -> None:
+    """Editable study identifiers, pre-filled from the loaded pivot.
+
+    Kept in ``st.session_state[K_STUDY_EDIT]`` (not in ``PipelineConfig`` --
+    study is metadata, not a pipeline input, so editing it must not
+    invalidate the analysis cache). Applied onto the pivot at export time.
+    """
+    study = dict(st.session_state.get(K_STUDY_EDIT) or {})
+    with st.expander("Study / condition (saved in the JSON on export)", expanded=False):
+        st.caption(
+            "Pre-filled from the loaded pivot. Editing here changes what the "
+            "exported JSON carries and how the Cohort tab groups recordings; "
+            "it does not affect the kinematic analysis."
+        )
+        c1, c2 = st.columns(2)
+        patient = c1.text_input("Patient ID", value=study.get("patient_id", ""),
+                                key="study_patient_edit")
+        run = c2.text_input("Run", value=study.get("run", ""), key="study_run_edit")
+        c3, c4 = st.columns(2)
+        group = c3.text_input("Group", value=study.get("group", ""),
+                              key="study_group_edit")
+        condition = c4.text_input("Condition", value=study.get("condition", ""),
+                                  key="study_condition_edit")
+    updated = dict(study)
+    for name, value in (("patient_id", patient), ("run", run),
+                        ("group", group), ("condition", condition)):
+        if value.strip():
+            updated[name] = value.strip()
+        else:
+            updated.pop(name, None)
+    st.session_state[K_STUDY_EDIT] = updated
+
+
 def _subject_section(cfg: SubjectConfig) -> SubjectConfig:
     with st.expander("Subject", expanded=False):
         st.caption(
@@ -139,20 +214,24 @@ def _subject_section(cfg: SubjectConfig) -> SubjectConfig:
             step=0.01,
             format="%.2f",
             help="0 leaves it unset.",
+            key="subj_height",
         )
         columns = st.columns(2)
         age = columns[0].number_input(
-            "Age", min_value=0, max_value=120, value=int(cfg.age or 0), step=1
+            "Age", min_value=0, max_value=120, value=int(cfg.age or 0), step=1,
+            key="subj_age",
         )
         weight = columns[1].number_input(
             "Weight (kg)", min_value=0.0, max_value=250.0,
-            value=float(cfg.weight_kg or 0.0), step=0.5,
+            value=float(cfg.weight_kg or 0.0), step=0.5, key="subj_weight",
         )
         sex = st.selectbox(
             "Sex", ["", "M", "F", "X"],
             index=["", "M", "F", "X"].index(cfg.sex or ""),
+            key="subj_sex",
         )
-        pathology = st.text_input("Pathology", value=cfg.pathology or "")
+        pathology = st.text_input("Pathology", value=cfg.pathology or "",
+                                  key="subj_pathology")
 
         st.divider()
         st.markdown("**Measured segment lengths (mm) - optional**")

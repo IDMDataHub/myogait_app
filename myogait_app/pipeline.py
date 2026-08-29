@@ -290,6 +290,27 @@ class SubjectConfig:
         }
         return {k: v for k, v in mapping.items() if v}
 
+    #: The pivot ``subject`` keys this config mirrors one-to-one (myogait's
+    #: set_subject writes exactly these names, so the round-trip is direct).
+    _SUBJECT_KEYS = (
+        "age", "sex", "height_m", "weight_kg", "pathology",
+        "femur_length_mm", "tibia_length_mm", "upper_arm_length_mm",
+        "forearm_length_mm", "trunk_length_mm", "foot_length_mm",
+    )
+
+    @classmethod
+    def from_subject_dict(cls, subject: dict | None) -> "SubjectConfig":
+        """Build a config from a pivot's ``data["subject"]`` for pre-filling.
+
+        Only the keys this config knows are read; anything else in the pivot
+        subject (notes, arbitrary extras) is ignored here but left untouched
+        in the file. A missing/empty subject yields the empty config.
+        """
+        if not subject:
+            return cls()
+        vals = {k: subject.get(k) for k in cls._SUBJECT_KEYS if subject.get(k) is not None}
+        return cls(**vals)
+
 
 @dataclass(frozen=True)
 class PipelineConfig:
@@ -780,14 +801,71 @@ def _apply_subject(data: dict, cfg: SubjectConfig) -> dict:
         return data
     from myogait import set_subject
 
-    return set_subject(
-        data,
+    base = dict(
         age=cfg.age,
         sex=cfg.sex,
         height_m=cfg.height_m,
         weight_kg=cfg.weight_kg,
         pathology=cfg.pathology,
     )
+    segments = dict(
+        femur_length_mm=cfg.femur_length_mm,
+        tibia_length_mm=cfg.tibia_length_mm,
+        upper_arm_length_mm=cfg.upper_arm_length_mm,
+        forearm_length_mm=cfg.forearm_length_mm,
+        trunk_length_mm=cfg.trunk_length_mm,
+        foot_length_mm=cfg.foot_length_mm,
+    )
+    # The measured segments persist through set_subject from myogait 0.8.7.
+    # Against an older installed myogait (no segment params), pass only the
+    # demographics and write the segments into data["subject"] directly, so
+    # the app still round-trips the anthropometry regardless of version.
+    if _accepts(set_subject, "femur_length_mm"):
+        return set_subject(data, **base, **segments)
+    data = set_subject(data, **base)
+    extra = {k: v for k, v in segments.items() if v is not None}
+    if extra:
+        data.setdefault("subject", {}).update(extra)
+    return data
+
+
+#: Study identifier keys the app reads/writes on a pivot (patient/run/group/
+#: condition). Mirrors myogait.set_study's parameters; arbitrary extras in a
+#: pivot's study are preserved on save but not edited here.
+STUDY_KEYS = ("patient_id", "run", "group", "condition")
+
+
+def study_from_data(data: dict) -> dict:
+    """The study identifiers stored on a pivot, for pre-filling the editor.
+
+    Returns a copy of ``data["study"]`` (empty dict when absent), so an edit
+    round-trips: load -> pre-fill -> change -> save.
+    """
+    return dict((data or {}).get("study") or {})
+
+
+def apply_study(data: dict, study: dict | None) -> dict:
+    """Write the edited study identifiers back onto *data* for export.
+
+    Uses ``myogait.set_study`` when available (myogait >= 0.8.7, which merges),
+    else writes ``data["study"]`` directly so the app still round-trips
+    against an older installed myogait. Only non-empty values are written.
+    """
+    if not study:
+        return data
+    clean = {k: v for k, v in study.items() if v not in (None, "")}
+    if not clean:
+        return data
+    try:
+        from myogait import set_study
+    except ImportError:
+        set_study = None
+    if set_study is not None:
+        return set_study(data, **clean)
+    merged = dict(data.get("study") or {})
+    merged.update(clean)
+    data["study"] = merged
+    return data
 
 
 # ── Engine ───────────────────────────────────────────────────────────
