@@ -5,6 +5,8 @@ here we lock the pure, Streamlit-free logic the round-trip rests on.
 """
 from __future__ import annotations
 
+import pytest
+
 from myogait_app.pipeline import (
     STUDY_KEYS,
     SubjectConfig,
@@ -98,6 +100,10 @@ def test_apply_study_none_is_noop():
 def test_full_edit_roundtrip():
     # Load a pivot with metadata -> pre-fill -> edit condition + femur -> export.
     import myogait as mg
+    if not hasattr(mg, "set_study"):
+        pytest.skip("installed myogait predates set_study (< 0.8.7); "
+                    "the app falls back to a plain-dict merge, covered by "
+                    "test_apply_study_merges_and_drops_blanks")
     data = _pivot()
     mg.set_subject(data, height_m=1.7, femur_length_mm=400.0)
     mg.set_study(data, patient_id="P9", condition="baseline")
