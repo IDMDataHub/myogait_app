@@ -4,6 +4,65 @@ All notable changes to this project, grouped by date. Newest first. Every
 entry below is attributed to its actual author; where that is not stated, it
 is Romain Feigean.
 
+## Unreleased — 2026-09-01 (Romain Feigean)
+
+- **Two new Export reports, both carrying the Institut de Myologie mark
+  alongside the app's own identity.**
+  - **`video_report.py`** -- a narrated, five-segment animated MP4 (skeleton
+    overlay, joint kinematics, spatio-temporal parameters, range of motion,
+    normative-band comparison), modelled on an external pedagogical script's
+    storyboard but rebuilt on this app's own validated palette/type
+    (`branding.py`, bundled JetBrains Mono, OFL-licensed) instead of a
+    second parallel identity, and on this app's own computed results
+    instead of an IMU/virtual-accelerometer pipeline nothing here produces.
+    Full frame-by-frame animation fidelity, by request -- ~56 s of output,
+    several minutes to render, the Export tab says so up front.
+  - **`mocap_report.py`** -- a 4-section PDF (kinematics; methodology + ISB
+    compliance, generated from the actual `PipelineConfig` that ran, not a
+    fixed template; spatio-temporal parameters with a "how it's computed"
+    column; range of motion plus the angle at heel-strike and toe-off),
+    source-kind-agnostic (video or C3D).
+  - Both wired into `Advanced -> Export` as new tabs ("Video report",
+    "MoCap report").
+- **Four real bugs found and fixed while testing the above, each with a
+  regression test that reproduces the exact failure before the fix:**
+  - `storage.write_json_atomic`'s temp-file rename could raise
+    `PermissionError`/WinError 5 on Windows when a poller had the
+    destination momentarily open for reading -- a previously *known and
+    accepted* race (a test skip's own comment said so) rather than an
+    unknown one. Now retries (up to 40x/50ms) instead of crashing; the
+    stale Windows test skip is removed and the test itself fixed to
+    tolerate `read_json`'s own documented "may return None during a race"
+    contract instead of asserting a stronger guarantee than the system
+    actually makes.
+  - A video's `Source.kind` was always `"json"` after being loaded back
+    (tick a finished job -> Analyse, or the recording switcher) -- neither
+    of the two places that ever build a loaded `Source` set `kind="video"`,
+    so `source.kind == "video"` (what the skeleton-overlay export and the
+    new video report both gate on) was unreachable through the normal
+    workflow. `state.resolve_pivot_kind_and_path` now upgrades to
+    `kind="video"` when the pivot's own recorded `meta.video_path` still
+    resolves on this machine.
+  - `components._to_new_assessment`'s "Go to New assessment" button set
+    `st.session_state["nav_page"]` directly -- illegal once that widget
+    (the sidebar's page pills) has already run earlier in the same script,
+    raising `StreamlitAPIException`. Now sets a pending-navigation key that
+    `app.main()` seeds `nav_page` from before the pills widget exists in
+    the *next* run, the one point such a write is allowed.
+  - `hrnet`'s live availability trusted `myogait.models.available_models()`
+    reporting it importable from `torch` alone -- but the installed
+    myogait's own `HRNETPoseExtractor.setup()` unconditionally needs MMPose
+    (confirmed by reading the source, not assumed), which needs `mmcv`, an
+    OpenMMLab compiled extension with no prebuilt wheel for every Python/
+    torch combination -- sending a user into a job that failed mid-run with
+    a raw `ImportError` instead of the control simply being unavailable
+    up front. `BackendInfo.is_available` no longer trusts myogait's signal
+    for this one backend; the install hint explains why installing MMPose
+    is not practically possible either (`chumpy`, unmaintained, breaks
+    under any modern pip's PEP 517 build isolation) rather than suggesting
+    a doomed command.
+- 242 tests passing (11 new), ruff clean, 72.4% coverage (floor 60%).
+
 ## Unreleased — 2026-08-31 (Romain Feigean)
 
 - **Video-vs-C3D accuracy pairing: the documented workflow did not actually

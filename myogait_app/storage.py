@@ -53,12 +53,32 @@ def is_ticket(value: str) -> bool:
     return bool(_TICKET_RE.match(str(value).strip().upper()))
 
 
+#: Windows' MoveFileEx (what Path.replace calls) can raise PermissionError
+#: (WinError 5, or errno 13 depending on how it surfaces) when the
+#: destination is momentarily open for reading by another thread --
+#: POSIX rename has no such restriction, so this is Windows-only in
+#: practice, but retrying costs nothing on any platform. A single
+#: `read_json` open()/close() is microseconds, but a *tight, continuously
+#: polling* reader thread can occupy that window often enough to outlast
+#: a short retry budget (measured: an 8-attempt/20ms budget still failed
+#: in ~3 of 10 runs against a zero-delay polling loop) -- this budget is
+#: sized against that worst case, not the brief single-collision case, so
+#: it should never need to be exhausted in real use (Streamlit's own
+#: polling cadence is far coarser than a spin loop).
+_REPLACE_RETRIES = 40
+_REPLACE_RETRY_DELAY_S = 0.05
+
+
 def write_json_atomic(path: Path, payload: Any) -> None:
     """Write JSON so a concurrent reader never sees a half-written file.
 
     The extraction worker updates progress from a background thread while
     the UI thread polls it; a plain write would occasionally be read
-    mid-flush and raise a decode error.
+    mid-flush and raise a decode error. Uses a temp file plus an atomic
+    rename, retried a few times against the transient Windows race
+    described above -- a *different* failure mode from the half-written
+    read this function already guards against, but the same "a poller is
+    reading this file concurrently" root cause.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
@@ -67,7 +87,16 @@ def write_json_atomic(path: Path, payload: Any) -> None:
     ) as handle:
         tmp = Path(handle.name)
         json.dump(payload, handle, ensure_ascii=False, indent=2)
-    tmp.replace(path)
+
+    for attempt in range(_REPLACE_RETRIES):
+        try:
+            tmp.replace(path)
+            return
+        except PermissionError:
+            if attempt == _REPLACE_RETRIES - 1:
+                tmp.unlink(missing_ok=True)
+                raise
+            time.sleep(_REPLACE_RETRY_DELAY_S)
 
 
 def read_json(path: Path) -> Any | None:

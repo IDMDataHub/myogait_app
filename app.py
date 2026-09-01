@@ -71,6 +71,18 @@ def main() -> None:
         components.sidebar_identity()
         st.divider()
 
+        # A "Go to X" button elsewhere in the app (components._to_new_
+        # assessment, the only such button today) cannot set
+        # st.session_state["nav_page"] directly -- Streamlit forbids
+        # writing to a widget's key once that widget has been instantiated
+        # in the current run, and the pills widget below always runs first.
+        # It sets this pending key instead and reruns; picked up here,
+        # before the widget exists in the *new* run, which is the one
+        # point where seeding a widget's own state is allowed.
+        pending_nav = st.session_state.pop("_pending_nav_page", None)
+        if pending_nav is not None:
+            st.session_state["nav_page"] = pending_nav
+
         page = st.pills(
             "Page", list(PAGES), selection_mode="single", default="New assessment",
             label_visibility="collapsed", key="nav_page",

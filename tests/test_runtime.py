@@ -47,3 +47,30 @@ def test_backend_availability_uses_one_shared_registry_probe(monkeypatch):
     assert calls == 1
     assert availability["mediapipe"] is True
     assert availability["yolo"] is False
+
+
+def test_hrnet_availability_distrusts_myogaits_own_optimistic_signal(monkeypatch):
+    """Real bug: myogait.models.available_models() reports hrnet True from
+
+    torch alone, but the installed HRNETPoseExtractor.setup() (models/
+    hrnet.py) needs mmpose (and, transitively, mmcv -- which auto-installs
+    on first use and can fail with no prebuilt wheel for the platform).
+    Trusting the live signal sent a user into a job that failed mid-run
+    with a raw ImportError instead of the control being unavailable
+    up front. mmpose itself missing/present is what must actually decide
+    it, not myogait's own optimistic self-report.
+    """
+    import myogait_app.runtime as runtime_module
+    from myogait_app.runtime import BACKENDS
+
+    hrnet = next(b for b in BACKENDS if b.name == "hrnet")
+
+    monkeypatch.setattr(
+        runtime_module, "_myogait_backend_availability",
+        lambda: {"hrnet": True},
+    )
+    monkeypatch.setattr(runtime_module, "_has", lambda module: module != "mmpose")
+    assert hrnet.is_available() is False
+
+    monkeypatch.setattr(runtime_module, "_has", lambda module: True)
+    assert hrnet.is_available() is True

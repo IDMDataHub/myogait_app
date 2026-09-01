@@ -104,6 +104,39 @@ def source_key(name: str, payload: Any) -> str:
     return digest.hexdigest()[:16]
 
 
+def resolve_pivot_kind_and_path(data: dict, default_path: Path) -> tuple[str, Path]:
+    """Whether a loaded pivot's own source video is still on disk here.
+
+    Every pivot JSON that came from a video extraction, once loaded (by
+    ticking it in Recent jobs and pressing Analyse, or via
+    ``components.source_loader``/``recording_switcher``), used to install
+    as ``kind="json"`` unconditionally -- the *only* two call sites that
+    ever build a loaded ``Source`` (``page_data._load_pivot``,
+    ``components._install_pivot``) never checked. That silently broke
+    every video-dependent export (the skeleton overlay, and the new video
+    report): both gate on ``source.kind == "video"``, a value nothing in
+    the app ever actually produced through that path -- ``kind="video"``
+    was previously only reachable, if at all, by constructing a ``Source``
+    by hand.
+
+    ``myogait.extract`` records the exact path it was given in
+    ``data["meta"]["video_path"]``. When that file still exists on this
+    machine (the ordinary case: loading a just-finished extraction in the
+    same session/server that ran it), the pivot should behave as a video
+    source. A pivot re-uploaded standalone, moved to a different machine,
+    or sourced from C3D falls back to the pre-existing "json" kind with
+    *default_path* (the pivot file's own path) -- unchanged behaviour.
+    """
+    meta = data.get("meta") or {}
+    if str(meta.get("source") or "").lower() == "video":
+        video_path = meta.get("video_path")
+        if video_path:
+            candidate = Path(str(video_path))
+            if candidate.is_file():
+                return "video", candidate
+    return "json", default_path
+
+
 def init() -> None:
     """Seed every key once per session."""
     st.session_state.setdefault(K_SOURCE, None)

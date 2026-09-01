@@ -77,8 +77,8 @@ def render() -> None:
             "are a generated signal."
         )
 
-    tab_data, tab_figures, tab_video, tab_report = st.tabs(
-        ["Data files", "Figures", "Video", "PDF report"]
+    tab_data, tab_figures, tab_video, tab_report, tab_video_report, tab_mocap_report = st.tabs(
+        ["Data files", "Figures", "Video", "PDF report", "Video report", "MoCap report"]
     )
 
     with tab_data:
@@ -89,6 +89,10 @@ def render() -> None:
         _video_tab(result, source)
     with tab_report:
         _report_tab(result, config)
+    with tab_video_report:
+        _video_report_tab(result, source)
+    with tab_mocap_report:
+        _mocap_report_tab(result, config, source)
 
     st.divider()
     reproducibility_panel(
@@ -437,6 +441,77 @@ def _report_tab(result: PipelineResult, config) -> None:
                 str(path), language=language,
             ),
             spinner="Building the report...",
+        )
+
+
+# ── Video report ─────────────────────────────────────────────────────
+
+
+def _video_report_tab(result: PipelineResult, source: state.Source) -> None:
+    st.markdown("**Animated markerless report**")
+    st.caption(
+        "A narrated, five-part video -- skeleton overlay, joint kinematics, "
+        "spatio-temporal parameters, range of motion, and a comparison against "
+        "the normative band -- built entirely from the source video and this "
+        "run's own results. Carries the Institut de Myologie mark alongside "
+        "the app's own identity."
+    )
+    if source.path is None or source.kind != "video":
+        st.caption(
+            "Needs the source video on the server. It is available right after an "
+            "extraction run from this app, not when a pivot JSON is loaded on its own."
+        )
+        return
+    if not result.n_cycles:
+        st.warning("The video report needs at least one segmented cycle.")
+        return
+
+    st.warning(
+        "Full frame-by-frame animation (~56 s of output) -- rendering can take "
+        "several minutes. The overlay shows the subject's face and body, so keep "
+        f"it inside the lab; it is deleted after {SETTINGS.retention_hours} h like "
+        "everything else here."
+    )
+    if st.button("Render video report", use_container_width=True, key="vidrep_go"):
+        from ..video_report import render_video_report
+
+        out = state.workspace().outputs / "video_report.mp4"
+        _run_export(
+            "Video report", out,
+            lambda path: render_video_report(
+                result.data, result.cycles, result.stats, str(source.path), str(path),
+            ),
+            spinner="Rendering the 5-segment video report - this takes several minutes...",
+        )
+
+
+# ── MoCap PDF report ─────────────────────────────────────────────────
+
+
+def _mocap_report_tab(result: PipelineResult, config, source: state.Source) -> None:
+    st.markdown("**MoCap report**")
+    st.caption(
+        "Four sections: joint kinematics, methodology & ISB compliance (what was "
+        "actually computed for this run, not a generic description), spatio-temporal "
+        "parameters, and range of motion with the angle at heel-strike and toe-off. "
+        "Works the same for a video or a C3D source. Carries the Institut de "
+        "Myologie mark alongside the app's own identity."
+    )
+    if not result.n_cycles:
+        st.warning("The MoCap report needs at least one segmented cycle.")
+        return
+
+    if st.button("Generate MoCap report", type="primary", use_container_width=True, key="mocaprep_go"):
+        from ..mocap_report import render_mocap_report
+
+        out = state.workspace().outputs / "mocap_report.pdf"
+        isb_tier = (source.isb_diagnostics or {}).get("tier")
+        _run_export(
+            "MoCap report", out,
+            lambda path: render_mocap_report(
+                result.data, result.cycles, result.stats, config, str(path), isb_tier=isb_tier,
+            ),
+            spinner="Building the MoCap report...",
         )
 
 

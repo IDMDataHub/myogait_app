@@ -521,11 +521,19 @@ def recording_switcher(slot: str) -> None:
 
 
 def _to_new_assessment(container, key: str) -> None:
-    """A button that jumps to New assessment (start or upload a recording)."""
+    """A button that jumps to New assessment (start or upload a recording).
+
+    Cannot set ``st.session_state["nav_page"]`` directly here: that widget
+    (the sidebar pills) already ran earlier in this same script, and
+    Streamlit refuses to write a widget's key once it has been
+    instantiated in the current run. Sets a pending-navigation key instead;
+    ``app.main()`` seeds ``nav_page`` from it before the pills widget is
+    created in the *next* run, which is the point that write is allowed.
+    """
     if container.button(
         "Go to New assessment", use_container_width=True, key=key,
     ):
-        st.session_state["nav_page"] = "New assessment"
+        st.session_state["_pending_nav_page"] = "New assessment"
         st.rerun()
 
 
@@ -547,11 +555,12 @@ def _install_pivot(path, name: str) -> None:
         return
 
     model = str((data.get("extraction") or {}).get("model") or "unknown")
+    kind, source_path = state.resolve_pivot_kind_and_path(data, path)
     state.set_source(
         state.Source(
-            kind="json", name=name, data=data,
+            kind=kind, name=name, data=data,
             key=state.source_key(name, (path.stat().st_size, path.stat().st_mtime)),
-            model=model, path=path,
+            model=model, path=source_path,
         )
     )
     st.rerun()

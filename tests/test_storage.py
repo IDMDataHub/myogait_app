@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import io
-import sys
 import threading
 
 import pytest
@@ -72,13 +71,16 @@ def test_in_memory_upload_warning_uses_a_strict_size_threshold():
     assert exceeds_in_memory_warning(2 * 1024 * 1024 + 1, threshold_mb)
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Concurrent atomic replace is a POSIX guarantee; on Windows "
-    "os.replace cannot swap a file another thread holds open for reading, so "
-    "this races by design there. The behaviour is validated on Linux/macOS.",
-)
 def test_atomic_json_writes_remain_readable_under_concurrent_writers(tmp_path):
+    """Two threads hammering the same file must never crash the *writer*
+
+    (write_json_atomic's own retry against Windows' transient
+    PermissionError -- see storage.py). A read racing the other thread's
+    write may still legitimately return None (read_json's own documented
+    contract: "a transient failure is expected and is not worth an
+    exception" -- real callers like JobManager already tolerate it); only
+    the post-join read, once nothing is writing any more, must be reliable.
+    """
     target = tmp_path / "state.json"
     errors = []
 
@@ -86,7 +88,7 @@ def test_atomic_json_writes_remain_readable_under_concurrent_writers(tmp_path):
         try:
             for _ in range(10):
                 write_json_atomic(target, {"value": value})
-                assert read_json(target) in ({"value": 1}, {"value": 2})
+                assert read_json(target) in ({"value": 1}, {"value": 2}, None)
         except Exception as exc:  # pragma: no cover - asserted after joining
             errors.append(exc)
 
@@ -99,4 +101,85 @@ def test_atomic_json_writes_remain_readable_under_concurrent_writers(tmp_path):
     assert not any(thread.is_alive() for thread in threads)
     assert not errors
     assert read_json(target) in ({"value": 1}, {"value": 2})
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_atomic_json_write_survives_a_concurrent_reader(tmp_path):
+    """A poller reading job.json while a worker thread updates it must not
+
+    crash the writer -- the exact shape of a real bug report (Windows'
+    MoveFileEx raising PermissionError/WinError 5 when the destination is
+    momentarily open for reading by another thread; POSIX rename has no
+    such restriction, so this only ever reproduces on Windows, but the
+    retry it exercises is harmless everywhere).
+    """
+    target = tmp_path / "job.json"
+    write_json_atomic(target, {"progress": 0})
+    stop = threading.Event()
+    errors: list[Exception] = []
+
+    def reader() -> None:
+        while not stop.is_set():
+            read_json(target)  # a poller: failure is already tolerated (returns None)
+
+    def writer() -> None:
+        try:
+            for progress in range(1, 60):
+                write_json_atomic(target, {"progress": progress})
+        except Exception as exc:  # pragma: no cover - asserted after joining
+            errors.append(exc)
+
+    reader_thread = threading.Thread(target=reader)
+    writer_thread = threading.Thread(target=writer)
+    reader_thread.start()
+    writer_thread.start()
+    writer_thread.join(timeout=10)
+    stop.set()
+    reader_thread.join(timeout=5)
+
+    assert not writer_thread.is_alive()
+    assert not errors
+    assert read_json(target)["progress"] == 59
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_atomic_json_write_retries_permission_error_then_succeeds(tmp_path, monkeypatch):
+    """Deterministic version of the race above: the first few replace()
+
+    calls fail exactly the way Windows' transient lock does, then succeed
+    -- verifies the retry loop itself, independent of real OS timing.
+    """
+    from pathlib import Path
+
+    target = tmp_path / "job.json"
+    calls = {"n": 0}
+    real_replace = Path.replace
+
+    def flaky_replace(self, dest):
+        calls["n"] += 1
+        if calls["n"] <= 3:
+            raise PermissionError(5, "Access is denied")
+        return real_replace(self, dest)
+
+    monkeypatch.setattr(Path, "replace", flaky_replace)
+    write_json_atomic(target, {"ok": True})
+
+    assert calls["n"] == 4
+    assert read_json(target) == {"ok": True}
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_atomic_json_write_reraises_after_exhausting_retries(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    target = tmp_path / "job.json"
+
+    def always_denied(self, dest):
+        raise PermissionError(5, "Access is denied")
+
+    monkeypatch.setattr(Path, "replace", always_denied)
+    with pytest.raises(PermissionError):
+        write_json_atomic(target, {"ok": True})
+
+    # The failed temp file is cleaned up, not left behind forever.
     assert not list(tmp_path.glob("*.tmp"))

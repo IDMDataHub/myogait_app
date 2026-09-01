@@ -169,14 +169,15 @@ def _load_pivot(path: Path, name: str) -> None:
         return
 
     model = str((data.get("extraction") or {}).get("model") or "unknown")
+    kind, source_path = state.resolve_pivot_kind_and_path(data, path)
     state.set_source(
         state.Source(
-            kind="json",
+            kind=kind,
             name=name,
             data=data,
             key=state.source_key(name, (path.stat().st_size, path.stat().st_mtime)),
             model=model,
-            path=path,
+            path=source_path,
         )
     )
     st.rerun()
