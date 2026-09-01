@@ -1,8 +1,9 @@
-"""Analysis scope selection: data-aware default and the Export pill.
+"""Analysis scope selection: data-aware default, legacy remap, Export pill.
 
 The Analysis page must open on the view that shows the data actually loaded
-(a single freshly loaded source -> "Single run", a built cohort -> the study
-view), and expose the export surface as a scope of its own.
+(a single freshly loaded source -> "Single run", a built cohort -> a group
+view), survive scope labels stored by an older app version, and expose the
+export surface as a scope of its own.
 """
 from __future__ import annotations
 
@@ -14,14 +15,20 @@ from myogait_app.pooling import RunResult
 
 APP_PY = Path(__file__).resolve().parents[1] / "app.py"
 
+SCOPES = ("Single run", "Patient over time", "One group", "Two groups",
+          "Accuracy vs C3D", "Export")
 
-def _pool_fixture() -> list[RunResult]:
+
+def _pool_fixture(conditions=("base",)) -> list[RunResult]:
     curve = [float(i) for i in range(101)]
     cycles = {"cycles": [{"side": "left", "cycle_id": 1,
                           "angles_normalized": {"hip": curve, "knee": curve, "ankle": curve}}],
               "summary": {}}
-    return [RunResult("a.json", {"patient_id": "P1", "condition": "base"},
-                      ok=True, kind="video", cycles=cycles, stats={})]
+    return [
+        RunResult(f"{cond}_{i}.json", {"patient_id": f"P{i}", "condition": cond},
+                  ok=True, kind="video", cycles=cycles, stats={})
+        for i, cond in enumerate(conditions)
+    ]
 
 
 def _app():
@@ -34,17 +41,32 @@ def _app():
     return app
 
 
-def test_pool_batch_defaults_to_study_scope() -> None:
+def test_pool_batch_defaults_to_group_scope() -> None:
     app = _app()
     app.session_state["pool_runs"] = _pool_fixture()
     app.run()
-    assert app.session_state["analysis_scope"] == "Study & conditions"
+    assert app.session_state["analysis_scope"] == "One group"
 
 
-def test_no_data_defaults_to_study_scope() -> None:
+def test_two_condition_batch_defaults_to_two_groups() -> None:
+    app = _app()
+    app.session_state["pool_runs"] = _pool_fixture(("pre", "post"))
+    app.run()
+    assert app.session_state["analysis_scope"] == "Two groups"
+
+
+def test_no_data_defaults_to_group_scope() -> None:
     app = _app()
     app.run()
-    assert app.session_state["analysis_scope"] == "Study & conditions"
+    assert app.session_state["analysis_scope"] == "One group"
+
+
+def test_legacy_study_scope_is_remapped() -> None:
+    app = _app()
+    app.session_state["analysis_scope"] = "Study & conditions"
+    app.run()
+    assert not app.exception
+    assert app.session_state["analysis_scope"] == "One group"
 
 
 def test_stale_scope_value_is_dropped_not_fatal() -> None:
@@ -52,17 +74,12 @@ def test_stale_scope_value_is_dropped_not_fatal() -> None:
     app.session_state["analysis_scope"] = "Some renamed scope"
     app.run()
     assert not app.exception
-    assert app.session_state["analysis_scope"] in (
-        "Study & conditions", "Patient over time", "Single run", "Export")
+    assert app.session_state["analysis_scope"] in SCOPES
 
 
-def test_export_scope_renders_export_surface() -> None:
+def test_export_scope_renders_without_error() -> None:
     app = _app()
     app.session_state["analysis_scope"] = "Export"
     app.run()
     assert not app.exception
-    # No source loaded -> the export surface shows its own empty state
-    # ("Nothing loaded."), proving page_export rendered under Analysis.
-    texts = " ".join(getattr(el, "value", "") or "" for el in app.markdown)
-    captions = " ".join(c.value or "" for c in app.caption)
-    assert "Nothing loaded" in texts + captions or len(app.selectbox) >= 0
+    assert app.session_state["analysis_scope"] == "Export"

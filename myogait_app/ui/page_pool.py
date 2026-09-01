@@ -34,10 +34,27 @@ from .components import chart, empty_state, is_dark, page_header
 #: Where the loaded batch lives between reruns, so moving a widget does
 #: not re-run every pipeline again.
 _RUNS_KEY = "pool_runs"
+_PATHS_KEY = "pool_paths"
+_AUTO_RECIPE = "Auto-detect per recording (recommended)"
+_SIDEBAR_RECIPE = "Sidebar configuration (shared)"
 
 
-def render(show_header: bool = True) -> None:
-    """Render the cohort view. As a Data-page tab, pass ``show_header=False``."""
+def _chosen_config() -> PipelineConfig | None:
+    """The batch config: None means auto-detect the recipe per recording."""
+    if st.session_state.get("pool_config_mode") == _SIDEBAR_RECIPE:
+        return state.get_config()
+    return None
+
+
+def render(show_header: bool = True, mode: str = "single") -> None:
+    """Render the cohort view. As a Data-page tab, pass ``show_header=False``.
+
+    *mode* orders the cross-condition material for the guided Analysis
+    scopes: ``"single"`` (one-group read, default), ``"compare"`` (the
+    two-condition comparison leads) or ``"accuracy"`` (the vs-Vicon agreement
+    leads). Every mode keeps the full content below -- the mode is emphasis,
+    not a filter.
+    """
     if show_header:
         page_header(
             "Cohort",
@@ -52,15 +69,35 @@ def render(show_header: bool = True) -> None:
 
     paths = _collect_inputs()
 
-    col_run, col_clear = st.columns([3, 1])
+    st.radio(
+        "Pipeline recipe", [_AUTO_RECIPE, _SIDEBAR_RECIPE],
+        key="pool_config_mode", horizontal=True,
+        help="Auto-detect inspects each recording (marker vs video, standing "
+             "vs mid-stride start, there-and-back) and picks its recipe; the "
+             "sidebar option applies the current sidebar configuration "
+             "identically to every recording.",
+    )
+
+    stored_paths = st.session_state.get(_PATHS_KEY) or []
+    col_run, col_re, col_clear = st.columns([3, 2, 1])
     if col_run.button(
         f"Analyse {len(paths)} recording(s)" if paths else "Analyse",
         type="primary", use_container_width=True, disabled=not paths,
     ):
         with st.spinner(f"Running the pipeline on {len(paths)} recording(s)..."):
-            st.session_state[_RUNS_KEY] = load_runs(paths, PipelineConfig())
+            st.session_state[_RUNS_KEY] = load_runs(paths, _chosen_config())
+            st.session_state[_PATHS_KEY] = list(paths)
+    if col_re.button(
+        f"Re-analyse {len(stored_paths)}" if stored_paths else "Re-analyse",
+        use_container_width=True, disabled=not stored_paths,
+        help="Re-run the whole loaded batch with the recipe chosen above -- "
+             "the way to change the analysis of many JSONs at once.",
+    ):
+        with st.spinner(f"Re-running the pipeline on {len(stored_paths)} recording(s)..."):
+            st.session_state[_RUNS_KEY] = load_runs(stored_paths, _chosen_config())
     if col_clear.button("Clear", use_container_width=True):
         st.session_state.pop(_RUNS_KEY, None)
+        st.session_state.pop(_PATHS_KEY, None)
         st.rerun()
 
     runs = st.session_state.get(_RUNS_KEY)
@@ -79,15 +116,40 @@ def render(show_header: bool = True) -> None:
         st.warning("No recording produced a usable gait cycle.")
         return
 
-    _overview(groups)
-    _condition_comparison(groups)
-    _overall_accuracy(runs)
+    joints, sides = _joint_side_selection()
+
+    if mode == "compare":
+        _condition_comparison(groups, joints)
+        _overview(groups, joints)
+        _overall_accuracy(runs, joints, sides)
+    elif mode == "accuracy":
+        _overall_accuracy(runs, joints, sides)
+        _overview(groups, joints)
+        _condition_comparison(groups, joints)
+    else:
+        _overview(groups, joints)
+        _condition_comparison(groups, joints)
+        _overall_accuracy(runs, joints, sides)
     st.divider()
 
     labels = list(groups)
     for label, tab in zip(labels, st.tabs([f"{c} ({len(groups[c])})" for c in labels])):
         with tab:
-            _condition_view(label, groups[label])
+            _condition_view(label, groups[label], joints, sides)
+
+
+def _joint_side_selection() -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """The joints/sides every cohort view below honours (defaults: all)."""
+    c1, c2 = st.columns([2, 1])
+    joints = c1.multiselect(
+        "Joints", list(SAGITTAL_JOINTS), default=list(SAGITTAL_JOINTS),
+        key="pool_joints", format_func=str.title,
+    )
+    sides = c2.multiselect(
+        "Sides", ["left", "right"], default=["left", "right"],
+        key="pool_sides", format_func=str.title,
+    )
+    return tuple(joints) or SAGITTAL_JOINTS, tuple(sides) or ("left", "right")
 
 
 # ── Inputs ───────────────────────────────────────────────────────────
@@ -128,11 +190,11 @@ def _report_failures(runs: list) -> None:
 # ── Overview across conditions ───────────────────────────────────────
 
 
-def _overview(groups: dict) -> None:
+def _overview(groups: dict, joints: tuple[str, ...] = SAGITTAL_JOINTS) -> None:
     st.subheader("Conditions at a glance")
     rows = []
     for label, runs in groups.items():
-        summary = condition_summary(runs)
+        summary = condition_summary(runs, joints)
         spatio = summary["spatiotemporal"]
         row = {
             "Condition": label,
@@ -143,13 +205,13 @@ def _overview(groups: dict) -> None:
             "Cadence (steps/min)": _round(spatio.get("cadence_steps_per_min")),
             "Duration (s)": _round(summary.get("duration_s")),
         }
-        for joint in SAGITTAL_JOINTS:
+        for joint in joints:
             row[f"{joint.title()} ROM (deg)"] = _round(summary["rom_deg"].get(joint))
         rows.append(row)
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 
-def _condition_comparison(groups: dict) -> None:
+def _condition_comparison(groups: dict, joints: tuple[str, ...] = SAGITTAL_JOINTS) -> None:
     """Two-condition comparison: per-joint ROM change vs the MDC.
 
     Only shown with at least two conditions. Tells a real change (beyond
@@ -173,7 +235,7 @@ def _condition_comparison(groups: dict) -> None:
     if a == b:
         st.info("Pick two different conditions to compare.")
         return
-    rows = condition_comparison(groups[a], groups[b])
+    rows = condition_comparison(groups[a], groups[b], joints=joints)
     if not rows:
         st.info("Not enough shared joint data to compare these two conditions.")
         return
@@ -199,8 +261,13 @@ def _condition_comparison(groups: dict) -> None:
 # ── One condition ────────────────────────────────────────────────────
 
 
-def _condition_view(label: str, runs: list) -> None:
-    summary = condition_summary(runs)
+def _condition_view(
+    label: str,
+    runs: list,
+    joints: tuple[str, ...] = SAGITTAL_JOINTS,
+    sides: tuple[str, ...] = ("left", "right"),
+) -> None:
+    summary = condition_summary(runs, joints)
     spatio = summary["spatiotemporal"]
 
     cols = st.columns(5)
@@ -217,14 +284,14 @@ def _condition_view(label: str, runs: list) -> None:
 
     pooled = summary["cycles"]
     dark = is_dark()
-    bands = normative_bands(SAGITTAL_JOINTS, summary.get("stratum", "adult"))
+    bands = normative_bands(joints, summary.get("stratum", "adult"))
 
     st.markdown(
         "**Variability — kinematic curves (all runs pooled, mean +/- SD, "
         f"vs {summary.get('stratum', 'adult')} normative band)**"
     )
-    joint_cols = st.columns(3)
-    for column, joint in zip(joint_cols, SAGITTAL_JOINTS):
+    joint_cols = st.columns(max(len(joints), 1))
+    for column, joint in zip(joint_cols, joints):
         with column:
             chart(
                 K.cycle_overlay(
@@ -243,7 +310,7 @@ def _condition_view(label: str, runs: list) -> None:
         st.markdown("**Stance / swing**")
         chart(K.stance_swing_bar(pooled, dark=dark), key=f"pool_{label}_stance")
 
-    _accuracy_section(label, runs)
+    _accuracy_section(label, runs, joints, sides)
 
     with st.expander(f"Run by run ({summary['n_runs']} recordings)", expanded=False):
         run_rows = []
@@ -290,14 +357,19 @@ def _validity_caption(joint: str) -> None:
         st.caption(f"{grade}: {entry.get('note', '')}")
 
 
-def _accuracy_section(label: str, runs: list) -> None:
+def _accuracy_section(
+    label: str,
+    runs: list,
+    joints: tuple[str, ...] = SAGITTAL_JOINTS,
+    sides: tuple[str, ...] = ("left", "right"),
+) -> None:
     """Show accuracy vs the marker reference, when the condition has one.
 
     Video alone gives variability; a paired marker (Vicon) reference is what
     turns it into accuracy -- error and bias per joint. Without a reference in
     the condition, say so rather than showing an empty table.
     """
-    agreement = condition_agreement(runs)
+    agreement = condition_agreement(runs, joints, sides)
     st.markdown("**Accuracy vs marker reference (Vicon)**")
     if agreement is None:
         st.caption(
@@ -318,14 +390,18 @@ def _accuracy_section(label: str, runs: list) -> None:
     _agreement_table(agreement["by_joint"])
 
 
-def _overall_accuracy(runs: list) -> None:
+def _overall_accuracy(
+    runs: list,
+    joints: tuple[str, ...] = SAGITTAL_JOINTS,
+    sides: tuple[str, ...] = ("left", "right"),
+) -> None:
     """Automatic accuracy vs Vicon, paired by patient across the whole batch.
 
     Appears on its own whenever the loaded batch holds, for the same patient,
     both a markerless and a marker (C3D) recording -- no condition tagging
     needed. It complements the per-condition accuracy below.
     """
-    agreement = overall_agreement(runs)
+    agreement = overall_agreement(runs, joints, sides)
     if agreement is None:
         return
     st.divider()

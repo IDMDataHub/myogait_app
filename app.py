@@ -87,8 +87,11 @@ def main() -> None:
         # The configuration panel is only useful once there is something
         # to apply it to, and showing thirty disabled controls on first
         # load would bury the one action that matters. Reference is pure
-        # documentation and never needs it, loaded source or not.
-        if source is not None and page in ("Analysis", "Advanced"):
+        # documentation and never needs it, loaded source or not. A cohort
+        # batch counts as "something": its shared-recipe mode applies this
+        # very configuration to every recording in the batch.
+        has_batch = bool(st.session_state.get("pool_runs"))
+        if (source is not None or has_batch) and page in ("Analysis", "Advanced"):
             st.markdown("**Pipeline configuration**")
             state.set_config(sidebar.render(state.get_config(), source))
             if st.button("Reset to defaults", use_container_width=True):
