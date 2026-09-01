@@ -486,6 +486,10 @@ def _run_export(
     Failures are reported with the exception verbatim: an export that
     fails because an optional dependency is missing should say so, not
     disappear behind a generic message.
+
+    Also exposed as :data:`offer_export` for other pages (the cohort
+    bundle): the provenance context degrades gracefully when no single
+    source is loaded.
     """
     target.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -549,3 +553,7 @@ def _run_export(
         use_container_width=True,
         key=f"dl_provenance_{filename}",
     )
+
+
+#: Public name for other pages (see _run_export's docstring).
+offer_export = _run_export

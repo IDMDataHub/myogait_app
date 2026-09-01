@@ -145,6 +145,41 @@ def render(show_header: bool = True, mode: str = "single") -> None:
         with tab:
             _condition_view(label, groups[label], joints, sides)
 
+    _bundle_export(runs, joints, sides)
+
+
+def _bundle_export(runs: list, joints: tuple[str, ...], sides: tuple[str, ...]) -> None:
+    """Everything of this cohort as one zip: tables (CSV + Excel) + figures."""
+    st.divider()
+    with st.expander("Export cohort bundle (zip)", expanded=False):
+        st.caption(
+            "Every table of this cohort (overview, agreement, MDC comparison, "
+            "biomarkers, ICC validity/test-retest, Bland-Altman) as CSV plus "
+            "one Excel workbook, and print-grade figures (pooled angle curves "
+            "per condition drawn by myogait itself, Bland-Altman plots, "
+            "between-group boxplots) at the chosen DPI. A provenance JSON "
+            "rides along."
+        )
+        c1, c2 = st.columns(2)
+        dpi = c1.selectbox("DPI", [150, 300, 600], index=1, key="bundle_dpi")
+        figure_format = c2.selectbox("Figure format", ["png", "pdf", "svg"],
+                                     key="bundle_format")
+        if st.button("Build cohort bundle", type="primary", key="bundle_go",
+                     use_container_width=True):
+            from ..cohort_export import write_cohort_bundle
+            from .page_export import offer_export
+
+            target = state.workspace().outputs / "cohort_bundle"
+            offer_export(
+                "Cohort bundle", target,
+                lambda path: write_cohort_bundle(
+                    runs, path, joints=joints, sides=sides,
+                    dpi=int(dpi), figure_format=str(figure_format),
+                ),
+                zip_directory=True,
+                spinner="Building tables and figures...",
+            )
+
 
 def _joint_side_selection() -> tuple[tuple[str, ...], tuple[str, ...]]:
     """The joints/sides every cohort view below honours (defaults: all)."""
