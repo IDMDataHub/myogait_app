@@ -132,22 +132,21 @@ def _apply_study_subject(config: PipelineConfig, study: dict) -> PipelineConfig:
     return replace(config, subject=SubjectConfig(height_m=height))
 
 
-def load_run(path, config: PipelineConfig | None = None) -> RunResult:
-    """Load one pivot JSON and run the pipeline, capturing any failure.
+def analyse_data(
+    name: str,
+    data: dict,
+    config: PipelineConfig | None = None,
+    *,
+    source_key: str = "",
+) -> RunResult:
+    """Run the pipeline over an in-memory pivot dict, capturing any failure.
 
-    Never raises: a bad file becomes an ``ok=False`` result carrying the
-    reason, so one unreadable recording does not abort a whole batch.
+    The analysis half of :func:`load_run`, split out so a pivot that is
+    already in memory -- the app's loaded single Source, most usefully -- can
+    join a cohort without a round-trip through the filesystem. ``config=None``
+    auto-detects the recipe from the recording itself; a concrete config is
+    applied as-is. Never raises.
     """
-    from myogait import load_json
-
-    # Keep ``config`` possibly None: that is the signal to auto-detect the
-    # recipe below. ``base`` handles the default for the subject-height merge.
-    name = Path(path).name
-    try:
-        data = load_json(str(path))
-    except Exception as exc:  # noqa: BLE001 - reported per-run, not raised
-        return RunResult(name=name, study={}, ok=False, error=f"read: {exc}")
-
     # kind and duration come from the pivot itself, so they are known even
     # if the downstream pipeline later fails.
     study = dict(data.get("study") or {})
@@ -164,10 +163,10 @@ def load_run(path, config: PipelineConfig | None = None) -> RunResult:
             # and fall back to the overground recipe if it finds no cycle.
             from .autoconfig import run_auto
 
-            result, _used, reasons = run_auto(data, str(path), base)
+            result, _used, reasons = run_auto(data, source_key or name, base)
             note = "; ".join(reasons)
         else:
-            result = PipelineRunner(data, source_key=str(path)).run(base)
+            result = PipelineRunner(data, source_key=source_key or name).run(base)
     except Exception as exc:  # noqa: BLE001
         return RunResult(
             name=name, study=study, ok=False, kind=kind, duration_s=duration_s,
@@ -191,6 +190,23 @@ def load_run(path, config: PipelineConfig | None = None) -> RunResult:
     )
 
 
+def load_run(path, config: PipelineConfig | None = None) -> RunResult:
+    """Load one pivot JSON and run the pipeline, capturing any failure.
+
+    Never raises: a bad file becomes an ``ok=False`` result carrying the
+    reason, so one unreadable recording does not abort a whole batch.
+    """
+    from myogait import load_json
+
+    name = Path(path).name
+    try:
+        data = load_json(str(path))
+    except Exception as exc:  # noqa: BLE001 - reported per-run, not raised
+        return RunResult(name=name, study={}, ok=False, error=f"read: {exc}")
+
+    return analyse_data(name, data, config, source_key=str(path))
+
+
 def load_runs(paths: Iterable, config: PipelineConfig | None = None) -> list[RunResult]:
     """Load and run a batch of pivots, preserving order."""
     return [load_run(p, config) for p in paths]
@@ -205,12 +221,13 @@ def group_by_condition(runs: Iterable[RunResult]) -> dict[str, list[RunResult]]:
     return dict(sorted(groups.items()))
 
 
-def pool_cycles(runs: Iterable[RunResult]) -> dict:
+def pool_cycles(runs: Iterable[RunResult], joints: tuple[str, ...] = SAGITTAL_JOINTS) -> dict:
     """Merge several runs' cycles into one figure-ready ``cycles`` dict.
 
     Concatenates every cycle and recomputes the per-side ``summary`` (mean
-    and SD curve per joint, plus ``n_cycles``) over the pooled set, so the
-    condition-level figures show the aggregate rather than any single run.
+    and SD curve per joint in *joints*, plus ``n_cycles``) over the pooled
+    set, so the condition-level figures show the aggregate rather than any
+    single run.
     """
     merged: list[dict] = []
     for index, run in enumerate(runs):
@@ -224,7 +241,7 @@ def pool_cycles(runs: Iterable[RunResult]) -> dict:
     for side in ("left", "right"):
         side_cycles = [c for c in merged if c.get("side") == side]
         entry: dict = {"n_cycles": len(side_cycles)}
-        for joint in SAGITTAL_JOINTS:
+        for joint in joints:
             curves = [
                 c["angles_normalized"][joint]
                 for c in side_cycles
@@ -289,15 +306,16 @@ def _first_age(runs: list[RunResult]) -> float | None:
     return None
 
 
-def condition_summary(runs: list[RunResult]) -> dict:
+def condition_summary(runs: list[RunResult], joints: tuple[str, ...] = SAGITTAL_JOINTS) -> dict:
     """Aggregate figures for one condition: counts, spatiotemporal, ROM.
 
     Spatiotemporal metrics are averaged over runs (any numeric key present
-    in at least one run's ``stats["spatiotemporal"]``). ROM per joint is
-    the range of the pooled mean curve, so it matches the figures.
+    in at least one run's ``stats["spatiotemporal"]``). ROM per joint (over
+    *joints*) is the range of the pooled mean curve, so it matches the
+    figures.
     """
     runs = list(runs)
-    pooled = pool_cycles(runs)
+    pooled = pool_cycles(runs, joints)
 
     # Mean over runs of every numeric spatiotemporal metric.
     keys: list[str] = []
@@ -316,7 +334,7 @@ def condition_summary(runs: list[RunResult]) -> dict:
             spatiotemporal[key] = float(np.mean(values))
 
     rom: dict[str, float] = {}
-    for joint in SAGITTAL_JOINTS:
+    for joint in joints:
         spans = []
         for side in ("left", "right"):
             mean = (pooled["summary"].get(side) or {}).get(f"{joint}_mean")
@@ -420,7 +438,11 @@ def condition_comparison(
     return rows
 
 
-def condition_agreement(runs: list[RunResult]) -> dict | None:
+def condition_agreement(
+    runs: list[RunResult],
+    joints: tuple[str, ...] = SAGITTAL_JOINTS,
+    sides: tuple[str, ...] = ("left", "right"),
+) -> dict | None:
     """Accuracy of the markerless runs against the marker reference, if any.
 
     Only meaningful when a condition holds both markerless (video) and
@@ -434,7 +456,7 @@ def condition_agreement(runs: list[RunResult]) -> dict | None:
     if not video_runs or not vicon_runs:
         return None
 
-    per_joint_side = _paired_curve_metrics(video_runs, vicon_runs)
+    per_joint_side = _paired_curve_metrics(video_runs, vicon_runs, joints, sides)
     return {
         "n_video": len(video_runs),
         "n_reference": len(vicon_runs),
@@ -443,16 +465,21 @@ def condition_agreement(runs: list[RunResult]) -> dict | None:
     }
 
 
-def _paired_curve_metrics(video_runs: list, vicon_runs: list) -> list[dict]:
+def _paired_curve_metrics(
+    video_runs: list,
+    vicon_runs: list,
+    joints: tuple[str, ...] = SAGITTAL_JOINTS,
+    sides: tuple[str, ...] = ("left", "right"),
+) -> list[dict]:
     """Per joint/side agreement between two pooled sets of runs."""
-    video_pooled = pool_cycles(video_runs)
-    vicon_pooled = pool_cycles(vicon_runs)
+    video_pooled = pool_cycles(video_runs, joints)
+    vicon_pooled = pool_cycles(vicon_runs, joints)
 
     per_joint_side: list[dict] = []
-    for side in ("left", "right"):
+    for side in sides:
         v_side = video_pooled["summary"].get(side) or {}
         c_side = vicon_pooled["summary"].get(side) or {}
-        for joint in SAGITTAL_JOINTS:
+        for joint in joints:
             video_curve = v_side.get(f"{joint}_mean")
             reference_curve = c_side.get(f"{joint}_mean")
             if not video_curve or not reference_curve:
@@ -464,7 +491,11 @@ def _paired_curve_metrics(video_runs: list, vicon_runs: list) -> list[dict]:
     return per_joint_side
 
 
-def overall_agreement(runs: list[RunResult]) -> dict | None:
+def overall_agreement(
+    runs: list[RunResult],
+    joints: tuple[str, ...] = SAGITTAL_JOINTS,
+    sides: tuple[str, ...] = ("left", "right"),
+) -> dict | None:
     """Accuracy vs the marker reference, paired automatically by patient.
 
     Unlike :func:`condition_agreement` (which needs the markerless and marker
@@ -490,7 +521,7 @@ def overall_agreement(runs: list[RunResult]) -> dict | None:
         n_patients += 1
         n_video += len(videos)
         n_reference += len(vicons)
-        per_joint_side.extend(_paired_curve_metrics(videos, vicons))
+        per_joint_side.extend(_paired_curve_metrics(videos, vicons, joints, sides))
 
     if not n_patients:
         return None

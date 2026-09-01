@@ -14,10 +14,12 @@ from myogait_app.pooling import (
     RunResult,
     _detect_kind,
     _duration_s,
+    analyse_data,
     condition_agreement,
     condition_summary,
     group_by_condition,
     overall_agreement,
+    pool_cycles,
 )
 
 _HIP = (np.sin(np.linspace(0, np.pi, 101)) * 30).tolist()
@@ -148,3 +150,47 @@ def test_summarize_agreement_drops_uncorrelated():
     out = summarize_agreement([good, bad])
     assert out["hip"]["n"] == 1  # the r=0.2 joint-side is excluded
     assert out["hip"]["rmse"] == pytest.approx(2.0)
+
+
+# ── analyse_data (in-memory pivot -> RunResult) ──────────────────────
+
+
+def test_analyse_data_bad_pivot_is_captured_not_raised():
+    out = analyse_data("broken.json", {"meta": {}, "frames": []})
+    assert out.ok is False
+    assert out.name == "broken.json"
+
+
+def test_analyse_data_reads_study_and_kind_before_running():
+    data = {"meta": {"fps": 30.0}, "frames": [],
+            "study": {"patient_id": "P9", "condition": "pre"},
+            "c3d_markers_3d": {"LEFT_HIP": [[0, 0, 0]]}}
+    out = analyse_data("x.json", data)
+    # Even though the pipeline fails on an empty pivot, identity survives.
+    assert out.kind == "vicon"
+    assert out.patient == "P9" and out.condition == "pre"
+
+
+# ── joint selection threading ────────────────────────────────────────
+
+
+def test_pool_cycles_joint_selection():
+    runs = [_run("video", "base", "P1", "r1")]
+    pooled = pool_cycles(runs, joints=("knee",))
+    left = pooled["summary"]["left"]
+    assert "knee_mean" in left
+    assert "hip_mean" not in left and "ankle_mean" not in left
+
+
+def test_condition_summary_joint_selection():
+    runs = [_run("video", "base", "P1", "r1")]
+    summary = condition_summary(runs, joints=("hip",))
+    assert set(summary["rom_deg"]) == {"hip"}
+
+
+def test_condition_agreement_side_selection():
+    runs = [_run("video", "base", "P1", "r1"), _run("vicon", "base", "P1", "ref")]
+    both = condition_agreement(runs)
+    left_only = condition_agreement(runs, sides=("left",))
+    assert both is not None and left_only is not None
+    assert len(left_only["per_joint_side"]) * 2 == len(both["per_joint_side"])
