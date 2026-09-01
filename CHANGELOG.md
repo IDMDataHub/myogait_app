@@ -4,7 +4,36 @@ All notable changes to this project, grouped by date. Newest first. Every
 entry below is attributed to its actual author; where that is not stated, it
 is Romain Feigean.
 
-## Unreleased — 2026-08-31 (Romain Feigean)
+## [0.8.0] — 2026-08-31
+
+Guided Analysis, clinician-grade cohort statistics and a full export
+(Frédéric Fer), plus video-vs-C3D accuracy pairing (Romain Feigean).
+Requires `myogait >= 0.8.7`.
+
+### Guided Analysis, cohort statistics and export (Frédéric Fer)
+
+- **Guided Analysis page.** One scope selector matching the question asked:
+  Single run / Patient over time / One group / Two groups / Accuracy vs C3D /
+  Export. An inventory strip states what is loaded so a file is never invisible;
+  each scope hints what data it needs; a one-click bridge adds the loaded source
+  to the cohort; the page opens on the scope matching the loaded data.
+- **Cohort batch config + re-analysis.** Recipe choice (auto-detect per
+  recording -- re-enabled -- or the shared sidebar configuration) plus a
+  "Re-analyse N recordings" button: change the analysis of many JSONs at once.
+  A joints/sides selection is honoured by every cohort view.
+- **Reliability statistics (`reliability` module).** ICC(2,1) validity,
+  ICC(3,1) test-retest (+ ICC(2,k)) and Bland-Altman, locked against the
+  published Shrout & Fleiss example; per-run biomarker table; group comparison
+  (n, mean±SD, Hedges g, Welch p); accelerometry-family biomarkers from the
+  pelvis trajectory (RMS acceleration, index of harmonicity, LF/HF ratio --
+  image-normalised units, stated as such) plus the harmonic ratio.
+- **Cohort figures + export bundle.** Bland-Altman plots and between-group
+  boxplots on screen; an "Export cohort bundle (zip)" packaging every table
+  (per-patient per-cycle, overview, agreement, MDC, biomarkers, ICC
+  validity/test-retest, Bland-Altman) as CSV + one Excel workbook, plus
+  print-grade figures at a chosen DPI, with provenance.
+
+### Video-vs-C3D accuracy pairing (Romain Feigean)
 
 - **Video-vs-C3D accuracy pairing: the documented workflow did not actually
   work, and the numbers were silently ambiguous when it did.** Verified
