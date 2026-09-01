@@ -59,10 +59,10 @@ def curve_metrics(video_curve, reference_curve) -> dict:
     a = np.asarray(video_curve, dtype=float)
     b = np.asarray(reference_curve, dtype=float)
     n = min(a.size, b.size)
-    if n == 0:
+    if n < 3:
         return {}
     a, b = a[:n], b[:n]
-    if np.isnan(a).any() or np.isnan(b).any():
+    if not np.isfinite(a).all() or not np.isfinite(b).all():
         return {}
 
     rmse = float(np.sqrt(np.mean((a - b) ** 2)))
