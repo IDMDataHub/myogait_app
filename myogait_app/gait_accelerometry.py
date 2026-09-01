@@ -42,26 +42,27 @@ References
   parameters used as the published reference ranges below.
 - Bruijn et al. (2013) -- entropy reference ranges for gait signals.
 
-**A known sibling, not reconciled here -- arbitration owed to Frédéric
-Fer.** ``reliability.accelerometric_scalars`` already computes a smaller
-family of the same idea (RMS, an index of harmonicity, an LF/HF power
-ratio) from the pelvis centre, by a simpler method (plain double-
-``np.gradient`` plus linear detrend, no torso-length normalisation, no
-resampling, pelvis only) -- built independently for the cohort ICC/
-group-comparison tables (`CHANGELOG.md`'s 0.8.0 entry). This module was
-written without touching that one: its numbers already feed shipped,
-tested cohort statistics, and swapping its computation for this module's
-(a real behaviour change, not a refactor) needs its own dedicated
-validation pass -- the same caution this project's own ISB-reconstruction
-reconciliation needed, not something to fold into an unrelated feature
-session. Whether and how to unify the two is Frédéric Fer's call to make
-(he owns `reliability.py` and the statistics built on it); Romain
-Feigean's own stated preference, recorded here for that arbitration, is
-to keep Fred's existing `reliability.accelerometric_scalars` as the one
-feeding cohort statistics rather than replace it with this module's. Until
-that arbitration happens, the two keep computing slightly different
-numbers for a similar-sounding quantity; know which module a given number
-came from.
+**A known sibling, not reconciled here.** ``reliability.
+accelerometric_scalars`` already computes a smaller family of the same
+idea (RMS, an index of harmonicity, an LF/HF power ratio) from the pelvis
+centre, by a simpler method (plain double-``np.gradient`` plus linear
+detrend, no torso-length normalisation, no resampling, pelvis only) --
+built independently for the cohort ICC/group-comparison tables
+(`CHANGELOG.md`'s 0.8.0 entry). This module was written without touching
+that one: its numbers already feed shipped, tested cohort statistics, and
+swapping its computation for this module's (a real behaviour change, not
+a refactor) needs its own dedicated validation pass -- the same caution
+this project's own ISB-reconstruction reconciliation needed, not
+something to fold into an unrelated feature session.
+
+**Decision (Romain Feigean, 2026-09-01): kept in `main` as-is.** An
+earlier draft of this note asked Frédéric Fer to arbitrate whether to
+unify the two, with a stated leaning toward keeping his simpler
+`reliability.accelerometric_scalars` instead; that request was withdrawn
+before it reached him -- this module stays, unreconciled, on its own
+authority. Unifying the two remains open and undecided, not blocking.
+Until it happens, the two keep computing slightly different numbers for a
+similar-sounding quantity; know which module a given number came from.
 """
 
 from __future__ import annotations

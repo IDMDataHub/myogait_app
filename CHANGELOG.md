@@ -95,23 +95,21 @@ is Romain Feigean.
     as a standing per-category table (value, published reference range,
     interpretation), reachable for any loaded video source without
     rendering the video report.
-  - **Known, disclosed overlap, not reconciled this session -- arbitration
-    owed to Frédéric Fer.** `reliability.accelerometric_scalars` (0.8.0,
-    Frédéric Fer) already computes a smaller, simpler version of the same
-    idea -- RMS, an index of harmonicity, an LF/HF power ratio, from the
-    pelvis centre by plain double-differentiation, no torso normalisation,
-    no resampling -- for the cohort ICC/group-comparison tables. Left
-    untouched: its numbers already feed shipped, tested statistics, and
-    swapping its computation for this module's is a real behaviour change
-    needing its own validation pass, the same caution this project's
-    ISB-reconstruction reconciliation needed. Whether and how to unify the
-    two is Frédéric Fer's call, since he owns `reliability.py` and the
-    statistics built on it. **Romain Feigean's own preference, recorded
-    here for that arbitration: keep Fred's existing
-    `reliability.accelerometric_scalars` as the one feeding cohort
-    statistics**, rather than replace it with this session's module. The
-    two compute different numbers for a similar-sounding quantity until
-    that arbitration happens.
+  - **Known, disclosed overlap, not reconciled.** `reliability.
+    accelerometric_scalars` (0.8.0, Frédéric Fer) already computes a
+    smaller, simpler version of the same idea -- RMS, an index of
+    harmonicity, an LF/HF power ratio, from the pelvis centre by plain
+    double-differentiation, no torso normalisation, no resampling -- for
+    the cohort ICC/group-comparison tables. Left untouched: its numbers
+    already feed shipped, tested statistics, and swapping its computation
+    for this module's is a real behaviour change needing its own
+    validation pass, the same caution this project's ISB-reconstruction
+    reconciliation needed. **Decision (Romain Feigean): `gait_
+    accelerometry.py` stays in `main` as-is.** An earlier plan to have
+    Frédéric Fer arbitrate whether to unify the two (with a stated leaning
+    toward keeping his simpler implementation) was withdrawn before it
+    reached him. The two compute different numbers for a similar-sounding
+    quantity; unifying them remains open and undecided, not blocking.
   - Not attempted: literal reproduction of the original pedagogical video's
     exact subject. Its raw source video and Sapiens-2 JSON extraction were
     never supplied, so this capability was built and tested against the
