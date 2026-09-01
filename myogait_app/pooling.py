@@ -183,9 +183,22 @@ def analyse_data(
 
     marker_step_length_m = step_length_m_from_markers(data.get("c3d_markers_3d") or {})
 
+    # Accelerometry-family smoothness scalars (RMS, IH, LF/HF) need the raw
+    # frames, which RunResult does not keep -- compute them here, while the
+    # pivot is still in hand, and stash them alongside the pipeline stats.
+    stats = dict(result.stats or {})
+    try:
+        from .reliability import accelerometric_scalars
+
+        accel = accelerometric_scalars(data)
+        if accel:
+            stats["accelerometric"] = accel
+    except Exception:  # noqa: BLE001 - a smoothness extra must never sink a run
+        pass
+
     return RunResult(
         name=name, study=study, ok=True, kind=kind, duration_s=duration_s,
-        cycles=result.cycles, stats=result.stats, config_note=note,
+        cycles=result.cycles, stats=stats, config_note=note,
         marker_step_length_m=marker_step_length_m,
     )
 

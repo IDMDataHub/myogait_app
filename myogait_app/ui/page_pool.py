@@ -15,7 +15,14 @@ import pandas as pd
 import streamlit as st
 
 from ..charts import kinematics as K
+from ..charts import reliability as RC
 from ..clinical import VALIDITY_GRADES, normative_bands, validity
+from ..reliability import (
+    biomarker_table,
+    group_comparison_biomarkers,
+    retest_battery,
+    validity_battery,
+)
 from ..pipeline import PipelineConfig
 from ..pooling import (
     SAGITTAL_JOINTS,
@@ -124,6 +131,7 @@ def render(show_header: bool = True, mode: str = "single") -> None:
         _overall_accuracy(runs, joints, sides)
     elif mode == "accuracy":
         _overall_accuracy(runs, joints, sides)
+        _validity_retest_section(runs, joints)
         _overview(groups, joints)
         _condition_comparison(groups, joints)
     else:
@@ -254,6 +262,119 @@ def _condition_comparison(groups: dict, joints: tuple[str, ...] = SAGITTAL_JOINT
             "Δ (A−B)": _round(row["delta"]),
             "MDC95": _round(row["mdc"]),
             "Verdict": verdict,
+        })
+    st.dataframe(pd.DataFrame(table), use_container_width=True, hide_index=True)
+
+    _group_biomarkers(groups, a, b, joints)
+
+
+def _biomarker_params(runs: list, joints: tuple[str, ...]) -> list[str]:
+    """The biomarker parameters actually present in this batch, stable order."""
+    seen: list[str] = []
+    for row in biomarker_table(runs, joints):
+        if row["parameter"] not in seen:
+            seen.append(row["parameter"])
+    return seen
+
+
+def _group_biomarkers(groups: dict, a: str, b: str, joints: tuple[str, ...]) -> None:
+    """Between-group biomarker table + boxplot (conditions A vs B)."""
+    runs = list(groups.get(a, [])) + list(groups.get(b, []))
+    params = _biomarker_params(runs, joints)
+    if not params:
+        return
+    st.markdown("**Biomarkers between groups**")
+    st.caption(
+        "Per-run biomarkers (joint ROM, spatiotemporal, and pelvis-derived "
+        "accelerometry-style smoothness: RMS acceleration, index of "
+        "harmonicity, LF/HF power). RMS values are in image-normalised units "
+        "— comparable across recordings of this pipeline, not against "
+        "published IMU numbers. Hedges g is the bias-corrected effect size; "
+        "the Welch p-value ignores repeated runs per patient, so read it as "
+        "descriptive."
+    )
+    rows = group_comparison_biomarkers(runs, a, b, tuple(params), joints, by="condition")
+    table = []
+    for row in rows:
+        table.append({
+            "Parameter": row["parameter"],
+            f"{a} (n={row['n_a']})": _fmt_mean_sd(row["mean_a"], row["sd_a"]),
+            f"{b} (n={row['n_b']})": _fmt_mean_sd(row["mean_b"], row["sd_b"]),
+            "Δ": _round(row["delta"]),
+            "Hedges g": _round(row["hedges_g"]),
+            "p (Welch)": _round(row["p_welch"], 4),
+        })
+    st.dataframe(pd.DataFrame(table), use_container_width=True, hide_index=True)
+
+    parameter = st.selectbox("Boxplot parameter", params, key="cmp_boxplot_param")
+    chart(
+        RC.group_boxplot(
+            biomarker_table(runs, joints), parameter, a, b,
+            by="condition", dark=is_dark(),
+        ),
+        key="cmp_boxplot",
+    )
+
+
+def _fmt_mean_sd(mean, sd) -> str:
+    if mean is None:
+        return "--"
+    if sd is None:
+        return f"{mean:.2f}"
+    return f"{mean:.2f} ± {sd:.2f}"
+
+
+def _validity_retest_section(runs: list, joints: tuple[str, ...]) -> None:
+    """ICC + Bland-Altman: video-vs-C3D validity and test-retest reliability."""
+    params = _biomarker_params(runs, joints)
+    if not params:
+        return
+
+    st.markdown("**Validity — ICC(2,1) & Bland-Altman (video vs C3D reference)**")
+    st.caption(
+        "Paired per patient: the mean over their video runs against the mean "
+        "over their marker runs. ICC(2,1) is absolute agreement — a "
+        "systematic offset between the methods lowers it, as it should for a "
+        "validity claim. Fewer than 5 paired patients: no coefficient is "
+        "shown (it would be noise)."
+    )
+    validity_rows = validity_battery(runs, tuple(params), joints)
+    table = []
+    for row in validity_rows:
+        result, ba = row["icc"], row["bland_altman"]
+        table.append({
+            "Parameter": row["parameter"],
+            "Paired patients": row["n_patients"],
+            "ICC(2,1)": _round(result.value, 3) if result else "insufficient data",
+            "Bias": _round(ba.bias) if ba else "--",
+            "LoA": f"[{ba.loa_low:.2f}, {ba.loa_high:.2f}]" if ba else "--",
+        })
+    st.dataframe(pd.DataFrame(table), use_container_width=True, hide_index=True)
+
+    plottable = [r["parameter"] for r in validity_rows if r["bland_altman"] is not None]
+    if plottable:
+        parameter = st.selectbox("Bland-Altman parameter", plottable, key="ba_param")
+        ba = next(r["bland_altman"] for r in validity_rows if r["parameter"] == parameter)
+        chart(RC.bland_altman_plot(ba, parameter=parameter, dark=is_dark()), key="ba_plot")
+
+    st.markdown("**Test-retest — ICC(3,1) over repeated video runs**")
+    st.caption(
+        "Patients with at least two video runs, truncated to a balanced "
+        "design. ICC(3,1) is consistency across sessions; ICC(2,k) is the "
+        "agreement of the k-run mean."
+    )
+    retest_rows = retest_battery(runs, tuple(params), joints)
+    table = []
+    for row in retest_rows:
+        result = row["icc"]
+        icc2k = row.get("icc2k")
+        table.append({
+            "Parameter": row["parameter"],
+            "Patients x runs": f"{row['n_patients']} x {row['k']}" if row["n_patients"] else "--",
+            "ICC(3,1)": _round(result.value, 3) if result else "insufficient data",
+            "95% CI": (f"[{result.ci95[0]:.2f}, {result.ci95[1]:.2f}]"
+                       if result and result.ci95 else "--"),
+            "ICC(2,k)": _round(icc2k.value, 3) if icc2k else "--",
         })
     st.dataframe(pd.DataFrame(table), use_container_width=True, hide_index=True)
 

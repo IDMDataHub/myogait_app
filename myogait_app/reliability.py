@@ -48,6 +48,24 @@ SPATIOTEMPORAL_BIOMARKERS = (
     "stance_pct_right",
 )
 
+#: Accelerometry-family scalars (trunk/pelvis smoothness metrics classically
+#: measured with a lumbar IMU, here derived from the pelvis-centre trajectory):
+#: read from ``stats["accelerometric"]`` (see :func:`accelerometric_scalars`)
+#: plus myogait's own harmonic ratio under ``stats["harmonic_ratio"]``.
+ACCELEROMETRIC_BIOMARKERS = (
+    "rms_accel_ap",
+    "rms_accel_vertical",
+    "index_of_harmonicity_ap",
+    "lf_hf_ratio_ap",
+    "hr_ap",
+    "hr_vertical",
+)
+
+#: Spectral split for the LF/HF power ratio (Hz): the locomotor band vs the
+#: faster content above it. A crude but reproducible smoothness index.
+LF_BAND = (0.5, 3.0)
+HF_BAND = (3.0, 10.0)
+
 
 # ── ICC ──────────────────────────────────────────────────────────────
 
@@ -189,6 +207,103 @@ def bland_altman(a, b) -> BlandAltman | None:
     )
 
 
+# ── Accelerometric scalars from the pelvis trajectory ────────────────
+
+
+def _pelvis_series(data: dict) -> tuple[np.ndarray, np.ndarray, float] | None:
+    """(ap, vertical, fps) pelvis-centre position series from a pivot."""
+    frames = data.get("frames") or []
+    fps = (data.get("meta") or {}).get("fps")
+    if not frames or not isinstance(fps, (int, float)) or not math.isfinite(fps) or fps <= 0:
+        return None
+    xs, ys = [], []
+    for frame in frames:
+        lm = frame.get("landmarks") or {}
+        lh, rh = lm.get("LEFT_HIP"), lm.get("RIGHT_HIP")
+        try:
+            x = (float(lh["x"]) + float(rh["x"])) / 2.0
+            y = (float(lh["y"]) + float(rh["y"])) / 2.0
+        except (TypeError, KeyError, ValueError):
+            x = y = float("nan")
+        xs.append(x)
+        ys.append(y)
+    ap = np.asarray(xs, dtype=float)
+    vert = np.asarray(ys, dtype=float)
+    if np.isfinite(ap).sum() < 64:            # too short for any spectrum
+        return None
+    return ap, vert, float(fps)
+
+
+def _accel(series: np.ndarray, fps: float) -> np.ndarray:
+    """Double-differentiated, linearly detrended acceleration (finite only)."""
+    keep = np.isfinite(series)
+    series = np.interp(np.arange(series.size), np.flatnonzero(keep), series[keep]) \
+        if keep.any() and not keep.all() else series
+    vel = np.gradient(series, 1.0 / fps)
+    acc = np.gradient(vel, 1.0 / fps)
+    t = np.arange(acc.size)
+    slope, intercept = np.polyfit(t, acc, 1)
+    return acc - (slope * t + intercept)
+
+
+def _band_power(freqs: np.ndarray, power: np.ndarray, band: tuple[float, float]) -> float:
+    mask = (freqs >= band[0]) & (freqs < band[1])
+    return float(power[mask].sum())
+
+
+def accelerometric_scalars(data: dict) -> dict[str, float]:
+    """Trunk-accelerometry-style smoothness scalars from the pelvis centre.
+
+    Classically measured with a lumbar IMU; here the pelvis-centre trajectory
+    is double-differentiated instead. Positions are image-normalised, so the
+    RMS values are in arbitrary units -- comparable across recordings that
+    share the pipeline, not against published IMU numbers (state this wherever
+    they are displayed).
+
+    - ``rms_accel_ap`` / ``rms_accel_vertical``: RMS of the detrended
+      acceleration.
+    - ``index_of_harmonicity_ap``: power at the dominant locomotor frequency
+      divided by the summed power of its first six harmonics (Lamoth et al.);
+      1.0 = perfectly harmonic (smooth), lower = noisier gait.
+    - ``lf_hf_ratio_ap``: spectral power in :data:`LF_BAND` over
+      :data:`HF_BAND` -- higher means the movement lives in the locomotor
+      band rather than in fast noise.
+    """
+    series = _pelvis_series(data)
+    if series is None:
+        return {}
+    ap_pos, vert_pos, fps = series
+    out: dict[str, float] = {}
+
+    ap = _accel(ap_pos, fps)
+    vert = _accel(vert_pos, fps)
+    out["rms_accel_ap"] = float(np.sqrt(np.mean(ap ** 2)))
+    out["rms_accel_vertical"] = float(np.sqrt(np.mean(vert ** 2)))
+
+    freqs = np.fft.rfftfreq(ap.size, d=1.0 / fps)
+    power = np.abs(np.fft.rfft(ap - ap.mean())) ** 2
+
+    # Dominant locomotor frequency inside the LF band.
+    lf_mask = (freqs >= LF_BAND[0]) & (freqs < LF_BAND[1])
+    if lf_mask.any() and power[lf_mask].max() > 0:
+        f0 = float(freqs[lf_mask][int(np.argmax(power[lf_mask]))])
+        df = freqs[1] - freqs[0] if freqs.size > 1 else 0.0
+        harmonic_power = []
+        for h in range(1, 7):
+            target = h * f0
+            window = (freqs >= target - df) & (freqs <= target + df)
+            harmonic_power.append(float(power[window].sum()) if window.any() else 0.0)
+        total = sum(harmonic_power)
+        if total > 0:
+            out["index_of_harmonicity_ap"] = float(harmonic_power[0] / total)
+
+    hf = _band_power(freqs, power, HF_BAND)
+    lf = _band_power(freqs, power, LF_BAND)
+    if hf > 0:
+        out["lf_hf_ratio_ap"] = float(lf / hf)
+    return out
+
+
 # ── Per-run biomarker extraction ─────────────────────────────────────
 
 
@@ -222,6 +337,17 @@ def _run_scalars(run: RunResult, joints: tuple[str, ...]) -> dict[str, float]:
         lengths = [v for v in lengths if isinstance(v, (int, float)) and math.isfinite(v)]
         if lengths:
             out["step_length_m"] = float(np.mean(lengths))
+    # Accelerometry family: the pelvis-derived scalars analyse_data stashes,
+    # plus myogait's own harmonic ratio.
+    accel = (run.stats or {}).get("accelerometric") or {}
+    for key, value in accel.items():
+        if isinstance(value, (int, float)) and math.isfinite(value):
+            out[key] = float(value)
+    hr = (run.stats or {}).get("harmonic_ratio") or {}
+    for key in ("hr_ap", "hr_vertical"):
+        value = hr.get(key)
+        if isinstance(value, (int, float)) and math.isfinite(value):
+            out[key] = float(value)
     return out
 
 

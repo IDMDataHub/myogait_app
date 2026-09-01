@@ -202,3 +202,61 @@ def test_group_comparison_biomarkers():
     assert entry["n_a"] == 4 and entry["n_b"] == 4
     assert entry["delta"] == pytest.approx(20.0)
     assert entry["hedges_g"] is not None and entry["hedges_g"] > 5.0
+
+
+# ── Accelerometric scalars ───────────────────────────────────────────
+
+
+def _sinusoid_pivot(f0=2.0, fps=60.0, seconds=10.0, noise=0.0):
+    import numpy as _np
+    t = _np.arange(0, seconds, 1.0 / fps)
+    ap = 0.5 + 0.05 * _np.sin(2 * _np.pi * f0 * t)
+    vert = 0.5 + 0.02 * _np.sin(2 * _np.pi * 2 * f0 * t)
+    rng = _np.random.default_rng(0)
+    ap = ap + noise * rng.standard_normal(t.size)
+    frames = [{"landmarks": {"LEFT_HIP": {"x": float(a), "y": float(v)},
+                             "RIGHT_HIP": {"x": float(a), "y": float(v)}}}
+              for a, v in zip(ap, vert)]
+    return {"meta": {"fps": fps}, "frames": frames}
+
+
+def test_accelerometric_pure_sinusoid_is_harmonic():
+    from myogait_app.reliability import accelerometric_scalars
+    out = accelerometric_scalars(_sinusoid_pivot())
+    # A pure sinusoid concentrates all harmonic power at the fundamental.
+    assert out["index_of_harmonicity_ap"] == pytest.approx(1.0, abs=0.05)
+    assert out["rms_accel_ap"] > 0
+    assert out["lf_hf_ratio_ap"] > 10          # everything lives in the LF band
+
+
+def test_accelerometric_noise_lowers_harmonicity_and_lf_hf():
+    from myogait_app.reliability import accelerometric_scalars
+    clean = accelerometric_scalars(_sinusoid_pivot(noise=0.0))
+    noisy = accelerometric_scalars(_sinusoid_pivot(noise=0.02))
+    assert noisy["index_of_harmonicity_ap"] < clean["index_of_harmonicity_ap"]
+    assert noisy["lf_hf_ratio_ap"] < clean["lf_hf_ratio_ap"]
+
+
+def test_accelerometric_rms_matches_analytic():
+    import numpy as _np
+    from myogait_app.reliability import accelerometric_scalars
+    f0, amp = 2.0, 0.05
+    out = accelerometric_scalars(_sinusoid_pivot(f0=f0))
+    # a(t) = -A w^2 sin(wt) -> RMS = A w^2 / sqrt(2)
+    expected = amp * (2 * _np.pi * f0) ** 2 / _np.sqrt(2)
+    assert out["rms_accel_ap"] == pytest.approx(expected, rel=0.05)
+
+
+def test_accelerometric_graceful_on_missing_data():
+    from myogait_app.reliability import accelerometric_scalars
+    assert accelerometric_scalars({}) == {}
+    assert accelerometric_scalars({"meta": {"fps": 30}, "frames": []}) == {}
+
+
+def test_biomarker_table_includes_accelerometric_when_present():
+    run = _run("P1", rom=30.0)
+    run.stats["accelerometric"] = {"rms_accel_ap": 1.2, "index_of_harmonicity_ap": 0.9}
+    run.stats["harmonic_ratio"] = {"hr_ap": 2.1, "hr_vertical": 1.8}
+    params = {r["parameter"]: r["value"] for r in biomarker_table([run])}
+    assert params["rms_accel_ap"] == pytest.approx(1.2)
+    assert params["hr_ap"] == pytest.approx(2.1)
