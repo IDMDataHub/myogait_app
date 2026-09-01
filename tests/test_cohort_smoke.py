@@ -62,3 +62,42 @@ def test_cohort_tab_renders_a_paired_video_and_reference_trial() -> None:
 
     assert not app.exception
     assert any(metric.label == "Step length" for metric in app.metric)
+    # ISB reconstruction defaults on (pool_runs_isb absent -> treated as on,
+    # see page_pool._isb_caveat) and both fixture runs carry hip/knee, so the
+    # ISB-vs-sagittal definitional-offset caveat must be visible, not silent.
+    captions = " ".join(c.value for c in app.caption)
+    assert "ISB reconstruction is on" in captions
+
+
+def test_cohort_unspecified_condition_refuses_to_pair_untagged_runs() -> None:
+    """Two untagged pivots share the 'unspecified' bucket but not a real
+    condition or a known patient identity -- pairing them for accuracy would
+    silently compare recordings that might be different, unrelated patients
+    (see pooling.UNSPECIFIED). The condition-level accuracy section must
+    refuse and explain why, not render a numeric table.
+    """
+    pytest.importorskip("streamlit")
+    from streamlit.testing.v1 import AppTest
+
+    untagged_cycles = _cycles()
+    runs = [
+        RunResult("unknown_video.json", {}, ok=True, kind="video", duration_s=2.0,
+                  cycles=untagged_cycles, stats={}),
+        RunResult("unknown_reference.json", {}, ok=True, kind="vicon", duration_s=2.0,
+                  cycles=untagged_cycles, stats={}),
+    ]
+
+    app = AppTest.from_file(str(APP_PY), default_timeout=60)
+    app.run()
+    app.session_state["nav_page"] = "Analysis"
+    app.session_state["analysis_scope"] = "Study & conditions"
+    app.session_state["pool_runs"] = runs
+    app.run()
+
+    assert not app.exception
+    captions = " ".join(c.value for c in app.caption)
+    assert "risk comparing unrelated patients" in captions
+    assert not any(
+        hasattr(d.value, "columns") and "RMSE (deg)" in d.value.columns
+        for d in app.dataframe
+    )

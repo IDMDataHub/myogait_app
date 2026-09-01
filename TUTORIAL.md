@@ -77,7 +77,7 @@ from Kinematics, or one page over in the sidebar.
 | **Comparator** page | Sweep one parameter across several values on the same recording, or load a second extraction and compare the two directly — divergence curves, an RMS matrix, an event-timing raster. |
 | **Longitudinal** page | Track the same subject or protocol across multiple loaded sessions over time. |
 | **Export** page | CSV, Excel, OpenSim `.mot`/`.trc`, C3D, a PDF report, an anonymised stick-figure video, and publication figures rendered by myogait's own plotting functions. |
-| **Reference** page | A glossary of every myogait function this app calls, grounded in the package's own docstrings — the fastest way to look up what a control actually does. |
+| **Index** page | A glossary of every myogait function this app calls, grounded in the package's own docstrings — the fastest way to look up what a control actually does — plus short step-by-step guides for multi-step workflows (e.g. pairing a video extraction with its Vicon C3D for an accuracy comparison). |
 
 ## 4. Reproduce what you just did
 

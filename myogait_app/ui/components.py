@@ -66,6 +66,7 @@ _FIGURE_CAPTIONS = {
     "heat": "Agreement heatmap",
     "metric": "Metric comparison",
     "raster": "Event raster",
+    "accuracy": "Video vs Vicon mean curves",
 }
 
 
@@ -119,7 +120,7 @@ _PAGE_META: dict[str, tuple[str, str]] = {
     "New assessment": ("01", "Capture"),
     "Analysis": ("02", "Read the study"),
     "Advanced": ("03", "Research tools"),
-    "Reference": ("04", "Function reference"),
+    "Index": ("04", "Reference & guides"),
     # Nested views (shown inside a tab or a scope) keep their own eyebrow.
     "Pipeline explorer": ("02", "Parametric explorer"),
     "Comparator": ("03", "Colour encodes method"),
@@ -423,6 +424,13 @@ def empty_state(message: str, hint: str = "") -> None:
         st.caption(hint)
 
 
+def _job_label(job) -> str:
+    study = job.study or {}
+    meta = " · ".join(x for x in (study.get("patient_id"), study.get("condition")) if x)
+    text = f"{job.video_name} — {job.model}"
+    return f"{text}  ({meta})" if meta else text
+
+
 def source_loader(message: str, hint: str = "", *, slot: str = "") -> None:
     """An empty state that can actually load a recording, not just explain.
 
@@ -447,17 +455,8 @@ def source_loader(message: str, hint: str = "", *, slot: str = "") -> None:
     with st.container(border=True):
         if done:
             st.markdown("**Load a finished extraction**")
-
-            def _label(job) -> str:
-                study = job.study or {}
-                meta = " · ".join(
-                    x for x in (study.get("patient_id"), study.get("condition")) if x
-                )
-                text = f"{job.video_name} — {job.model}"
-                return f"{text}  ({meta})" if meta else text
-
             choice = st.selectbox(
-                "Finished extractions", done, format_func=_label,
+                "Finished extractions", done, format_func=_job_label,
                 key=f"loader_pick_{token}", label_visibility="collapsed",
             )
             columns = st.columns([3, 2])
@@ -474,6 +473,51 @@ def source_loader(message: str, hint: str = "", *, slot: str = "") -> None:
         else:
             st.caption("No finished extraction on this machine yet.")
             _to_new_assessment(st, key=f"loader_data_{token}")
+
+
+def recording_switcher(slot: str) -> None:
+    """A compact, always-on control to switch which recording this tab reads.
+
+    Advanced's four tabs (Pipeline explorer, Comparator, Export, Method
+    validation) all read the one shared active source (``state.get_source``)
+    -- so once a video extraction *and* its C3D are both ready (Recent jobs),
+    there was previously no way to explore the other one from inside a tab;
+    only ``source_loader``'s empty-state picker offered this, and it
+    disappears the moment a source is loaded. This renders unconditionally,
+    loaded-or-not, right below each tab's own header.
+
+    Switching here changes the *shared* active source (the same one every
+    other Advanced tab and New assessment/Analysis read) -- there is one
+    recording being explored at a time, not an independent choice held per
+    tab. Good enough to compare two ready recordings without leaving the
+    tab; if trying to hold e.g. Pipeline explorer on the video while Export
+    stays on the C3D at the same time turns out to matter, that needs each
+    tab to cache its own source+runner independently, a bigger change than
+    this control -- not attempted here.
+    """
+    from ..jobs import DONE, JobManager
+
+    done = [j for j in JobManager(SETTINGS).list_jobs() if j.status == DONE]
+    if len(done) < 2:
+        return  # nothing to switch to yet
+
+    source = state.get_source()
+    label = f"Recording: **{source.name}**" if source else "Pick a recording"
+    with st.expander(label, expanded=source is None):
+        st.caption(
+            "Switches the recording every Advanced tab explores -- not just "
+            "this one."
+        )
+        choice = st.selectbox(
+            "Ready recordings", done, format_func=_job_label,
+            key=f"switch_pick_{slot}", label_visibility="collapsed",
+        )
+        if st.button("Load this recording", key=f"switch_load_{slot}"):
+            path = choice.result_path(SETTINGS)
+            if path:
+                _install_pivot(path, f"{choice.video_name} [{choice.model}]")
+            else:
+                st.error("The result file is gone - it may have been purged.")
 
 
 def _to_new_assessment(container, key: str) -> None:

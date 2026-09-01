@@ -27,6 +27,7 @@ from .components import (
     empty_state,
     is_dark,
     page_header,
+    recording_switcher,
     reproducibility_panel,
     source_loader,
     source_summary,
@@ -55,6 +56,7 @@ def render() -> None:
         "Pipeline explorer",
         "Move any control on the left. Only the stages below it are recomputed.",
     )
+    recording_switcher("pipeline")
     source_summary(source)
 
     result = runner.run(config)

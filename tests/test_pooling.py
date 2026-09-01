@@ -107,6 +107,10 @@ def test_condition_agreement_requires_a_reference():
     assert agreement["n_reference"] == 1
     assert agreement["by_joint"]["hip"]["rmse"] == pytest.approx(0.0, abs=1e-9)
     assert agreement["by_joint"]["hip"]["shape_r"] == pytest.approx(1.0)
+    # video_pooled/vicon_pooled: what a video-vs-reference comparison chart
+    # needs (each kind pooled separately, not blended into one mean).
+    assert agreement["video_pooled"]["summary"]["left"]["hip_mean"] == pytest.approx(_HIP)
+    assert agreement["vicon_pooled"]["summary"]["left"]["hip_mean"] == pytest.approx(_HIP)
 
 
 def test_overall_agreement_pairs_by_patient_across_conditions():
@@ -121,6 +125,8 @@ def test_overall_agreement_pairs_by_patient_across_conditions():
     assert agreement["n_patients"] == 1  # only P1 has both kinds
     assert agreement["n_video"] == 1 and agreement["n_reference"] == 1
     assert "hip" in agreement["by_joint"]
+    assert agreement["video_pooled"]["summary"]["left"]["n_cycles"] == 1
+    assert agreement["vicon_pooled"]["summary"]["left"]["n_cycles"] == 1
 
     # condition_agreement finds nothing here: the two kinds never share a
     # condition. Pairing by patient is what makes accuracy appear automatically.

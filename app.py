@@ -48,12 +48,13 @@ def _startup() -> dict:
 
 
 #: Two clinical screens -- get data in, then read it -- plus a demoted
-#: Advanced space for the research tools and Reference for the docs.
+#: Advanced space for the research tools and Index for the docs (function
+#: reference plus short how-to guides for multi-step workflows).
 PAGES = {
     "New assessment": page_new.render,
     "Analysis": page_analysis.render,
     "Advanced": page_advanced.render,
-    "Reference": page_reference.render,
+    "Index": page_reference.render,
 }
 
 
@@ -86,7 +87,7 @@ def main() -> None:
 
         # The configuration panel is only useful once there is something
         # to apply it to, and showing thirty disabled controls on first
-        # load would bury the one action that matters. Reference is pure
+        # load would bury the one action that matters. Index is pure
         # documentation and never needs it, loaded source or not. A cohort
         # batch counts as "something": its shared-recipe mode applies this
         # very configuration to every recording in the batch.

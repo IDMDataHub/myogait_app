@@ -4,6 +4,71 @@ All notable changes to this project, grouped by date. Newest first. Every
 entry below is attributed to its actual author; where that is not stated, it
 is Romain Feigean.
 
+## Unreleased — 2026-08-31 (Romain Feigean)
+
+- **Video-vs-C3D accuracy pairing: the documented workflow did not actually
+  work, and the numbers were silently ambiguous when it did.** Verified
+  end-to-end against real Bath BioCV data (P03) before and after each fix.
+  - **The C3D tab had no way to tag a Patient ID/Condition at all**
+    (`_study_form` only ever ran in the video-extraction tab), so a C3D
+    import could never automatically pair with its video, contradicting
+    `page_new.py`'s own onboarding text. `_c3d_tab` now calls `_study_form`
+    too (a new `key_prefix` param keeps its widget keys distinct from the
+    video tab's, since both render unconditionally in the same
+    `st.tabs(...)`), and `_load_c3d` writes the result into `data["study"]`.
+  - **A C3D load never got a job ticket**, so it could never appear in
+    Recent jobs next to a video extraction for the tick-select →
+    `_selection_actions` → `pooling.load_runs` shortcut — pairing needed a
+    manual export-then-reupload through the Cohort page's own uploader.
+    New `JobManager.register_immediate(data, name, kind_label, study=)`
+    writes a `DONE` job straight away (no worker); `_load_c3d` calls it
+    with `kind_label="c3d-import"`. `_ticket_tab`'s "Finished — tick to
+    analyse" list now groups by `(patient_id, condition)` and captions each
+    tagged group's readiness ("ready to compare", "video only", "C3D
+    only"). `_selection_actions`'s cohort path now passes an explicit
+    `PipelineConfig()` (was `config=None`/autoconfig) so this shortcut
+    matches the Cohort page's own "Analyse" button exactly.
+  - **The "unspecified" condition bucket could silently pair unrelated
+    patients.** `pooling.UNSPECIFIED` holds every untagged recording from
+    every patient; `page_pool._accuracy_section` used to run
+    `condition_agreement` on it like a real condition. It now refuses for
+    that one label, with an explanation, instead of showing a number that
+    might be comparing two different people.
+  - **ISB reconstruction (default on) silently mixed two angle definitions
+    in the accuracy comparison.** It recomputes a Vicon/C3D reference's
+    hip/knee/ankle from ISB anatomical frames but is a no-op for markerless
+    video (no 3-D markers) — the Cohort page hardcoded `PipelineConfig()`
+    regardless, so hip/knee bias conflated tracking error with the
+    ISB-vs-sagittal definitional offset documented below. A new checkbox
+    ("ISB reconstruction for Vicon/C3D references", on by default) now
+    threads through `load_runs`'s config, and `page_pool._isb_caveat` warns
+    under the accuracy table whenever hip/knee is present and it is on —
+    verified on P03: hip bias flips from −6.1° (on) to +4.9° (off), same
+    pair, same code.
+  - **The accuracy charts could not tell video and Vicon apart.**
+    `pooling.condition_agreement`/`overall_agreement` now also return
+    `video_pooled`/`vicon_pooled` (each kind pooled separately — merging
+    first would blend the two into one indistinguishable mean), feeding a
+    new `charts.kinematics.video_vs_reference_overlay`: a second, dedicated
+    colour per kind (video vs Vicon/C3D), a deliberate exception to this
+    module's usual "colour carries the side" rule — side survives as
+    solid-vs-dashed line style.
+  - **Advanced's tabs could not switch which ready recording they explored**
+    without a trip back to New assessment. New `components.
+    recording_switcher(slot)` renders a compact picker (no-ops under two
+    finished recordings) in Pipeline explorer, Comparator's Sweep tab,
+    Export, and Method validation's Vicon tab — switches the one shared
+    active source, not an independent choice per tab.
+- **"Reference" page renamed to "Index"** (`app.py`'s `PAGES`, `components.
+  _PAGE_META`, `page_reference.py`'s header, `sidebar.py`'s tooltip,
+  README.md/TUTORIAL.md) now that it holds more than a function glossary: a
+  new "Guides" section documents the video-vs-C3D pairing workflow above,
+  step by step, including the ISB-toggle caveat and the unspecified-group
+  refusal.
+- 163 tests passing (11 new: job registration, `_job_label`, 2 chart
+  colour-encoding tests, 2 cohort-pairing UI tests, the Index guide, plus
+  pooling extensions), ruff clean, 68.1% coverage (floor 60%).
+
 ## [0.7.0] — 2026-08-28 (Frédéric Fer)
 
 Editable pivots and a two-condition comparison.
@@ -43,6 +108,8 @@ and calibrated restoration of the markerless ankle push-off. Both trace to
   overshoots; a cycle whose push-off is suppressed is not reinvented (frequency
   domain, template-free). Not yet validated on pathological gait. Codegen emits
   the restore step so an exported script reproduces it.
+
+## Unreleased — 2026-08-26 to 2026-08-28 (Romain Feigean)
 
 - **`feat/isb-marker-cascade` merged into `main`** (fast-forward, commit
   `8e4600a` — CI green on all 6 matrix cells, 154 passed/1 unrelated skip,

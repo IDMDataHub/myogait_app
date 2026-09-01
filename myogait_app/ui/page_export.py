@@ -23,7 +23,7 @@ from ..quality import assess_quality
 from ..runtime import get_runtime
 from ..settings import SETTINGS
 from . import state
-from .components import page_header, reproducibility_panel, source_loader
+from .components import page_header, recording_switcher, reproducibility_panel, source_loader
 
 #: myogait plotting functions, with what each one needs.
 FIGURE_SPECS: dict[str, dict] = {
@@ -63,6 +63,7 @@ def render() -> None:
     result = state.get_runner().run(config)
 
     page_header("Export", "Data files, publication figures, and rendered video.")
+    recording_switcher("export")
 
     if not result.ok:
         failed = result.failed_stage
