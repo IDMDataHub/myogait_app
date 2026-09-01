@@ -1,19 +1,21 @@
 """Animated MP4 report: the source video, its markerless skeleton, and this
-run's own kinematics/spatio-temporal/RoM results, narrated over five staged
-segments with the same storyboard shape as the pedagogical video this module
-is modelled on (intro -> angles -> spatio-temporal -> RoM -> summary).
+run's own kinematics/spatio-temporal/RoM/accelerometry results, narrated
+over staged segments with the same storyboard shape as the pedagogical
+video this module is modelled on (intro -> angles -> spatio-temporal ->
+RoM -> virtual accelerometer -> biomarkers -> [cohort validation] ->
+summary; the cohort segment only appears when a reference dataset is
+supplied -- see ``render_video_report``'s ``reference_cohort`` parameter).
 
 Streamlit-free and testable, following the pattern of ``autoconfig.py``/
 ``calibration.py``/``step_length.py``: pure computation (here, pure pixel
 computation) driven entirely by a pivot ``data`` dict, ``cycles`` and
 ``stats`` -- the same three objects every other export already works from.
-No IMU, no virtual accelerometer, no biomarker cohort: those three segments
-of the original pedagogical script have no equivalent in a normal
-``app_myogait`` run, so segments 3-5 are re-purposed to what this app
-*does* compute for every recording -- spatio-temporal parameters, range of
-motion (plus the angle at heel-strike/toe-off), and a comparison against
-the normative band already used throughout the app (``clinical.
-normative_bands``).
+The virtual accelerometer and its biomarkers come from
+``gait_accelerometry.py`` -- see that module's own docstring for what was,
+and deliberately was not, ported from the research script this is modelled
+on, and why. No cohort dataset ships with the app: the "cohort validation"
+segment is entirely opt-in, built from whatever reference file the caller
+passes in for this one render, never a bundled asset.
 
 Colour and type come from ``branding.py`` (this app's own validated
 palette) rather than the source script's own hardcoded Bauhaus hexes and
@@ -29,12 +31,15 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Sequence
 
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+from scipy.signal import welch
+from scipy.stats import pearsonr
 
+from . import gait_accelerometry as ga
 from .branding import BRANDING
 from .clinical import normative_bands, select_stratum
 
@@ -163,6 +168,18 @@ class VideoReportData:
     normative: dict                # {joint: {lower, upper, mean}} or {}
     model_name: str
     n_cycles: int
+    # Virtual accelerometer + biomarkers (gait_accelerometry.py); None
+    # when the recording's landmark coverage cannot support them.
+    accel_site: str = "sacrum"
+    accel_display: np.ndarray | None = None  # (n_frames, 2) normalised, for on-skeleton marker
+    accel_t: np.ndarray | None = None        # seconds, one per resampled accel sample
+    accel_ap: np.ndarray | None = None
+    accel_v: np.ndarray | None = None
+    accel_rms_v: np.ndarray | None = None    # 2 s sliding RMS of accel_v, for the live chart
+    biomarkers: "ga.GaitBiomarkers | None" = None
+    # {biomarker_label: (subjects, video_vals, imu_vals, r, p, this_recording_video_val)}
+    # or None when no reference cohort was supplied for this render.
+    cohort: dict | None = None
 
 
 def _landmark_array(data: dict) -> np.ndarray:
@@ -241,13 +258,109 @@ def _rom_and_events(cycles: dict, side: str) -> tuple[dict, dict, dict, int]:
     return rom, hs, to, len(all_cycles)
 
 
-def prepare(data: dict, cycles: dict, stats: dict) -> VideoReportData:
+def _site_display_position(landmarks: np.ndarray, site: str) -> np.ndarray | None:
+    """Per-frame normalised (x, y) of *site*, for drawing on the skeleton.
+
+    Mirrors ``gait_accelerometry``'s own site definitions, but in the
+    normalised [0, 1] coordinates ``draw_skeleton``/``vid_px`` already use
+    for display -- unlike that module's pixel-accurate torso-normalised
+    computation, which is for the signal itself, not for where to draw a
+    marker.
+    """
+    idx = {n: i for i, n in enumerate(LANDMARK_NAMES)}
+    if site not in ga.SITES or not all(name in idx for name in ga.SITE_LANDMARKS[site]):
+        return None
+    names = ga.SITE_LANDMARKS[site]
+    pts = np.nanmean([landmarks[:, idx[n], :2] for n in names], axis=0)
+    return pts
+
+
+def _sliding_rms(x: np.ndarray, fs: float, win_s: float = 2.0) -> np.ndarray:
+    """Windowed RMS of the centred signal, for the live "energy" chart."""
+    win = max(int(win_s * fs), 1)
+    centred = x - np.mean(x)
+    kernel = np.ones(win) / win
+    return np.sqrt(np.maximum(np.convolve(centred ** 2, kernel, mode="same"), 0))
+
+
+#: Free-text labels a reference-cohort CSV might use for a biomarker,
+#: mapped to the matching gait_accelerometry.GaitBiomarkers.to_dict() key
+#: -- so "this recording's own value" can be marked on the scatter when the
+#: file's own wording is recognised. An unrecognised label still plots the
+#: cohort's video-vs-IMU points fine; it just has nothing of this
+#: recording's own to annotate.
+_COHORT_ALIASES: dict[str, str] = {
+    "cadence": "temporal_cadence", "cadence (steps/min)": "temporal_cadence",
+    "stride frequency": "temporal_stride_frequency", "stride freq": "temporal_stride_frequency",
+    "hf/bf v": "spectral_ratio_HF_BF_V", "hf/bf": "spectral_ratio_HF_BF_V",
+    "ih v": "harmonic_IH_V", "ih": "harmonic_IH_V",
+    "hr v": "harmonic_HR_V", "rms v": "var_rms_V",
+    "regularity": "reg_C2_V", "symmetry": "reg_symmetry",
+}
+
+
+def _parse_reference_cohort(rows: Sequence[dict], biomarkers: "ga.GaitBiomarkers | None") -> dict | None:
+    """Group ``{subject, biomarker, video, imu}`` rows by biomarker.
+
+    Accepts anything iterable-of-mappings (a ``pandas.DataFrame``'s own
+    ``.to_dict("records")`` shape, or a plain list of dicts read from a
+    CSV) so this stays decoupled from whichever library the caller used to
+    read the file. Biomarkers with fewer than 3 pairs are dropped -- too
+    few points for a meaningful correlation display. Returns ``None`` when
+    nothing usable remains, which is exactly the "no cohort" case.
+    """
+    grouped: dict[str, list[tuple[str, float, float]]] = {}
+    for row in rows or []:
+        try:
+            label = str(row["biomarker"]).strip()
+            video = float(row["video"])
+            imu = float(row["imu"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not math.isfinite(video) or not math.isfinite(imu):
+            continue
+        subject = str(row.get("subject", "")).strip() or f"n{len(grouped.get(label, [])) + 1}"
+        grouped.setdefault(label, []).append((subject, video, imu))
+
+    flat = biomarkers.to_dict() if biomarkers is not None else {}
+    out: dict[str, tuple] = {}
+    for label, points in grouped.items():
+        if len(points) < 3:
+            continue
+        subjects = [p[0] for p in points]
+        video_vals = np.array([p[1] for p in points])
+        imu_vals = np.array([p[2] for p in points])
+        try:
+            r, p_value = pearsonr(video_vals, imu_vals)
+        except ValueError:
+            continue
+        own_key = _COHORT_ALIASES.get(label.lower())
+        own_value = flat.get(own_key) if own_key else None
+        out[label] = (subjects, video_vals, imu_vals, float(r), float(p_value), own_value)
+    return out or None
+
+
+def prepare(
+    data: dict, cycles: dict, stats: dict,
+    accel_site: str = "sacrum",
+    reference_cohort: Sequence[dict] | None = None,
+) -> VideoReportData:
     landmarks = _landmark_array(data)
     side = _pick_side(landmarks)
     fps_src = float((data.get("meta") or {}).get("fps") or 30.0)
     angle_t, angles = _angle_series(data, side)
     rom, hs, to, n_cycles = _rom_and_events(cycles, side)
     stratum = select_stratum((data.get("subject") or {}).get("age"))
+
+    accel_display = _site_display_position(landmarks, accel_site)
+    signal = ga.compute_virtual_signal(data, site=accel_site)
+    biomarkers = None
+    accel_t = accel_rms_v = None
+    if signal is not None:
+        biomarkers = ga.compute_all_biomarkers(signal.ap, signal.v, signal.fs, site=accel_site)
+        accel_t = signal.t
+        accel_rms_v = _sliding_rms(signal.v, signal.fs)
+
     return VideoReportData(
         landmarks=landmarks,
         fps_src=fps_src,
@@ -261,6 +374,14 @@ def prepare(data: dict, cycles: dict, stats: dict) -> VideoReportData:
         normative=normative_bands(SAGITTAL_JOINTS, stratum),
         model_name=str((data.get("extraction") or {}).get("model") or "unknown"),
         n_cycles=n_cycles,
+        accel_site=accel_site,
+        accel_display=accel_display,
+        accel_t=accel_t,
+        accel_ap=signal.ap if signal is not None else None,
+        accel_v=signal.v if signal is not None else None,
+        accel_rms_v=accel_rms_v,
+        biomarkers=biomarkers,
+        cohort=_parse_reference_cohort(reference_cohort, biomarkers) if reference_cohort is not None else None,
     )
 
 
@@ -449,7 +570,7 @@ def draw_angle_arc(scene: Scene, landmarks, j, joint, alpha, color, label):
 
 
 def draw_chart(scene: Scene, x0, y0, x1, y1, ts, vs, t_now, twin, yr, color, alpha,
-               title=None, unit="deg"):
+               title=None, unit="°", show_cur=True):
     if alpha <= 0.02:
         return
     canvas = scene.canvas
@@ -478,8 +599,8 @@ def draw_chart(scene: Scene, x0, y0, x1, y1, ts, vs, t_now, twin, yr, color, alp
     cv2.addWeighted(ov, alpha, canvas[y0:y1, x0:x1], 1 - alpha, 0, canvas[y0:y1, x0:x1])
     if title:
         scene.put(x0 + 14, y0 + 8, title, "h3", color, alpha)
-    if np.isfinite(cur):
-        scene.put(x1 - 14, (y0 + y1) // 2 - 12, f"{cur:5.1f}°", "num", pal["text"], alpha, anchor="rm")
+    if show_cur and np.isfinite(cur):
+        scene.put(x1 - 14, (y0 + y1) // 2 - 12, f"{cur:5.1f}{unit}", "num", pal["text"], alpha, anchor="rm")
 
 
 def draw_bar(scene: Scene, x0, y0, w, h, label, value, vmax, color, alpha, unit="", fmt="{:.0f}"):
@@ -498,15 +619,13 @@ def draw_bar(scene: Scene, x0, y0, w, h, label, value, vmax, color, alpha, unit=
     scene.put(x0 + w - 10, y0 + h // 2, fmt.format(value) + unit, "h3", pal["text"], alpha, anchor="rm")
 
 
-STEPS = ("1 · Skeleton", "2 · Angles", "3 · Spatio-temporal", "4 · Range of motion", "5 · Summary")
-
-
-def draw_stepper(scene: Scene, active: int, alpha: float):
+def draw_stepper(scene: Scene, active: int, steps: tuple[str, ...], alpha: float):
     if alpha <= 0.02:
         return
     pal = scene.pal
-    w = (RX1 - RX0 - 4 * 12) // 5
-    for k, s in enumerate(STEPS):
+    n = len(steps)
+    w = (RX1 - RX0 - (n - 1) * 12) // n
+    for k, s in enumerate(steps):
         x0 = RX0 + k * (w + 12)
         on = k == active
         rrect(scene.canvas, x0, 24, x0 + w, 70, pal["accent"] if on else pal["card"], alpha=alpha,
@@ -668,10 +787,240 @@ def render_rom(scene: Scene, rd: VideoReportData, t, j, tl):
                   scene.pal["text"], ja, anchor="ra")
 
 
-def render_summary(scene: Scene, rd: VideoReportData, t, j, tl):
-    a = ease(t, 44.0, 0.6)
+def render_accelerometer(scene: Scene, rd: VideoReportData, t, j, tl):
+    """Site marker + explanation of the position -> normalise -> derivative
+
+    -> resample pipeline, then the two live accelerometer charts. Uses
+    ``tl`` (time since this segment started) throughout, so it renders
+    correctly wherever ``_timeline`` places this segment.
+    """
+    a = fade_io(tl, 0.0, 0.6, 8.4, 0.6)
+    draw_skeleton(scene.canvas, scene.pal, rd.landmarks, j, alpha=0.45)
+    pal = scene.pal
+    i = int(np.clip(j, 0, rd.landmarks.shape[0] - 1))
+    if rd.accel_display is not None and np.all(np.isfinite(rd.accel_display[i])):
+        q = vid_px(rd.accel_display[i])
+        pulse = 0.5 + 0.5 * math.sin(2 * math.pi * t * 0.8)
+        circle_a(scene.canvas, q, int(14 + 10 * pulse), pal["accent_mark"], 2, a * (1 - 0.6 * pulse))
+        circle_a(scene.canvas, q, 9, pal["accent_mark"], 2, a)
+        scene.put(q[0] + 20, q[1], ga.SITE_LABEL.get(rd.accel_site, rd.accel_site), "small",
+                  pal["accent_mark"], a, anchor="lm")
+
+    ca = a * ease(tl, 0.3, 0.6)
+    rrect(scene.canvas, RX0, 104, RX1, 470, pal["card"], alpha=ca * 0.95, border=pal["border"])
+    scene.put(RX0 + 24, 122, "Virtual accelerometer: from pixels to acceleration", "h2", pal["text"], ca)
+    steps = ("site position\nx(t), y(t)", "normalise by\ntorso length", "second derivative\n(Savitzky-Golay)",
+             "resampled to\n100 Hz")
+    bw = (RX1 - RX0 - 48 - 3 * 46) // 4
+    for k, s in enumerate(steps):
+        sa = ca * ease(tl, 0.8 + 0.35 * k, 0.4)
+        x0 = RX0 + 24 + k * (bw + 46)
+        rrect(scene.canvas, x0, 176, x0 + bw, 260, pal["card2"], alpha=sa, border=pal["border"])
+        for li, line in enumerate(s.split("\n")):
+            scene.put(x0 + bw // 2, 202 + 26 * li, line, "small", pal["text"], sa, anchor="mm")
+        if k < 3:
+            ar = ca * ease(tl, 0.95 + 0.35 * k, 0.4)
+            line_a(scene.canvas, (x0 + bw + 8, 218), (x0 + bw + 38, 218), pal["accent_mark"], 3, ar)
+    scene.put((RX0 + RX1) // 2, 340,
+              "No sensor worn -- the skeleton itself becomes the accelerometer", "body",
+              pal["accent_mark"], a * ease(tl, 2.6, 0.6), anchor="ma")
+    scene.put((RX0 + RX1) // 2, 380,
+              "Same physical quantity a waist-worn inertial sensor reports", "small",
+              pal["muted"], a * ease(tl, 3.0, 0.6), anchor="ma")
+
+    la = a * ease(tl, 3.6, 0.7)
+    rrect(scene.canvas, RX0, 500, RX1, 1006, pal["card"], alpha=la * 0.95, border=pal["border"])
+    scene.put(RX0 + 24, 518, "Sacrum acceleration, live", "h2", pal["text"], la)
+    t_src = j / rd.fps_src
+    if rd.accel_t is not None:
+        draw_chart(scene, RX0 + 24, 566, RX1 - 24, 770, rd.accel_t, rd.accel_v, t_src, 4.0, (-6, 6),
+                   pal["blue"], la, title="a_V  (vertical)", unit=" a.u.")
+        draw_chart(scene, RX0 + 24, 786, RX1 - 24, 990, rd.accel_t, rd.accel_ap, t_src, 4.0, (-6, 6),
+                   pal["joint"]["ankle"], la * ease(tl, 4.2, 0.5), title="a_AP  (antero-posterior)",
+                   unit=" a.u.")
+
+
+def _draw_spectrum(scene: Scene, x0, y0, x1, y1, freqs, psd, alpha, color, f0=None, fmax=8.0):
+    if alpha <= 0.02 or freqs is None:
+        return
+    pal = scene.pal
+    canvas = scene.canvas
+    gx0, gy0, gx1, gy1 = x0 + 8, y0 + 6, x1 - 8, y1 - 20
+    mask = freqs <= fmax
+    f, p = freqs[mask], psd[mask]
+    if len(f) < 3:
+        return
+    pmax = p.max() + 1e-12
+    px = gx0 + (f / fmax) * (gx1 - gx0)
+    py = gy1 - (p / pmax) * (gy1 - gy0 - 6)
+    pts = np.column_stack([px - x0, py - y0]).astype(np.int32)
+    ov = canvas[y0:y1, x0:x1].copy()
+    x3 = int(gx0 + (3.0 / fmax) * (gx1 - gx0))
+    cv2.rectangle(ov, (gx0 - x0, gy0 - y0), (x3 - x0, gy1 - y0), pal["card2"], -1)
+    poly = np.vstack([pts, [[pts[-1][0], gy1 - y0]], [[pts[0][0], gy1 - y0]]])
+    cv2.fillPoly(ov, [poly], tuple(int(c * 0.45 + 255 * 0.55) for c in color), cv2.LINE_AA)
+    cv2.polylines(ov, [pts], False, color, 2, cv2.LINE_AA)
+    if f0 is not None:
+        xf = int(gx0 + (f0 / fmax) * (gx1 - gx0))
+        cv2.line(ov, (xf - x0, gy0 - y0), (xf - x0, gy1 - y0), pal["border"], 2, cv2.LINE_AA)
+    cv2.addWeighted(ov, alpha, canvas[y0:y1, x0:x1], 1 - alpha, 0, canvas[y0:y1, x0:x1])
+    scene.put(x0 + (x3 - x0) // 2, gy1 + 2, "BF < 3 Hz", "tiny", pal["blue"], alpha, anchor="ma")
+    scene.put(x3 + (gx1 - x3) // 2, gy1 + 2, "HF > 3 Hz", "tiny", pal["red"], alpha, anchor="ma")
+
+
+def render_biomarkers(scene: Scene, rd: VideoReportData, t, j, tl):
+    a = fade_io(tl, 0.0, 0.6, 14.4, 0.6)
     draw_skeleton(scene.canvas, scene.pal, rd.landmarks, j, alpha=0.4)
-    ca = a * ease(t, 44.3, 0.6)
+    pal = scene.pal
+    if rd.accel_display is not None:
+        i = int(np.clip(j, 0, rd.landmarks.shape[0] - 1))
+        if np.all(np.isfinite(rd.accel_display[i])):
+            circle_a(scene.canvas, vid_px(rd.accel_display[i]), 8, pal["accent_mark"], 2, a)
+
+    sa = a * ease(tl, 0.2, 0.5)
+    rrect(scene.canvas, RX0, 104, RX1, 220, pal["card"], alpha=sa * 0.95, border=pal["border"])
+    scene.put(RX0 + 24, 112, f"a_V(t) - {ga.SITE_LABEL.get(rd.accel_site, rd.accel_site)}, virtual accelerometer",
+              "h3", pal["muted"], sa)
+    t_src = j / rd.fps_src
+    if rd.accel_t is not None:
+        draw_chart(scene, RX0 + 24, 146, RX1 - 24, 212, rd.accel_t, rd.accel_v, t_src, 6.0, (-6, 6),
+                   pal["blue"], sa, title=None, unit="")
+
+    bio = rd.biomarkers
+    cw = (RX1 - RX0 - 2 * 20) // 3
+    cards = [("RMS", "movement energy", pal["blue"], bio.variability.rms_V if bio else 0.0, "a.u."),
+             ("IH", "index of harmonicity", pal["accent"], bio.harmonic.IH_V if bio else 0.0, ""),
+             ("HF / BF", "frequency content", pal["red"], bio.spectral.ratio_HF_BF_V if bio else 0.0, "")]
+    for k, (name, sub, col, val, unit) in enumerate(cards):
+        ka = a * ease(tl, 0.7 + 0.45 * k, 0.5)
+        x0 = RX0 + k * (cw + 20)
+        rrect(scene.canvas, x0, 244, x0 + cw, 700, pal["card"], alpha=ka * 0.95, border=pal["border"])
+        scene.put(x0 + 20, 260, name, "h2", col, ka)
+        scene.put(x0 + 20, 296, sub, "small", pal["muted"], ka)
+        fmt = "{:.3f}" if abs(val) < 1 else "{:.2f}"
+        scene.put(x0 + cw - 20, 272, fmt.format(val) + unit, "num", pal["text"], ka, anchor="rm")
+        gy0, gy1 = 330, 560
+        if k == 0 and rd.accel_rms_v is not None and rd.accel_t is not None:
+            m = rd.accel_t <= t_src
+            peak = float(np.max(rd.accel_rms_v[m])) if m.any() else 0.5
+            vmax = math.ceil(max(peak, 0.5) * 4) / 4  # round up to the nearest 0.25
+            draw_chart(scene, x0 + 14, gy0, x0 + cw - 14, gy1, rd.accel_t, rd.accel_rms_v, t_src, 8.0,
+                       (0, vmax), col, ka, title=None, show_cur=False)
+            scene.put(x0 + cw // 2, gy1 + 4, "2 s sliding RMS", "tiny", pal["muted"], ka, anchor="ma")
+        elif k == 1 and bio is not None:
+            frac = np.clip(bio.harmonic.IH_V, 0, 1)
+            fa = ka * ease(tl, 1.4, 0.6)
+            rrect(scene.canvas, x0 + 14, (gy0 + gy1) // 2 - 22, x0 + cw - 14, (gy0 + gy1) // 2 + 22,
+                  pal["card2"], alpha=fa * 0.9)
+            filled = max(int((cw - 28) * frac), 4)
+            rrect(scene.canvas, x0 + 14, (gy0 + gy1) // 2 - 22, x0 + 14 + filled, (gy0 + gy1) // 2 + 22,
+                  col, alpha=fa * 0.85)
+            scene.put(x0 + cw // 2, gy1 + 4, "power at stride frequency / total power", "tiny", pal["muted"],
+                      ka, anchor="ma")
+        elif k == 2 and bio is not None and rd.accel_v is not None:
+            nps = min(256, len(rd.accel_v) // 4)
+            if nps >= 8:
+                freqs, psd = welch(rd.accel_v, fs=rd.biomarkers.sampling_rate, nperseg=nps)
+                stride_freq = rd.biomarkers.temporal.stride_frequency or None
+                _draw_spectrum(scene, x0 + 14, gy0, x0 + cw - 14, gy1, freqs, psd, ka, col,
+                               f0=stride_freq, fmax=10.0)
+            scene.put(x0 + cw // 2, gy1 + 4, "power spectrum, BF/HF split at 3 Hz", "tiny", pal["muted"],
+                      ka, anchor="ma")
+
+
+def _draw_cohort_scatter(scene: Scene, x0, y0, x1, y1, label, points, alpha, tl, t_offset=0.0):
+    """One reference-cohort scatter: video (x) vs IMU (y), one point per
+
+    subject, a regression line, and -- when this recording's own value is
+    known for this biomarker -- a vertical marker on the video axis (its
+    own IMU value does not exist: no sensor was worn for this recording).
+    """
+    if alpha <= 0.02:
+        return
+    pal = scene.pal
+    subjects, video_vals, imu_vals, r, p_value, own_value = points
+    rrect(scene.canvas, x0, y0, x1, y1, pal["card2"], alpha=alpha * 0.9, border=pal["border"])
+    lo_x, hi_x = float(video_vals.min()), float(video_vals.max())
+    lo_y, hi_y = float(imu_vals.min()), float(imu_vals.max())
+    pad_x = 0.1 * (hi_x - lo_x + 1e-9)
+    pad_y = 0.1 * (hi_y - lo_y + 1e-9)
+    lo_x, hi_x = lo_x - pad_x, hi_x + pad_x
+    lo_y, hi_y = lo_y - pad_y, hi_y + pad_y
+    if own_value is not None:
+        lo_x, hi_x = min(lo_x, own_value - pad_x), max(hi_x, own_value + pad_x)
+    gx0, gy0, gx1, gy1 = x0 + 56, y0 + 44, x1 - 22, y1 - 46
+
+    def pxy(vx, vy):
+        return (int(gx0 + (vx - lo_x) / (hi_x - lo_x) * (gx1 - gx0)),
+                int(gy1 - (vy - lo_y) / (hi_y - lo_y) * (gy1 - gy0)))
+
+    ov = scene.canvas[y0:y1, x0:x1].copy()
+    cv2.rectangle(ov, (gx0 - x0, gy0 - y0), (gx1 - x0, gy1 - y0), pal["grid"], 1, cv2.LINE_AA)
+    for k, (_subj, vx, vy) in enumerate(zip(subjects, video_vals, imu_vals)):
+        pa = ease(tl, t_offset + k * 0.14, 0.35)
+        if pa <= 0.02:
+            continue
+        cx, cy = pxy(vx, vy)[0] - x0, pxy(vx, vy)[1] - y0
+        cv2.circle(ov, (cx, cy), int(7 + 3 * (1 - pa)), pal["muted"], -1, cv2.LINE_AA)
+    reg_a = ease(tl, t_offset + len(subjects) * 0.14 + 0.4, 0.9)
+    if reg_a > 0.02 and hi_x > lo_x:
+        slope, intercept = np.polyfit(video_vals, imu_vals, 1)
+        xa, xb = lo_x, lo_x + (hi_x - lo_x) * reg_a
+        pa0 = np.array(pxy(xa, slope * xa + intercept)) - [x0, y0]
+        pb0 = np.array(pxy(xb, slope * xb + intercept)) - [x0, y0]
+        cv2.line(ov, tuple(pa0), tuple(pb0), pal["red"], 2, cv2.LINE_AA)
+    if own_value is not None:
+        own_a = ease(tl, t_offset + len(subjects) * 0.14 + 0.7, 0.6)
+        if own_a > 0.02:
+            ox = int(pxy(own_value, lo_y)[0]) - x0
+            cv2.line(ov, (ox, gy0 - y0), (ox, gy1 - y0), pal["accent_mark"], 2, cv2.LINE_AA)
+    cv2.addWeighted(ov, alpha, scene.canvas[y0:y1, x0:x1], 1 - alpha, 0, scene.canvas[y0:y1, x0:x1])
+    scene.put((x0 + x1) // 2, y0 + 8, label, "h3", pal["text"], alpha, anchor="ma")
+    scene.put((gx0 + gx1) // 2, gy1 + 8, "video", "small", pal["blue"], alpha, anchor="ma")
+    # Bottom-left, not vertically centred: the stat box below already sits
+    # top-left, and a short (mini) panel would otherwise overlap the two.
+    scene.put(x0 + 14, gy1 - 8, "IMU", "small", pal["red"], alpha, anchor="lm")
+    star = "**" if p_value < 0.01 else ("*" if p_value < 0.05 else "n.s.")
+    stat_a = alpha * ease(tl, t_offset + len(subjects) * 0.14 + 1.1, 0.5)
+    scene.put(gx0 + 12, gy0 + 4, f"r = {r:.2f} {star}", "h3", pal["red"], stat_a)
+    scene.put(gx0 + 12, gy0 + 30, f"n = {len(subjects)}", "small", pal["muted"], stat_a)
+    if own_value is not None:
+        scene.put(gx0 + 12, gy0 + 54, f"this recording: {own_value:.2f}", "small", pal["accent_mark"], stat_a)
+
+
+def render_cohort_validation(scene: Scene, rd: VideoReportData, t, j, tl):
+    a = fade_io(tl, 0.0, 0.6, 10.4, 0.6)
+    draw_skeleton(scene.canvas, scene.pal, rd.landmarks, j, alpha=0.35)
+    pal = scene.pal
+    rrect(scene.canvas, RX0, 104, RX1, 812, pal["card"], alpha=a * 0.95, border=pal["border"])
+    scene.put(RX0 + 24, 122, "Reference-cohort validation: video vs IMU", "h2", pal["text"], a)
+    scene.put(RX1 - 24, 130, "user-supplied reference file", "small", pal["muted"], a, anchor="ra")
+
+    cohort = rd.cohort or {}
+    labels = sorted(cohort, key=lambda k: len(cohort[k][0]), reverse=True)[:3]
+    if labels:
+        _draw_cohort_scatter(scene, RX0 + 24, 176, RX0 + 24 + 610, 786, labels[0], cohort[labels[0]], a, tl)
+        mx0 = RX0 + 24 + 640
+        if len(labels) > 1:
+            _draw_cohort_scatter(scene, mx0, 176, RX1 - 24, 470, labels[1], cohort[labels[1]],
+                                 a * ease(tl, 2.2, 0.6), max(tl - 2.0, 0))
+        if len(labels) > 2:
+            _draw_cohort_scatter(scene, mx0, 492, RX1 - 24, 786, labels[2], cohort[labels[2]],
+                                 a * ease(tl, 3.2, 0.6), max(tl - 3.0, 0))
+
+    ba = ease(tl, 6.5, 0.9)
+    rrect(scene.canvas, RX0, 838, RX1, 1006, pal["border"], alpha=ba * 0.97)
+    scene.put((RX0 + RX1) // 2, 866, "Video vs IMU concordance", "h2", pal["card"], ba, anchor="ma")
+    summary = "   ·   ".join(f"{lab}: r = {cohort[lab][3]:.2f}" for lab in labels)
+    scene.put((RX0 + RX1) // 2, 916, summary, "body", pal["card"], ba, anchor="ma")
+    scene.put((RX0 + RX1) // 2, 958, "Reference dataset supplied for this render, not bundled with the app",
+              "small", pal["accent"], ease(tl, 7.5, 0.8), anchor="ma")
+
+
+def render_summary(scene: Scene, rd: VideoReportData, t, j, tl):
+    a = ease(tl, 0.0, 0.6)
+    draw_skeleton(scene.canvas, scene.pal, rd.landmarks, j, alpha=0.4)
+    ca = a * ease(tl, 0.3, 0.6)
     rrect(scene.canvas, RX0, 104, RX1, 760, scene.pal["card"], alpha=ca * 0.95, border=scene.pal["border"])
     scene.put(RX0 + 24, 122, "This recording vs the normative band", "h2", scene.pal["text"], ca)
     scene.put(RX1 - 24, 130, "adult reference", "small", scene.pal["muted"], ca, anchor="ra")
@@ -725,29 +1074,48 @@ def _draw_normative_mini(scene: Scene, x0, y0, x1, y1, joint, rd: VideoReportDat
 
 RENDER = {
     "intro": render_intro, "angles": render_angles, "spatiotemporal": render_spatiotemporal,
-    "rom": render_rom, "summary": render_summary,
+    "rom": render_rom, "accelerometer": render_accelerometer, "biomarkers": render_biomarkers,
+    "cohort": render_cohort_validation, "summary": render_summary,
 }
-STEP_OF = {"intro": 0, "angles": 1, "spatiotemporal": 2, "rom": 3, "summary": 4}
-
-#: (name, t0, t1, j0, speed) -- j0/speed pick which pivot frame plays under
-#: each segment, in pivot-frames-per-output-frame, wrapping via modulo so a
-#: short recording still fills the whole video instead of freezing on the
-#: last frame.
-_SEGMENTS = (
-    ("intro", 0.0, 6.0, 0.15, 0.6),
-    ("angles", 6.0, 20.0, 0.0, 1.0),
-    ("spatiotemporal", 20.0, 32.0, 0.0, 0.8),
-    ("rom", 32.0, 44.0, 0.0, 0.8),
-    ("summary", 44.0, 56.0, 0.0, 0.6),
-)
-DURATION_S = _SEGMENTS[-1][2]
+_STEP_LABEL = {
+    "intro": "Skeleton", "angles": "Angles", "spatiotemporal": "Spatio-temporal",
+    "rom": "Range of motion", "accelerometer": "Accelerometer", "biomarkers": "Biomarkers",
+    "cohort": "Cohort validation", "summary": "Summary",
+}
 
 
-def _seg_at(t: float):
-    for seg in _SEGMENTS:
+def _timeline(has_cohort: bool) -> tuple[tuple, ...]:
+    """(name, t0, t1, j0, speed) for every segment, in order.
+
+    j0/speed pick which pivot frame plays under each segment, in
+    pivot-frames-per-output-frame, wrapping via modulo so a short
+    recording still fills the whole video instead of freezing on the last
+    frame. 7 segments without a reference cohort, 8 with one -- the
+    "cohort" segment only exists when ``render_video_report`` was given
+    one (see its ``reference_cohort`` parameter and ``VideoReportData.
+    cohort``).
+    """
+    segments = [
+        ("intro", 0.0, 6.0, 0.15, 0.6),
+        ("angles", 6.0, 20.0, 0.0, 1.0),
+        ("spatiotemporal", 20.0, 32.0, 0.0, 0.8),
+        ("rom", 32.0, 44.0, 0.0, 0.8),
+        ("accelerometer", 44.0, 54.0, 0.0, 0.8),
+        ("biomarkers", 54.0, 70.0, 0.0, 0.8),
+    ]
+    t = 70.0
+    if has_cohort:
+        segments.append(("cohort", t, t + 12.0, 0.0, 0.6))
+        t += 12.0
+    segments.append(("summary", t, t + 12.0, 0.0, 0.6))
+    return tuple(segments)
+
+
+def _seg_at(t: float, segments: tuple[tuple, ...]):
+    for seg in segments:
         if t < seg[2]:
             return seg
-    return _SEGMENTS[-1]
+    return segments[-1]
 
 
 def render_video_report(
@@ -756,16 +1124,33 @@ def render_video_report(
     stats: dict,
     video_path: str,
     out_path: str,
+    accel_site: str = "sacrum",
+    reference_cohort: Sequence[dict] | None = None,
     progress_callback: Callable[[float], None] | None = None,
 ) -> Path:
-    """Render the 5-segment animated report to *out_path* (MP4, H.264 via
+    """Render the animated report to *out_path* (MP4, H.264 via OpenCV's
 
-    OpenCV's own FFmpeg-backed writer -- already a transitive dependency,
-    nothing new to install). Needs the original source video: this is the
-    one export that reads the actual frames, not only the pivot's own
+    own FFmpeg-backed writer -- already a transitive dependency, nothing
+    new to install). Needs the original source video: this is the one
+    export that reads the actual frames, not only the pivot's own
     landmark data (see page_export.py's gating on ``source.path``).
+
+    *accel_site* picks which landmark(s) the virtual accelerometer and
+    biomarker segments are built from (``gait_accelerometry.SITES``).
+    *reference_cohort* is an optional iterable of ``{subject, biomarker,
+    video, imu}`` rows (a ``pandas.DataFrame``'s ``.to_dict("records")``
+    works directly) -- when it resolves to at least one usable biomarker,
+    an extra "cohort validation" segment is inserted before the summary;
+    otherwise the report is 7 segments, unchanged from before this
+    parameter existed. Nothing here is bundled with the app: the
+    reference data lives only for the duration of this one render call.
     """
-    rd = prepare(data, cycles, stats)
+    rd = prepare(data, cycles, stats, accel_site=accel_site, reference_cohort=reference_cohort)
+    segments = _timeline(has_cohort=rd.cohort is not None)
+    steps = tuple(f"{i + 1} · {_STEP_LABEL[name]}" for i, (name, *_r) in enumerate(segments))
+    step_of = {name: i for i, (name, *_r) in enumerate(segments)}
+    duration_s = segments[-1][2]
+
     pal = _palette()
     fonts = _fonts()
     n_pivot = max(rd.landmarks.shape[0], 1)
@@ -774,7 +1159,7 @@ def render_video_report(
     logo_bgr = cv2.imread(str(logo_path), cv2.IMREAD_COLOR) if logo_path.is_file() else None
 
     cap = cv2.VideoCapture(str(video_path))
-    n_frames_out = int(DURATION_S * FPS_OUT)
+    n_frames_out = int(duration_s * FPS_OUT)
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     writer = cv2.VideoWriter(str(out_path), fourcc, FPS_OUT, (W_OUT, H_OUT))
     if not writer.isOpened():
@@ -785,7 +1170,7 @@ def render_video_report(
     try:
         for fi in range(n_frames_out):
             t = fi / FPS_OUT
-            name, t0, t1, j0, spd = _seg_at(t)
+            name, t0, t1, j0, spd = _seg_at(t, segments)
             j = (j0 * n_pivot + (t - t0) * FPS_OUT * spd) % n_pivot
             target = int(round(j))
             if target != cur_src:
@@ -806,14 +1191,14 @@ def render_video_report(
             cv2.rectangle(scene.canvas, (VID_X - 1, 0), (VID_X + VID_W, H_OUT - 1), pal["border"], 1)
 
             RENDER[name](scene, rd, t, j, t - t0)
-            draw_stepper(scene, STEP_OF[name], ease(t, 0.8, 0.5))
+            draw_stepper(scene, step_of[name], steps, ease(t, 0.8, 0.5))
             logo_chip(scene, logo_bgr, ease(t, 0.8, 0.5))
             scene.put(RX1, H_OUT - 26, "Markerless pipeline · myogait", "tiny", pal["muted"], 0.75,
                       anchor="ra")
 
             scene.flush()
             canvas = scene.canvas
-            gfade = min(ease(t, 0.0, 0.5), 1 - ease(t, DURATION_S - 0.7, 0.7))
+            gfade = min(ease(t, 0.0, 0.5), 1 - ease(t, duration_s - 0.7, 0.7))
             if gfade < 1:
                 bgf = np.empty_like(canvas)
                 bgf[:] = pal["bg"]

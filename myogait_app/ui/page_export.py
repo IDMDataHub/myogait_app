@@ -450,11 +450,11 @@ def _report_tab(result: PipelineResult, config) -> None:
 def _video_report_tab(result: PipelineResult, source: state.Source) -> None:
     st.markdown("**Animated markerless report**")
     st.caption(
-        "A narrated, five-part video -- skeleton overlay, joint kinematics, "
-        "spatio-temporal parameters, range of motion, and a comparison against "
-        "the normative band -- built entirely from the source video and this "
-        "run's own results. Carries the Institut de Myologie mark alongside "
-        "the app's own identity."
+        "A narrated video -- skeleton overlay, joint kinematics, spatio-temporal "
+        "parameters, range of motion, a virtual accelerometer with its "
+        "biomarkers, and a normative-band comparison -- built entirely from the "
+        "source video and this run's own results. Carries the Institut de "
+        "Myologie mark alongside the app's own identity."
     )
     if source.path is None or source.kind != "video":
         st.caption(
@@ -466,22 +466,62 @@ def _video_report_tab(result: PipelineResult, source: state.Source) -> None:
         st.warning("The video report needs at least one segmented cycle.")
         return
 
+    from .. import gait_accelerometry as ga
+
+    sites = [s for s in ga.SITES if ga.site_available(result.data, s)]
+    if sites:
+        accel_site = st.selectbox(
+            "Virtual accelerometer site", sites, format_func=lambda s: ga.SITE_LABEL[s],
+            key="vidrep_site",
+            help="Which landmark(s) the accelerometer and biomarker segments are built "
+            "from. Sacrum matches a waist-worn sensor most closely.",
+        )
+    else:
+        accel_site = None
+        st.caption(
+            "No site has enough landmark coverage for a virtual accelerometer -- "
+            "those two segments will be skipped."
+        )
+
+    with st.expander("Optional: reference-cohort validation segment"):
+        st.caption(
+            "Adds an extra segment comparing this recording's own biomarkers "
+            "against a video-vs-IMU reference dataset you supply -- nothing is "
+            "bundled with the app, and the file is used for this render only. "
+            "CSV columns: `subject`, `biomarker`, `video`, `imu` -- one row per "
+            "subject and biomarker (e.g. `S1,Cadence,99.7,92.9`). Recognised "
+            "biomarker names (case-insensitive) that also mark this recording's "
+            "own value: Cadence, Stride frequency, HF/BF V, IH V, HR V, RMS V, "
+            "Regularity, Symmetry -- any other name still plots, just without "
+            "that marker."
+        )
+        cohort_file = st.file_uploader("Reference cohort CSV", type=["csv"], key="vidrep_cohort")
+
     st.warning(
-        "Full frame-by-frame animation (~56 s of output) -- rendering can take "
-        "several minutes. The overlay shows the subject's face and body, so keep "
-        f"it inside the lab; it is deleted after {SETTINGS.retention_hours} h like "
-        "everything else here."
+        "Full frame-by-frame animation -- rendering can take several minutes. "
+        "The overlay shows the subject's face and body, so keep it inside the "
+        f"lab; it is deleted after {SETTINGS.retention_hours} h like everything "
+        "else here."
     )
     if st.button("Render video report", use_container_width=True, key="vidrep_go"):
         from ..video_report import render_video_report
+
+        reference_cohort = None
+        if cohort_file is not None:
+            import csv
+            import io
+
+            text = io.TextIOWrapper(cohort_file, encoding="utf-8")
+            reference_cohort = list(csv.DictReader(text))
 
         out = state.workspace().outputs / "video_report.mp4"
         _run_export(
             "Video report", out,
             lambda path: render_video_report(
                 result.data, result.cycles, result.stats, str(source.path), str(path),
+                accel_site=accel_site or "sacrum", reference_cohort=reference_cohort,
             ),
-            spinner="Rendering the 5-segment video report - this takes several minutes...",
+            spinner="Rendering the video report - this takes several minutes...",
         )
 
 

@@ -61,7 +61,63 @@ is Romain Feigean.
     is not practically possible either (`chumpy`, unmaintained, breaks
     under any modern pip's PEP 517 build isolation) rather than suggesting
     a doomed command.
-- 242 tests passing (11 new), ruff clean, 72.4% coverage (floor 60%).
+- **Literal virtual-accelerometer pipeline, ported from an external research
+  script with two exclusions -- three more `video_report.py` segments, a new
+  `gait_accelerometry.py` module, and a new Advanced tab.** The user supplied
+  the script (`gait_biomarkers.py`, "Pipeline Equimetrix enrichi", 2024, an M2
+  project) and its validation-cohort CSVs after the first pass above shipped
+  without them; explicit go-ahead was sought and given for what could be
+  ported, per file (see below).
+  - **`gait_accelerometry.py`** (new, Streamlit-free, unit-tested): a virtual
+    accelerometer from a pivot's own landmark trajectories -- site position ->
+    torso-length normalisation -> Savitzky-Golay second derivative ->
+    resampled to 100 Hz, at a choice of sacrum/lumbar/sternum/head -- plus the
+    literature-cited biomarker family (temporal parameters; Moe-Nilssen
+    regularity/symmetry; Harmonic Ratio; spectral analysis; Sample/
+    Approximate Entropy; RMS variability; statistical moments), with
+    published reference ranges and a clinical interpretation. Two things
+    from the source script were deliberately left out of the port: its
+    `_locolike`/"RDM" regularity indices, marked proprietary in the script's
+    own comments (publishing them was never confirmed); and its private
+    8-subject video-vs-IMU validation cohort -- no data or numeric result
+    derived from that cohort ships in this module or this repository.
+  - **`video_report.py`** grows from 5 to 7 segments by default (virtual
+    accelerometer, biomarkers) and to 8 when the caller supplies a
+    reference-cohort CSV for that one render only (`render_video_report`'s
+    new `reference_cohort` parameter -- never bundled with the app, parsed
+    and discarded after the render). `page_export.py`'s Video report tab
+    gained a matching optional file uploader (documented `subject,biomarker,
+    video,imu` schema) and an accelerometer-site picker. The segment
+    timeline is now built by `_timeline(has_cohort)` rather than a fixed
+    module-level tuple, so `draw_stepper` and the summary segment work at
+    whichever absolute position a segment lands.
+  - **New Advanced tab, "Accelerometry biomarkers"**: the same computation
+    as a standing per-category table (value, published reference range,
+    interpretation), reachable for any loaded video source without
+    rendering the video report.
+  - **Known, disclosed overlap, not reconciled this session -- arbitration
+    owed to Frédéric Fer.** `reliability.accelerometric_scalars` (0.8.0,
+    Frédéric Fer) already computes a smaller, simpler version of the same
+    idea -- RMS, an index of harmonicity, an LF/HF power ratio, from the
+    pelvis centre by plain double-differentiation, no torso normalisation,
+    no resampling -- for the cohort ICC/group-comparison tables. Left
+    untouched: its numbers already feed shipped, tested statistics, and
+    swapping its computation for this module's is a real behaviour change
+    needing its own validation pass, the same caution this project's
+    ISB-reconstruction reconciliation needed. Whether and how to unify the
+    two is Frédéric Fer's call, since he owns `reliability.py` and the
+    statistics built on it. **Romain Feigean's own preference, recorded
+    here for that arbitration: keep Fred's existing
+    `reliability.accelerometric_scalars` as the one feeding cohort
+    statistics**, rather than replace it with this session's module. The
+    two compute different numbers for a similar-sounding quantity until
+    that arbitration happens.
+  - Not attempted: literal reproduction of the original pedagogical video's
+    exact subject. Its raw source video and Sapiens-2 JSON extraction were
+    never supplied, so this capability was built and tested against the
+    app's own demo/synthetic data and is fully generic (any video source),
+    not validated against that one specific recording.
+- 269 tests passing (25 new), ruff clean, 73% coverage (floor 60%).
 
 ## [0.8.0] — 2026-08-31
 
