@@ -373,6 +373,13 @@ def condition_agreement(runs: list[RunResult]) -> dict | None:
         "n_reference": len(vicon_runs),
         "per_joint_side": per_joint_side,
         "by_joint": summarize_agreement(per_joint_side),
+        # Pooled per-side mean/SD curves for each kind separately (unlike
+        # pool_cycles(runs) on the *combined* list, which would blend video
+        # and Vicon cycles into one indistinguishable mean) -- what a
+        # video-vs-reference comparison chart needs to draw two curves
+        # instead of one.
+        "video_pooled": pool_cycles(video_runs),
+        "vicon_pooled": pool_cycles(vicon_runs),
     }
 
 
@@ -414,6 +421,8 @@ def overall_agreement(runs: list[RunResult]) -> dict | None:
             by_patient.setdefault(run.patient, []).append(run)
 
     per_joint_side: list[dict] = []
+    all_videos: list[RunResult] = []
+    all_vicons: list[RunResult] = []
     n_patients = n_video = n_reference = 0
     for patient_runs in by_patient.values():
         videos = [r for r in patient_runs if not r.is_reference]
@@ -424,6 +433,8 @@ def overall_agreement(runs: list[RunResult]) -> dict | None:
         n_video += len(videos)
         n_reference += len(vicons)
         per_joint_side.extend(_paired_curve_metrics(videos, vicons))
+        all_videos.extend(videos)
+        all_vicons.extend(vicons)
 
     if not n_patients:
         return None
@@ -433,4 +444,9 @@ def overall_agreement(runs: list[RunResult]) -> dict | None:
         "n_reference": n_reference,
         "per_joint_side": per_joint_side,
         "by_joint": summarize_agreement(per_joint_side),
+        # Pooled across every qualifying patient -- a display aid (see
+        # condition_agreement's own video_pooled/vicon_pooled), not part of
+        # the per-patient-then-averaged metric battery above.
+        "video_pooled": pool_cycles(all_videos),
+        "vicon_pooled": pool_cycles(all_vicons),
     }

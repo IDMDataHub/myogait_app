@@ -30,7 +30,14 @@ from ..pipeline import (
 from ..pivot_io import load_uploaded_pivot
 from ..runtime import get_runtime
 from . import state
-from .components import chart, empty_state, is_dark, page_header, source_loader
+from .components import (
+    chart,
+    empty_state,
+    is_dark,
+    page_header,
+    recording_switcher,
+    source_loader,
+)
 
 #: Parameters a sweep can vary, each as (label, stage, field, values-builder).
 SWEEP_SPECS = {
@@ -69,6 +76,7 @@ def _sweep_tab() -> None:
         )
         return
 
+    recording_switcher("compare_sweep")
     runtime = get_runtime()
     config = state.get_config()
     runner = state.get_runner()

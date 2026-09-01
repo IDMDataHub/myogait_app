@@ -12,7 +12,7 @@ APP_PY = Path(__file__).resolve().parent.parent / "app.py"
 
 @pytest.mark.parametrize(
     "page",
-    ["New assessment", "Analysis", "Advanced", "Reference"],
+    ["New assessment", "Analysis", "Advanced", "Index"],
 )
 def test_page_renders_without_an_exception(page):
     """Exercise every empty-state page through Streamlit's public test API."""

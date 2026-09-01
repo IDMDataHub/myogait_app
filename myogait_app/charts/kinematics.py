@@ -303,6 +303,61 @@ def cycle_overlay(
     return apply(fig, dark, height=height)
 
 
+def video_vs_reference_overlay(
+    video_pooled: dict,
+    vicon_pooled: dict,
+    joint: str = "knee",
+    sides: tuple[str, ...] = ("left", "right"),
+    dark: bool = False,
+    height: int = 320,
+) -> go.Figure:
+    """Mean cycle curves, video vs a Vicon/C3D reference, for one joint.
+
+    A deliberate exception to this module's own "colour carries the side"
+    rule (see the module docstring): here colour carries *kind* -- video
+    vs reference is exactly what a clinician reading the Cohort page's
+    accuracy table (bias, RMSE, r, CMC) needs to see for themselves, and
+    side already has its own numeric breakdown in that same table. Side is
+    still distinguishable (solid = left, dashed = right), just not by hue.
+    Takes the two pools already split by kind (``pooling.condition_
+    agreement``/``overall_agreement``'s own ``video_pooled``/
+    ``vicon_pooled``) rather than a merged ``cycles`` dict -- pooling video
+    and reference cycles together first would already have averaged the
+    two curves this chart exists to tell apart.
+    """
+    fig = go.Figure()
+    percent = np.arange(101)
+    palette = series_colors(dark)
+    video_colour, reference_colour = palette[0], palette[1]
+    dash_for = {"left": "solid", "right": "dash"}
+
+    for pooled, kind_label, colour in (
+        (video_pooled, "Video", video_colour),
+        (vicon_pooled, "Vicon/C3D", reference_colour),
+    ):
+        summary = (pooled or {}).get("summary") or {}
+        for side in sides:
+            mean = (summary.get(side) or {}).get(f"{joint}_mean")
+            if not mean:
+                continue
+            n_cycles = (summary.get(side) or {}).get("n_cycles", 0)
+            fig.add_trace(
+                go.Scatter(
+                    x=percent,
+                    y=np.asarray(mean, dtype=float),
+                    mode="lines",
+                    name=f"{kind_label} {side.title()} (n={n_cycles})",
+                    line=dict(color=colour, width=2.5, dash=dash_for.get(side, "solid")),
+                    hovertemplate="%{y:.1f}&deg; at %{x}%<extra>"
+                    + f"{kind_label} {side.title()}</extra>",
+                )
+            )
+
+    fig.update_xaxes(title_text="Gait cycle (%)", range=[0, 100], dtick=20)
+    fig.update_yaxes(title_text=f"{JOINT_LABELS.get(joint, joint.title())} angle (deg)")
+    return apply(fig, dark, height=height)
+
+
 def _add_normative_band(fig: go.Figure, normative: dict, dark: bool) -> None:
     """Reference band, drawn achromatic and first so it sits behind."""
     lower = normative.get("lower")

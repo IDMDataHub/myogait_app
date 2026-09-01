@@ -16,9 +16,10 @@ import streamlit as st
 
 from ..charts import kinematics as K
 from ..clinical import VALIDITY_GRADES, normative_bands, validity
-from ..pipeline import PipelineConfig
+from ..pipeline import AnglesConfig, PipelineConfig
 from ..pooling import (
     SAGITTAL_JOINTS,
+    UNSPECIFIED,
     condition_agreement,
     condition_summary,
     group_by_condition,
@@ -33,6 +34,10 @@ from .components import chart, empty_state, is_dark, page_header
 #: Where the loaded batch lives between reruns, so moving a widget does
 #: not re-run every pipeline again.
 _RUNS_KEY = "pool_runs"
+#: Whether the batch currently in _RUNS_KEY was loaded with ISB reconstruction
+#: on -- accuracy sections read this to caption the hip/knee definitional
+#: offset (see _isb_caveat) rather than silently mixing conventions.
+_ISB_KEY = "pool_runs_isb"
 
 
 def render(show_header: bool = True) -> None:
@@ -51,15 +56,31 @@ def render(show_header: bool = True) -> None:
 
     paths = _collect_inputs()
 
+    isb_on = st.checkbox(
+        "ISB reconstruction for Vicon/C3D references", value=True, key="pool_isb",
+        help="On by default, matching the rest of the app -- recomputes a C3D "
+             "reference's hip/knee/ankle from proper ISB anatomical frames "
+             "instead of the sagittal method the video side always uses "
+             "(markerless has no 3-D markers to reconstruct from, so this is "
+             "a no-op for video either way). Turn off before comparing "
+             "accuracy against Vicon if you want hip/knee bias to reflect "
+             "pure markerless tracking error rather than also the ISB-vs-"
+             "sagittal angle-definition offset (see the caption under "
+             "Accuracy below).",
+    )
+
     col_run, col_clear = st.columns([3, 1])
     if col_run.button(
         f"Analyse {len(paths)} recording(s)" if paths else "Analyse",
         type="primary", use_container_width=True, disabled=not paths,
     ):
+        config = PipelineConfig(angles=AnglesConfig(isb_reconstruction=isb_on))
         with st.spinner(f"Running the pipeline on {len(paths)} recording(s)..."):
-            st.session_state[_RUNS_KEY] = load_runs(paths, PipelineConfig())
+            st.session_state[_RUNS_KEY] = load_runs(paths, config)
+            st.session_state[_ISB_KEY] = isb_on
     if col_clear.button("Clear", use_container_width=True):
         st.session_state.pop(_RUNS_KEY, None)
+        st.session_state.pop(_ISB_KEY, None)
         st.rerun()
 
     runs = st.session_state.get(_RUNS_KEY)
@@ -248,8 +269,26 @@ def _accuracy_section(label: str, runs: list) -> None:
     turns it into accuracy -- error and bias per joint. Without a reference in
     the condition, say so rather than showing an empty table.
     """
-    agreement = condition_agreement(runs)
     st.markdown("**Accuracy vs marker reference (Vicon)**")
+
+    if label == UNSPECIFIED:
+        # UNSPECIFIED is not a real shared condition -- it is where every
+        # untagged recording lands, from every patient. Pairing across it
+        # would silently compare unrelated patients' video and Vicon curves
+        # as if that meant something (verified: two untagged, unrelated
+        # pivots land here together and condition_agreement pairs them with
+        # no identity check at all). Refuse rather than mislead.
+        st.caption(
+            "This group holds every recording with no condition tag, "
+            "possibly from different patients -- pairing them for accuracy "
+            "here would risk comparing unrelated patients' video and Vicon "
+            "curves. Tag your recordings with a Patient ID and Condition "
+            "(New assessment page, or the C3D tab's Study identifiers) so "
+            "they group by real identity instead."
+        )
+        return
+
+    agreement = condition_agreement(runs)
     if agreement is None:
         st.caption(
             "No marker reference in this condition, so only variability is "
@@ -267,6 +306,8 @@ def _accuracy_section(label: str, runs: list) -> None:
         "r, is penalised by a constant offset)."
     )
     _agreement_table(agreement["by_joint"])
+    _isb_caveat(agreement["by_joint"])
+    _accuracy_charts(agreement, key_prefix=f"pool_{label}_accuracy")
 
 
 def _overall_accuracy(runs: list) -> None:
@@ -290,6 +331,64 @@ def _overall_accuracy(runs: list) -> None:
         "offset-sensitive shape match)."
     )
     _agreement_table(agreement["by_joint"])
+    _isb_caveat(agreement["by_joint"])
+    _accuracy_charts(agreement, key_prefix="pool_overall_accuracy")
+
+
+def _accuracy_charts(agreement: dict, key_prefix: str) -> None:
+    """Mean video vs Vicon curves, one per sagittal joint.
+
+    See ``charts.kinematics.video_vs_reference_overlay`` for why this is a
+    second, dedicated colour rather than the usual side colouring. Only
+    joints the agreement's ``by_joint`` battery actually judged trustworthy
+    (shape_r > 0.5, see ``agreement.TRACKED_OK_R``) get a chart -- an
+    untrustworthy pair is exactly the case a comparison chart would
+    mislead on rather than clarify.
+    """
+    video_pooled = agreement.get("video_pooled")
+    vicon_pooled = agreement.get("vicon_pooled")
+    if not video_pooled or not vicon_pooled:
+        return
+    dark = is_dark()
+    joints = [j for j in SAGITTAL_JOINTS if j in agreement.get("by_joint", {})]
+    if not joints:
+        return
+    st.caption("**Video vs Vicon — mean cycle curves**")
+    cols = st.columns(len(joints))
+    for column, joint in zip(cols, joints):
+        with column:
+            chart(
+                K.video_vs_reference_overlay(
+                    video_pooled, vicon_pooled, joint=joint, dark=dark, height=280,
+                ),
+                key=f"{key_prefix}_{joint}",
+            )
+
+
+def _isb_caveat(by_joint: dict) -> None:
+    """Warn that hip/knee bias also carries the ISB-vs-sagittal offset.
+
+    ISB reconstruction (the toggle above, on by default) recomputes a Vicon
+    reference's hip/knee/ankle from proper anatomical frames instead of the
+    sagittal method the video side always uses -- a different *definition*,
+    not just added precision (CLAUDE.md documents a 10-17 deg hip / 8-9 deg
+    knee constant level-shift between the two on the same trial). Verified
+    directly on P03: hip bias flips from -6.1 deg with ISB on to +4.9 deg
+    with it off on the identical pair -- the sign of the reported error can
+    depend entirely on this toggle, so it must never be silent.
+    """
+    if not st.session_state.get(_ISB_KEY, True):
+        return
+    if not ({"hip", "knee"} & set(by_joint)):
+        return
+    st.caption(
+        "⚠️ ISB reconstruction is on for the Vicon/C3D side above (default) "
+        "but is a no-op for markerless video (no 3-D markers to reconstruct "
+        "from) -- hip/knee bias here also carries the ISB-vs-sagittal angle-"
+        "definition offset (~10-17° hip, ~8-9° knee; see CLAUDE.md), not "
+        "only markerless tracking error. Turn the toggle above off and "
+        "re-analyse to isolate pure tracking accuracy."
+    )
 
 
 def _agreement_table(by_joint: dict) -> None:

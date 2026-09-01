@@ -316,6 +316,56 @@ class JobManager:
         with self._lock:
             return ticket in self._cancelled
 
+    # ── Synchronous registration (no worker involved) ───────────────────
+
+    def register_immediate(
+        self,
+        data: dict,
+        source_name: str,
+        kind_label: str,
+        study: dict[str, Any] | None = None,
+    ) -> str:
+        """Register an already-loaded pivot as a finished job, immediately.
+
+        A C3D import is synchronous -- there is no extraction to run, so it
+        never went through :meth:`submit` and never got a ticket, which is
+        why it could not appear in the Recent jobs tick-list next to a video
+        extraction (a real gap: the tick-select -> ``pooling.load_runs``
+        pairing shortcut in ``_selection_actions`` only ever saw video
+        tickets). This gives it one anyway: same ``Job`` shape, status
+        ``DONE`` from the first write (no ``QUEUED``/``RUNNING`` in
+        between, so orphan-reconciliation on restart leaves it alone), no
+        pool worker touched. ``kind_label`` fills the slot ``model`` holds
+        for a real extraction (e.g. ``"c3d-import"``), so the row reads as
+        clearly different from a pose-backend run.
+        """
+        from myogait.schema import save_json
+
+        ticket = new_ticket()
+        directory = job_dir(ticket, self.settings)
+        directory.mkdir(parents=True, exist_ok=True)
+
+        if study:
+            data = dict(data)
+            data["study"] = dict(study)
+
+        result_file = "result.json"
+        save_json(data, str(directory / result_file))
+
+        job = Job(
+            ticket=ticket,
+            status=DONE,
+            progress=1.0,
+            video_name=source_name,
+            model=kind_label,
+            study={k: v for k, v in (study or {}).items() if v not in (None, "")},
+            created_at=time.time(),
+            message=f"Loaded - {len(data.get('frames', []))} frames.",
+            result_file=result_file,
+        )
+        self._write(job)
+        return ticket
+
     # ── Submission ───────────────────────────────────────────────────
 
     def submit(

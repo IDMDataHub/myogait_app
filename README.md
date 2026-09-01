@@ -359,7 +359,7 @@ myogait_app/
   marker_presets.py        C3D marker-convention detection and fallback
   c3d_utils.py             pre-0.8.0 C3D aspect-ratio compatibility shim
   calibration.py           multi-segment pixel/mm calibration cross-check
-  glossary.py              myogait function reference for tooltips and the Reference page
+  glossary.py              myogait function reference for tooltips and the Index page
   demo.py                  synthetic dataset (dev/test fixture, not wired into the UI)
   charts/                  Plotly theme and figures
   ui/                      Streamlit pages

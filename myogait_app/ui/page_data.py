@@ -76,6 +76,13 @@ def job_manager() -> JobManager:
     return JobManager(SETTINGS)
 
 
+#: JobManager.register_immediate's kind_label for a C3D import (see
+#: _load_c3d) -- shared with _ticket_tab's readiness grouping so the two
+#: places that need to recognise "this job is a C3D, not a pose backend"
+#: cannot drift apart into two different strings.
+C3D_IMPORT_MODEL_LABEL = "c3d-import"
+
+
 def render() -> None:
     page_header(
         "Data",
@@ -386,6 +393,10 @@ def _c3d_tab() -> None:
                     "only tier (or direct, if no static trial either)."
                 )
 
+    study: dict = {}
+    if target is not None:
+        study = _study_form(target, key_prefix="c3d_study")
+
     if uploaded is not None and target is not None and st.button(
         "Load C3D", type="primary", use_container_width=True, key="c3d_load"
     ):
@@ -396,6 +407,7 @@ def _c3d_tab() -> None:
             target, uploaded.name, mapping, int(ap_axis), int(vertical_axis), fix_aspect,
             isb_capable=bool(isb_diag and isb_diag.is_isb_capable),
             static_path=static_target, vsk_path=vsk_target, prot_path=prot_target,
+            study=study,
         )
 
 
@@ -492,14 +504,25 @@ def _load_c3d(
     static_path: Path | None = None,
     vsk_path: Path | None = None,
     prot_path: Path | None = None,
+    study: dict | None = None,
 ) -> None:
-    """Load a C3D trial and install it, correcting the aspect ratio if asked."""
+    """Load a C3D trial and install it, correcting the aspect ratio if asked.
+
+    ``study`` (patient/run/group/condition, from ``_study_form``) is written
+    into ``data["study"]`` exactly as the video-extraction job does, so this
+    trial can pair automatically with a matching video in Analysis -> Study
+    & conditions (``pooling.overall_agreement`` pairs by ``patient_id``,
+    ``condition_agreement`` by shared ``condition`` -- neither ever saw a
+    C3D import before this, because nothing set the field).
+    """
     try:
         from myogait import load_c3d
 
         data = load_c3d(
             str(path), marker_mapping=mapping, ap_axis=ap_axis, vertical_axis=vertical_axis
         )
+        if study:
+            data["study"] = dict(study)
     except Exception as exc:
         # InvalidC3DError (myogait >= 0.8.1) is raised specifically for an
         # unresolved marker mapping -- point back at the controls that fix
@@ -543,6 +566,19 @@ def _load_c3d(
     isb_context, isb_diagnostics, calibration_identity = _build_isb_context(
         path, mapping, isb_capable, ap_axis, vertical_axis, static_path, vsk_path, prot_path
     )
+
+    # Register alongside video extractions in Recent jobs -- a C3D load is
+    # synchronous and never went through JobManager.submit before, so it had
+    # no ticket and could never be tick-selected next to a video extraction
+    # for Analysis -> Study & conditions pairing (see jobs.py's
+    # register_immediate docstring for the full story).
+    try:
+        job_manager().register_immediate(data, name, C3D_IMPORT_MODEL_LABEL, study=study)
+    except Exception as exc:  # noqa: BLE001 - listing is a convenience, not load-critical
+        st.warning(
+            f"Loaded, but could not list this C3D in Recent jobs for pairing "
+            f"({type(exc).__name__}: {exc}) -- it is still usable below."
+        )
 
     state.set_source(
         state.Source(
@@ -817,41 +853,49 @@ def _video_tab() -> None:
     _live_jobs()
 
 
-def _study_form(source_path: Path) -> dict:
+def _study_form(source_path: Path, key_prefix: str = "study") -> dict:
     """Study identifiers written into the output JSON for pooled analysis.
 
     Every field carries a default so a quick run needs no typing. The values
     are stored under ``data["study"]`` in the extracted pivot, so that when
     many recordings are later pooled, each output can be grouped and
     labelled for the statistical analysis (by patient, run, group and
-    condition). The run defaults to the video's own name.
+    condition). The run defaults to the recording's own name.
+
+    ``key_prefix`` keeps this reusable across tabs that render in the same
+    script run (video extraction and C3D import both call this, so their
+    widgets need distinct keys or Streamlit raises a duplicate-ID error) --
+    see ``_c3d_tab``.
     """
     stem = Path(source_path).stem
     with st.expander("Study identifiers (saved in the output)", expanded=True):
         st.caption(
             "Stored under `study` in the exported JSON, so several pooled "
-            "recordings can be grouped and labelled for statistical analysis."
+            "recordings can be grouped and labelled for statistical analysis. "
+            "**Give a video and its matching Vicon C3D the same Patient ID "
+            "and Condition** so Analysis -> Study & conditions pairs them "
+            "automatically."
         )
         c1, c2 = st.columns(2)
-        patient_id = c1.text_input("Patient ID", value="P001", key="study_patient")
-        # Keyed on the video stem so a different video resets the default.
-        run = c2.text_input("Run", value=stem, key=f"study_run::{stem}")
+        patient_id = c1.text_input("Patient ID", value="P001", key=f"{key_prefix}_patient")
+        # Keyed on the recording's stem so a different file resets the default.
+        run = c2.text_input("Run", value=stem, key=f"{key_prefix}_run::{stem}")
         c3, c4 = st.columns(2)
-        group = c3.text_input("Group", value="control", key="study_group")
+        group = c3.text_input("Group", value="control", key=f"{key_prefix}_group")
         condition = c4.text_input(
-            "Condition", value="baseline", key="study_condition"
+            "Condition", value="baseline", key=f"{key_prefix}_condition"
         )
         c5, c6 = st.columns(2)
         # Height (and optionally age) travel with the JSON so the cohort can
         # report step length in metres and pick an age-matched normative band.
         height_m = c5.number_input(
             "Height (m)", min_value=0.0, max_value=2.5, value=0.0, step=0.01,
-            format="%.2f", key="study_height",
+            format="%.2f", key=f"{key_prefix}_height",
             help="0 = unknown. Needed for step length in metres.",
         )
         age = c6.number_input(
             "Age (years)", min_value=0, max_value=120, value=0, step=1,
-            key="study_age", help="0 = unknown. Selects the normative stratum.",
+            key=f"{key_prefix}_age", help="0 = unknown. Selects the normative stratum.",
         )
     study = {
         "patient_id": patient_id.strip(),
@@ -1019,16 +1063,48 @@ def _ticket_tab() -> None:
     if done:
         st.markdown("**Finished — tick to analyse**")
         selected = []
+
+        # Grouped by (patient, condition) so a video extraction and its
+        # matching C3D import -- the pair Analysis -> Study & conditions
+        # needs -- show up together with their combined readiness, instead
+        # of two unrelated-looking rows in one flat newest-first list.
+        groups: dict[tuple[str, str], list] = {}
         for job in done:
             study = job.study or {}
-            meta = " · ".join(
-                x for x in (study.get("patient_id"), study.get("condition")) if x
-            )
-            label = f"{job.video_name} — {job.model}"
-            if meta:
-                label += f"  ({meta})"
-            if st.checkbox(label, key=f"sel_{job.ticket}"):
-                selected.append(job)
+            key = (study.get("patient_id") or "?", study.get("condition") or "unspecified")
+            groups.setdefault(key, []).append(job)
+
+        # Tagged groups (a real patient_id) first, most-recently-updated
+        # group first within that; the untagged "?" bucket -- jobs never
+        # given a Patient ID -- goes last so a taggable pair to compare is
+        # never buried under it.
+        def _group_order(item):
+            (patient, _condition), jobs_in_group = item
+            return (patient == "?", -max(j.created_at for j in jobs_in_group))
+
+        for (patient, condition), jobs_in_group in sorted(groups.items(), key=_group_order):
+            if patient != "?":
+                has_video = any(j.model != C3D_IMPORT_MODEL_LABEL for j in jobs_in_group)
+                has_c3d = any(j.model == C3D_IMPORT_MODEL_LABEL for j in jobs_in_group)
+                if has_video and has_c3d:
+                    status = "✅ ready to compare — video + C3D both present"
+                elif has_video:
+                    status = "video only — add a C3D with this Patient ID and Condition to compare"
+                else:
+                    status = "C3D only — add a video extraction with this Patient ID and Condition to compare"
+                st.caption(f"**{patient} / {condition}** — {status}")
+
+            for job in jobs_in_group:
+                study = job.study or {}
+                meta = " · ".join(
+                    x for x in (study.get("patient_id"), study.get("condition")) if x
+                )
+                label = f"{job.video_name} — {job.model}"
+                if meta:
+                    label += f"  ({meta})"
+                if st.checkbox(label, key=f"sel_{job.ticket}"):
+                    selected.append(job)
+
         _selection_actions(selected)
 
     if other:
@@ -1070,14 +1146,23 @@ def _selection_actions(selected: list) -> None:
     if st.button(
         label, type="primary", use_container_width=True, key="sel_action_cohort",
     ):
+        from ..pipeline import PipelineConfig
         from ..pooling import load_runs
+        from . import page_pool
 
         paths = [p for p in (j.result_path(SETTINGS) for j in selected) if p]
         if not paths:
             st.error("None of the selected results are still on disk.")
             return
+        # Explicit PipelineConfig(), not autoconfig (config=None) -- matches
+        # the Cohort page's own "Analyse" button exactly (ISB reconstruction
+        # on by default there too), so a batch loaded through this shortcut
+        # behaves identically to one loaded by uploading the same JSONs
+        # through the Cohort tab directly, instead of silently taking a
+        # different pipeline recipe depending on which door was used.
         with st.spinner(f"Pooling {len(paths)} recording(s)..."):
-            st.session_state["pool_runs"] = load_runs(paths)
+            st.session_state[page_pool._RUNS_KEY] = load_runs(paths, PipelineConfig())
+            st.session_state[page_pool._ISB_KEY] = True
         st.success(
             f"Loaded {len(paths)} recording(s) into the Cohort tab — open it above."
         )

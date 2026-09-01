@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from myogait_app.demo import make_demo_data
 from myogait_app.jobs import DONE, FAILED, RUNNING, Job, JobManager
 from myogait_app.settings import Settings
 from myogait_app.storage import job_dir, write_json_atomic
@@ -58,4 +59,38 @@ def test_corrupt_job_records_do_not_break_polling_or_listing(tmp_path):
 
     assert manager.get(ticket) is None
     assert manager.list_jobs() == []
+    manager._pool.shutdown(wait=True)
+
+
+def test_register_immediate_lists_a_c3d_import_like_a_finished_job(tmp_path):
+    """A C3D load is synchronous and never goes through submit()/_run -- it
+
+    needs its own path to a DONE job with a readable result, so it can be
+    tick-selected in Recent jobs next to a video extraction and pooled via
+    the same _selection_actions -> pooling.load_runs shortcut (see
+    JobManager.register_immediate's docstring for the gap this closes).
+    """
+    settings = Settings(workspace_root=tmp_path)
+    manager = JobManager(settings)
+    data = make_demo_data()
+    study = {"patient_id": "P03", "condition": "walk"}
+
+    ticket = manager.register_immediate(data, "markers.c3d", "c3d-import", study=study)
+
+    job = manager.get(ticket)
+    assert job is not None
+    assert job.status == DONE
+    assert job.succeeded
+    assert job.model == "c3d-import"
+    assert job.video_name == "markers.c3d"
+    assert job.study == study
+    result_path = job.result_path(settings)
+    assert result_path is not None and result_path.is_file()
+
+    from myogait import load_json
+
+    reloaded = load_json(str(result_path))
+    assert reloaded["study"] == study
+
+    assert any(j.ticket == ticket for j in manager.list_jobs())
     manager._pool.shutdown(wait=True)

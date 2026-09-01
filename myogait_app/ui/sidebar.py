@@ -28,7 +28,7 @@ from ..pipeline import (
 from ..runtime import get_runtime
 from . import components
 
-_SEE_REFERENCE = " See the Reference page for what each option actually does."
+_SEE_REFERENCE = " See the Index page for what each option actually does."
 
 #: Smoothing steps from myogait.normalize.NORMALIZE_STEPS, with the
 #: optional dependency each one needs.

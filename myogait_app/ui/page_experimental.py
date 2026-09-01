@@ -24,7 +24,7 @@ from ..runtime import get_runtime
 from ..settings import SETTINGS
 from ..storage import path_is_within_root
 from . import state
-from .components import page_header, source_loader
+from .components import page_header, recording_switcher, source_loader
 
 DEGRADATION_HELP = {
     "target_fps": "Resample to this frame rate before extraction.",
@@ -80,6 +80,7 @@ def _vicon_tab(runtime) -> None:
         )
         return
 
+    recording_switcher("experimental")
     st.caption(
         "Aligns one myogait result with one VICON trial by cross-correlation and "
         "attaches the comparison to the pivot data."

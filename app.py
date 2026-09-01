@@ -48,12 +48,13 @@ def _startup() -> dict:
 
 
 #: Two clinical screens -- get data in, then read it -- plus a demoted
-#: Advanced space for the research tools and Reference for the docs.
+#: Advanced space for the research tools and Index for the docs (function
+#: reference plus short how-to guides for multi-step workflows).
 PAGES = {
     "New assessment": page_new.render,
     "Analysis": page_analysis.render,
     "Advanced": page_advanced.render,
-    "Reference": page_reference.render,
+    "Index": page_reference.render,
 }
 
 
