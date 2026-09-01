@@ -104,14 +104,17 @@ def _myogait_backend_availability() -> dict[str, bool] | None:
 
     ``myogait.models.available_models()`` exists specifically for this:
     its docstring calls it out as "suitable for a UI to grey out
-    unavailable options". It is the ground truth for what each backend
-    module actually imports -- a mapping only myogait's own author can
-    keep correct, and this app's local ``BACKENDS.requires`` copy has
-    already drifted from it once (``hrnet`` was gated on ``mmpose`` here;
-    myogait needs only ``torch`` for it). Not cached: a Sapiens 2 setup
-    job run from this app writes new files into the *same* process, and
-    the next rerun should see it without a restart. Returns ``None`` on
-    a myogait old enough to lack this API, so the caller falls back to
+    unavailable options". Usually the ground truth for what each backend
+    module actually imports, and preferred over this app's own
+    ``BACKENDS.requires`` copy for exactly that reason -- but confirmed
+    wrong for one backend (see ``BackendInfo.is_available``'s ``hrnet``
+    override): it reports ``hrnet`` importable purely from ``torch``,
+    when the installed myogait's own ``models/hrnet.py`` builds it on
+    MMPose and needs ``mmcv``, an OpenMMLab compiled extension with no
+    prebuilt wheel for every platform. Not cached: a Sapiens 2 setup job
+    run from this app writes new files into the *same* process, and the
+    next rerun should see it without a restart. Returns ``None`` on a
+    myogait old enough to lack this API, so the caller falls back to
     ``BackendInfo.requires``.
     """
     try:
@@ -145,8 +148,22 @@ class BackendInfo:
         if live is None:
             live = _myogait_backend_availability()
         if live is not None and self.name in live:
-            return live[self.name]
-        return all(_has(module) for module in self.requires)
+            result = live[self.name]
+        else:
+            result = all(_has(module) for module in self.requires)
+        if self.name == "hrnet" and result:
+            # Distrust myogait's own live signal for this one backend: it
+            # reports True from torch alone, but HRNETPoseExtractor.setup()
+            # (myogait's models/hrnet.py) unconditionally does `from
+            # mmpose.apis import init_model` -- confirmed by reading the
+            # installed source, not assumed. Extraction would otherwise
+            # start, run for a while, then fail mid-job with a raw
+            # ImportError from mmcv's own auto-installer (see install_hint)
+            # instead of this control simply being unavailable up front,
+            # the "disabled-with-a-reason, never hidden" contract every
+            # other optional feature in this app already gets.
+            result = _has("mmpose")
+        return result
 
     @property
     def missing(self) -> tuple[str, ...]:
@@ -160,14 +177,31 @@ class BackendInfo:
         with exactly ``pip install myogait[{name.split('-')[0]}]`` --
         matched here so the hint in this app's UI is the same command
         myogait itself would suggest at the point of failure. Verified
-        against myogait's actual declared extras (Aug 2026) rather than
-        assumed, since that generic formula is wrong for three backends:
+        against myogait's actual declared extras rather than assumed,
+        since that generic formula is wrong for three backends:
 
         - ``openpose`` needs only ``cv2``, already a base dependency
           (``opencv-python-headless``) -- no extra exists or is needed.
-        - ``hrnet`` needs only ``torch``, and no ``[hrnet]`` extra wraps
-          it -- installing any extra that happens to include torch would
-          pull unrelated packages along with it.
+        - ``hrnet`` is built on MMPose (``HRNETPoseExtractor.setup()``,
+          myogait's own ``models/hrnet.py``, unconditionally does ``from
+          mmpose.apis import init_model``) -- **not** torch-only as this
+          docstring previously claimed; that was never actually verified
+          against the source, only against ``BackendInfo.requires`` =
+          ``("torch",)`` here, which had the same unverified claim.
+          Two independent, unfixable-from-here upstream breakages sit on
+          this path, confirmed live rather than assumed: (1) ``mmpose``
+          itself depends on ``chumpy``, unmaintained, whose ``setup.py``
+          does ``import pip`` inside its own PEP 517 build -- broken by
+          any modern pip's build isolation, which does not expose ``pip``
+          as importable inside the isolated build env; ``pip install
+          "myogait[mmpose]"`` fails right there, before mmpose is even
+          installed. (2) Even past that, mmpose's own ``mmcv`` dependency
+          auto-installs from OpenMMLab's prebuilt-wheel index on first
+          use, keyed off the installed torch's (Python, CUDA-or-cpu)
+          combination -- and that index does not publish a wheel for
+          every combination (confirmed missing: Python 3.13, non-CUDA/
+          XPU torch). No ``[hrnet]`` extra exists (below); ``[mmpose]``
+          does, but installing it is the thing that fails per (1).
         - ``detectron2``'s extra is real but installs only its
           prerequisite (``torch``): the ``detectron2`` package itself is
           not on PyPI under any name, on any platform, and never will be
@@ -176,7 +210,15 @@ class BackendInfo:
         if self.name == "openpose":
             return "Included with the base install (cv2) -- nothing extra to install."
         if self.name == "hrnet":
-            return "pip install torch"
+            return (
+                "Not practically installable on a modern pip: mmpose's own "
+                "chumpy dependency fails to build (its setup.py does `import "
+                "pip` inside PEP 517's isolated build env, which newer pip "
+                "does not expose -- an unmaintained upstream package, no fix "
+                "from here), and even past that mmcv has no prebuilt wheel for "
+                "every Python/torch combination. Use vitpose, yolo or "
+                "mediapipe instead -- already confirmed available here."
+            )
         if self.name == "detectron2":
             return (
                 'pip install "myogait[detectron2]" (installs torch, the '
@@ -206,10 +248,12 @@ BACKENDS: tuple[BackendInfo, ...] = (
     BackendInfo("vitpose-large", "ViTPose+ (large)", ("transformers", "torch"), "17 COCO", "", "heavy"),
     BackendInfo("vitpose-huge", "ViTPose+ (huge)", ("transformers", "torch"), "17 COCO", "", "heavy"),
     BackendInfo("rtmw", "RTMW whole-body", ("rtmlib", "onnxruntime"), "133", "ONNX, real-time", "medium"),
-    # myogait needs only torch for hrnet -- not mmpose. Confirmed against
-    # myogait.models's own requirement map (Aug 2026), which this app's
-    # copy had drifted from.
-    BackendInfo("hrnet", "HRNet-W48", ("torch",), "17 COCO", "", "heavy"),
+    # Built on MMPose (myogait's own models/hrnet.py: setup() does `from
+    # mmpose.apis import init_model`), not torch-only -- an earlier version
+    # of this comment claimed the opposite without having checked the
+    # source; see BackendInfo.is_available's hrnet override for why myogait's
+    # own live availability signal is not trusted for this one backend.
+    BackendInfo("hrnet", "HRNet-W48", ("torch", "mmpose"), "17 COCO", "", "heavy"),
     BackendInfo("mmpose", "RTMPose-m", ("mmpose", "mmdet"), "17 COCO", "", "medium"),
     BackendInfo("alphapose", "AlphaPose FastPose", ("torch", "torchvision", "ultralytics"), "17 COCO", "", "medium"),
     BackendInfo("detectron2", "Keypoint R-CNN", ("detectron2", "torch"), "17 COCO", "", "heavy"),
