@@ -67,6 +67,19 @@ def test_bundle_tables_have_content(tmp_path):
     assert "biomarkers_long" in sheets and "icc_validity" in sheets
 
 
+def test_bundle_has_per_patient_per_cycle_csv(tmp_path):
+    import pandas as pd
+
+    out = write_cohort_bundle(_cohort(), tmp_path / "bundle", dpi=80)
+    cycles = pd.read_csv(out / "tables" / "cycles_by_patient.csv")
+    assert {"patient", "run", "group", "condition", "side", "cycle_id",
+            "hip_rom_deg"} <= set(cycles.columns)
+    # One row per cycle: 6 video patients x (2 pre + 2 post cycles) + 6 refs x 2.
+    assert len(cycles) == sum(len(r.cycles["cycles"]) for r in _cohort())
+    assert (cycles["hip_rom_deg"] > 0).all()
+    assert set(cycles["condition"]) == {"pre", "post"}
+
+
 def test_bundle_gracious_on_video_only_cohort(tmp_path):
     runs = [_run(f"P{i}", "video", rom=30.0 + i) for i in range(3)]
     out = write_cohort_bundle(runs, tmp_path / "bundle", dpi=80)

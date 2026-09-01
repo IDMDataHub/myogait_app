@@ -153,10 +153,11 @@ def _bundle_export(runs: list, joints: tuple[str, ...], sides: tuple[str, ...]) 
     st.divider()
     with st.expander("Export cohort bundle (zip)", expanded=False):
         st.caption(
-            "Every table of this cohort (overview, agreement, MDC comparison, "
-            "biomarkers, ICC validity/test-retest, Bland-Altman) as CSV plus "
-            "one Excel workbook, and print-grade figures (pooled angle curves "
-            "per condition drawn by myogait itself, Bland-Altman plots, "
+            "Every table of this cohort as CSV (plus one Excel workbook): the "
+            "per-patient per-cycle table (one row per gait cycle), overview, "
+            "agreement, MDC comparison, biomarkers, ICC validity/test-retest, "
+            "Bland-Altman -- and print-grade figures (pooled angle curves per "
+            "condition drawn by myogait itself, Bland-Altman plots, "
             "between-group boxplots) at the chosen DPI. A provenance JSON "
             "rides along."
         )

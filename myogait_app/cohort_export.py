@@ -6,7 +6,8 @@ zip + provenance + download plumbing the single-run exports already use.
 
 Contents written under *out_dir*:
 
-- ``tables/``: overview by condition, video-vs-reference agreement,
+- ``tables/``: overview by condition, the per-patient per-cycle table
+  (every gait cycle, one row), video-vs-reference agreement,
   between-condition MDC comparison, the long-format biomarker table, ICC
   validity and test-retest batteries, Bland-Altman parameters -- each as CSV,
   plus one ``cohort.xlsx`` workbook with a sheet per table.
@@ -58,6 +59,7 @@ def write_cohort_bundle(
     frames: dict[str, pd.DataFrame] = {}
 
     frames["overview_by_condition"] = _overview_frame(groups, joints)
+    frames["cycles_by_patient"] = _cycles_frame(ok_runs, joints)
     frames["biomarkers_long"] = pd.DataFrame(biomarker_table(ok_runs, joints))
     frames["agreement_by_joint"] = _agreement_frame(ok_runs, joints, sides)
     frames["condition_comparison_mdc"] = _comparison_frame(groups, joints)
@@ -97,6 +99,40 @@ def _overview_frame(groups: dict, joints) -> pd.DataFrame:
         row.update({f"spatio_{k}": v for k, v in summary["spatiotemporal"].items()})
         row.update({f"{j}_rom_deg": summary["rom_deg"].get(j) for j in joints})
         rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def _cycles_frame(runs, joints) -> pd.DataFrame:
+    """One row per gait cycle: the per-patient, per-cycle CSV.
+
+    The finest export -- every cycle of every run, tagged by patient / run /
+    group / condition / side, with its per-joint ROM, peak and minimum. This
+    is what feeds a stats package (mixed models, per-cycle variability) that
+    the aggregated tables cannot.
+    """
+    rows = []
+    for run in runs:
+        for index, cycle in enumerate((run.cycles or {}).get("cycles", [])):
+            angles = cycle.get("angles_normalized") or {}
+            row = {
+                "patient": run.patient, "run": run.run, "group": run.group,
+                "condition": run.condition,
+                "kind": "reference" if run.is_reference else "video",
+                "side": cycle.get("side"),
+                "cycle_id": cycle.get("cycle_id", index),
+                "duration_s": cycle.get("duration"),
+                "stance_pct": cycle.get("stance_pct"),
+            }
+            for joint in joints:
+                wave = angles.get(joint)
+                if wave:
+                    finite = [float(v) for v in wave
+                              if isinstance(v, (int, float)) and np.isfinite(v)]
+                    if len(finite) >= 2:
+                        row[f"{joint}_rom_deg"] = max(finite) - min(finite)
+                        row[f"{joint}_peak_deg"] = max(finite)
+                        row[f"{joint}_min_deg"] = min(finite)
+            rows.append(row)
     return pd.DataFrame(rows)
 
 
