@@ -377,6 +377,12 @@ def _group_biomarkers(groups: dict, a: str, b: str, joints: tuple[str, ...]) -> 
         "the Welch p-value ignores repeated runs per patient, so read it as "
         "descriptive."
     )
+    st.warning(
+        "These pelvis-derived accelerometry values are a different, simpler "
+        "computation than the virtual-accelerometer biomarkers on the "
+        "Accelerometry page (different site, no torso normalisation) -- "
+        "don't compare the two directly even where a name matches."
+    )
     rows = group_comparison_biomarkers(runs, a, b, tuple(params), joints, by="condition")
     table = []
     for row in rows:

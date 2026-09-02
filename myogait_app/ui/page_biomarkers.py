@@ -25,6 +25,12 @@ def render() -> None:
         "content, entropy) computed from this recording's own landmark "
         "trajectories -- no sensor worn. See the Index for method details.",
     )
+    st.warning(
+        "These biomarkers are computed differently from the similarly-named "
+        "ones in the cohort tables (Analysis): different normalisation and "
+        "filtering, not the same numbers. Don't compare a value from this "
+        "page directly against a cohort-view value of the same name."
+    )
     source = state.get_source()
     if source is None:
         source_loader(
