@@ -13,6 +13,14 @@ the ``status`` on the affected entries changes. Statuses: ``"wired"``
 (usable in the app today), ``"phase4"`` / ``"phase5"`` (were planned,
 never left unresolved past their own phase), and ``"backlog"`` (a real
 myogait function, deliberately not wired -- see its summary for why).
+
+One deliberate exception to "myogait's own functions": the last group
+documents ``gait_accelerometry.py``, a virtual-accelerometer feature
+built in this app rather than in myogait -- added because the
+Accelerometry page pointed users here for method details and there was
+previously nothing here to find (see CLAUDE.md's "gait_accelerometry.py"
+section for the fuller story, including its known, deliberately
+unreconciled sibling in ``reliability.py``).
 """
 
 from __future__ import annotations
@@ -182,6 +190,14 @@ GROUPS: list[tuple[str, list[Entry]]] = [
             Entry("render_stickfigure_animation", "video", "Anonymised stick-figure GIF/MP4 from the landmarks alone, with optional angle labels and a motion trail - the form to prefer once a figure leaves the lab."),
             Entry("generate_report", "report", "Multi-page bilingual (en/fr) PDF: kinematic plots, spatio-temporal tables, normative comparison."),
             Entry("generate_longitudinal_report", "report", "Multi-session PDF comparison across several loaded recordings of the same subject - needs data, cycles and stats per session, a different shape than plot_longitudinal's date+stats."),
+        ],
+    ),
+    (
+        "11. Virtual accelerometry (this app, not myogait) - gait_accelerometry",
+        [
+            Entry("compute_virtual_signal", "app.gait_accelerometry", "Builds a torso-length-normalised acceleration signal at a chosen anatomical site (sacrum, lumbar, sternum or head) from a video pivot's own 2-D landmark trajectories - no IMU worn. A Savitzky-Golay second derivative of the site's position, resampled to 100 Hz. Ported from an external research script (2024 M2 project), not part of myogait itself.", citation="Moe-Nilssen & Helbostad, J Biomech 2004"),
+            Entry("analyze_recording", "app.gait_accelerometry", "Runs the full biomarker family on that virtual signal: temporal parameters, Moe-Nilssen regularity/symmetry, Harmonic Ratio, spectral content, Sample/Approximate Entropy, RMS variability - each with a published reference range and a plain-language interpretation. Surfaced on the Accelerometry page and in three Video report segments."),
+            Entry("reliability.accelerometric_scalars", "app.reliability", "A separate, simpler computation from the pelvis centre only (plain double-derivative, no torso-length normalisation, no resampling), feeding the cohort ICC/group-comparison tables - deliberately not reconciled with the two entries above. Reports similarly-named numbers (RMS, harmonic ratio) that are not directly comparable to them; both screens now warn about this."),
         ],
     ),
 ]

@@ -84,14 +84,100 @@ identifiers form yet and is not listed in Recent jobs — only a live video
 extraction or a C3D import register for pairing today.
 """,
     ),
+    (
+        "Interpreting ISB reconstruction and its effect on reported bias",
+        """
+ISB reconstruction is **on by default**, in two places, and it changes
+what a "bias" number in this app actually means — not just its precision.
+
+**What it does.** Instead of this app's default sagittal method (angles
+projected against the trunk, in 2-D), ISB reconstruction recomputes
+hip/knee/ankle from proper ISB pelvis/thigh/shank/foot anatomical frames.
+On a C3D/Vicon source this is a genuinely different angle *definition*,
+not an upgrade in precision: an internal audit found the two methods
+strongly correlated (waveform r ≥ 0.99) but offset by a constant
+10–17° on hip/knee, confirmed across the Bath BioCV validation cohort. A
+markerless video source has no 3-D markers to reconstruct from, so the
+toggle is always a no-op there.
+
+**Why this matters for "accuracy vs C3D".** Any accuracy/bias number that
+compares a video's angles against a Vicon/C3D reference is comparing the
+video's sagittal-method angles against *whatever the C3D side is
+currently computing* — the ISB-reconstructed angle if the toggle is on
+for that reference, the sagittal angle if it is off. Turning the C3D
+side's toggle on or off therefore moves the reported hip/knee bias by
+roughly that same 10–17°, with no change to markerless tracking quality
+itself. One measured example: the same trial's hip bias read −6.1° with
+ISB on and +4.9° with it off.
+
+**Two separate toggles, not one.** The sidebar's "ISB reconstruction —
+this recording" controls the single recording currently open (Pipeline
+explorer, Comparator, etc). The Cohort page's own "ISB reconstruction for
+Vicon/C3D references — this cohort" controls every recording loaded into
+a cohort batch. They are independent settings; changing one does not
+change the other, and nothing in the interface flags a mismatch between
+the two if they end up set differently for a comparison you are running
+across both contexts.
+
+**Practical rule of thumb.** Leave ISB reconstruction on for reading a
+Vicon/C3D recording's own kinematics in isolation — it is the more
+anatomically correct definition. Turn it off specifically when you want a
+video-vs-Vicon accuracy number to reflect pure markerless tracking error,
+not also this definitional offset.
+""",
+    ),
+    (
+        "When not to enable bias corrections",
+        """
+Bias corrections (Ankle/Hip/Knee, in the sidebar's "Bias corrections"
+section) are the one family of controls in this app that can make a
+pathological recording *look healthy* — read this before turning any of
+them on.
+
+**What they are.** LASSO regression models fitted on healthy young
+adults against a Vicon reference. myogait's own documentation states
+they can re-inject a healthy curve exactly where neuromuscular disease
+shows itself: swing-phase knee flexion (Duchenne muscular dystrophy,
+Charcot-Marie-Tooth), ankle push-off (drop foot), end-stance hip
+extension.
+
+**When they are appropriate.** Benchmarking a healthy or near-healthy
+reference recording against Vicon — not reading a patient's own gait
+pattern.
+
+**When they are not.** Any clinical reading of a recording with a
+suspected or known gait pathology. Applying a correction fitted on
+healthy adults will pull the reported curve back toward "normal",
+masking the exact deviation the assessment exists to detect.
+
+**Deprecated upstream, not yet removed.** myogait deprecated this whole
+family in version 0.8.0 (removal planned for 1.0): its own validation
+found the *uncorrected* pipeline already at optical-reference level with
+a modern pose backbone, and that these corrections degrade rather than
+improve accuracy there. `run_pipeline()`, myogait's own recommended entry
+point, applies none of them. This app still wires the toggles — a
+feature only "planned" for removal is not gone yet — but keeps them off
+by default and behind this warning.
+
+**Blocked automatically, not just discouraged, in two cases.** All three
+corrections are disabled while ISB reconstruction is active for that
+recording (they were fitted on the sagittal method's residuals, not
+ISB's pelvis-referenced angles — applying one to the other has no
+scientific basis). Hip and knee are additionally disabled until the
+M1 perspective correction is enabled (their coefficients were fitted on
+perspective-corrected residuals; skipping that step double-counts the
+projection).
+""",
+    ),
 ]
 
 
 def render() -> None:
     page_header(
         "Index",
-        "What each myogait processing function does, plus short how-to guides "
-        "for multi-step workflows. Written from the package's own docstrings "
+        "What each myogait processing function does (plus this app's own "
+        "virtual-accelerometer feature), and short how-to guides for "
+        "multi-step workflows. Written from the package's own docstrings "
         "and this app's own conventions.",
     )
 
