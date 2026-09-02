@@ -565,24 +565,47 @@ def _apply_isb_reconstruction(data: dict, isb_context: dict) -> dict:
         if tier3_calibration is not None and isb_context.get("dynamic_raw"):
             from myogait import reconstruct_isb_angles_tier3
 
-            return reconstruct_isb_angles_tier3(
+            result = reconstruct_isb_angles_tier3(
                 data, isb_context["dynamic_raw"], tier3_calibration
             )
+            result["_isb_reconstruction_status"] = {"applied": True, "tier": 3}
+            return result
 
         static_landmarks = isb_context.get("static_landmarks")
         if static_landmarks:
             from myogait import reconstruct_isb_angles_tier2
 
-            return reconstruct_isb_angles_tier2(data, static_landmarks)
+            result = reconstruct_isb_angles_tier2(data, static_landmarks)
+            result["_isb_reconstruction_status"] = {"applied": True, "tier": 2}
+            return result
 
         from myogait import reconstruct_isb_angles
 
-        return reconstruct_isb_angles(data)
+        result = reconstruct_isb_angles(data)
+        result["_isb_reconstruction_status"] = {"applied": True, "tier": 1}
+        return result
     except ImportError:
+        # Expected/known: myogait.isb is not installed yet on this install.
+        # Left at info level -- this is not the "silent failure" DEV-04
+        # cares about, it is the documented degrade-gracefully contract.
         logger.info("ISB reconstruction requested but myogait.isb is not installed yet.")
+        data["_isb_reconstruction_status"] = {
+            "applied": False,
+            "reason": "myogait.isb is not installed on this server.",
+        }
         return data
     except Exception as exc:  # noqa: BLE001 -- degrade to the existing result, never fail the stage
-        logger.info("ISB reconstruction skipped: %s: %s", type(exc).__name__, exc)
+        # Unlike the ImportError above, this is the case DEV-04 flagged:
+        # an unexpected failure (bad calibration data, a myogait bug) that
+        # silently fell back to the sagittal angle definition. Logged at
+        # WARNING (app.py now configures a handler for it) and tagged on
+        # the result so the UI can say so too, instead of only a log line
+        # nobody was watching.
+        logger.warning("ISB reconstruction failed unexpectedly: %s: %s", type(exc).__name__, exc)
+        data["_isb_reconstruction_status"] = {
+            "applied": False,
+            "reason": f"{type(exc).__name__}: {exc}",
+        }
         return data
 
 

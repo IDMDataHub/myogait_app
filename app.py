@@ -11,6 +11,8 @@ parameters and their consequences are on screen together.
 
 from __future__ import annotations
 
+import logging
+
 # Two-screen IA: New assessment (get data in) and Analysis (read it).
 import streamlit as st
 
@@ -38,11 +40,21 @@ st.set_page_config(
 
 @st.cache_resource
 def _startup() -> dict:
-    """Once per server process: create the workspace and purge stale data.
+    """Once per server process: configure logging, create the workspace,
+    and purge stale data.
 
     Cached as a resource rather than called on every rerun -- purging is
     filesystem work and this app reruns on every widget change.
+
+    Without this, myogait_app's own ``logger.warning``/``logger.info``
+    calls (e.g. an ISB reconstruction that silently fell back to the
+    sagittal method, see ``pipeline._apply_isb_reconstruction``) have no
+    configured handler and are never seen anywhere, console or file.
     """
+    logging.basicConfig(
+        level=logging.WARNING,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
     SETTINGS.ensure_dirs()
     return purge_expired(SETTINGS)
 

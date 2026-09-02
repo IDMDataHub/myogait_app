@@ -74,6 +74,15 @@ def render() -> None:
     elif assessment.status == "warning":
         st.warning(" ".join(assessment.reasons))
 
+    isb_status = (result.data or {}).get("_isb_reconstruction_status")
+    if config.angles.isb_reconstruction and isb_status is not None and not isb_status.get("applied"):
+        st.warning(
+            "ISB reconstruction was requested but did not run for this recording "
+            f"({isb_status.get('reason', 'unknown reason')}). Hip/knee/ankle "
+            "below use the sagittal method instead -- a different angle "
+            "definition, not just a precision gap. See the Index for details."
+        )
+
     tab_kinematics, tab_cycles, tab_spatio, tab_advanced, tab_quality = st.tabs(
         ["Kinematics", "Cycles", "Spatio-temporal", "Advanced analysis", "Signal quality"]
     )
