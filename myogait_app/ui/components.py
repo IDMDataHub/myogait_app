@@ -231,6 +231,38 @@ def runtime_badge(runtime: Runtime | None = None) -> None:
         )
 
 
+_K_BACKEND_AVAILABILITY = "_cached_backend_availability"
+
+
+def cached_backend_availability(runtime: Runtime, *, key: str) -> dict[str, bool]:
+    """Session-cached ``Runtime.backend_availability()``.
+
+    That probe is deliberately not cached inside ``Runtime`` itself (its own
+    docstring: "caching this across reruns would leave the model picker
+    stale" if a setup job installs a backend mid-session) -- but the
+    consequence is that it re-probes ~18 backends on *every* Streamlit
+    rerun, including one triggered by an unrelated widget on the same page.
+    Caching it here per session, with an explicit refresh action
+    (``backend_availability_refresh_button``) alongside it, keeps the
+    "won't miss a newly-installed backend" property while dropping the
+    per-keystroke cost. *key* namespaces the cache per call site (a page
+    should pass its own slot name) so unrelated pages don't share one stale
+    entry.
+    """
+    state_key = f"{_K_BACKEND_AVAILABILITY}:{key}"
+    if state_key not in st.session_state:
+        st.session_state[state_key] = runtime.backend_availability()
+    return st.session_state[state_key]
+
+
+def backend_availability_refresh_button(runtime: Runtime, *, key: str) -> None:
+    """Pair with ``cached_backend_availability`` to force a re-probe."""
+    state_key = f"{_K_BACKEND_AVAILABILITY}:{key}"
+    if st.button("Refresh available models", key=f"refresh_backends_{key}"):
+        st.session_state[state_key] = runtime.backend_availability()
+        st.rerun()
+
+
 def runtime_warnings(runtime: Runtime | None = None) -> None:
     """Surface version problems once, at the top of the app.
 

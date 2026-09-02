@@ -20,11 +20,17 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from ..runtime import get_runtime
+from ..runtime import BACKENDS, get_runtime
 from ..settings import SETTINGS
 from ..storage import path_is_within_root
 from . import state
-from .components import page_header, recording_switcher, source_loader
+from .components import (
+    backend_availability_refresh_button,
+    cached_backend_availability,
+    page_header,
+    recording_switcher,
+    source_loader,
+)
 
 DEGRADATION_HELP = {
     "target_fps": "Resample to this frame rate before extraction.",
@@ -336,7 +342,9 @@ def _grid_tab(runtime) -> None:
         "small one runs for a long time, so it is built here and run in a terminal."
     )
 
-    available = [b.name for b in runtime.available_backends]
+    grid_availability = cached_backend_availability(runtime, key="grid_tab")
+    available = [b.name for b in BACKENDS if grid_availability[b.name]]
+    backend_availability_refresh_button(runtime, key="grid_tab")
     models = st.multiselect(
         "Models", available, default=available[: min(2, len(available))]
     )
