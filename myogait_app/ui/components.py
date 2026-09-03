@@ -597,3 +597,34 @@ def _install_pivot(path, name: str) -> None:
         )
     )
     st.rerun()
+
+
+def clinical_note(kind: str, text: str) -> None:
+    """One consistent inline note for clinical caveats.
+
+    Data-limit, where-this-differs and silent-fallback messages should read the
+    same wherever they appear, so screens do not each invent their own wording
+    and styling. ``kind`` is ``"info"``, ``"warning"`` or ``"danger"``; anything
+    else falls back to ``"info"``. Wraps Streamlit's native alerts, which already
+    theme correctly in light and dark.
+    """
+    render = {"info": st.info, "warning": st.warning, "danger": st.error}.get(kind, st.info)
+    render(text)
+
+
+#: The single wording for the two accelerometry-family calculations that share
+#: names (RMS, harmonic ratio) but not their site / normalisation / filtering,
+#: so the Accelerometry page and the cohort overview must not be read against
+#: each other. Both screens call ``accelerometry_non_comparable_note`` -- do not
+#: re-phrase it in only one place (DEV-01 / DOC-01).
+ACCELEROMETRY_NON_COMPARABLE = (
+    "These biomarkers are computed differently from the similarly-named ones in "
+    "the cohort tables (Analysis): different site, normalisation and filtering, "
+    "not the same numbers. Don't compare a value from this page directly against "
+    "a cohort-view value of the same name."
+)
+
+
+def accelerometry_non_comparable_note() -> None:
+    """Render the shared accelerometry non-comparability warning (DEV-01)."""
+    clinical_note("warning", ACCELEROMETRY_NON_COMPARABLE)

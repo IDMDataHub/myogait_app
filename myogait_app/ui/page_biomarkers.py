@@ -15,7 +15,12 @@ import streamlit as st
 
 from .. import gait_accelerometry as ga
 from . import state
-from .components import page_header, recording_switcher, source_loader
+from .components import (
+    accelerometry_non_comparable_note,
+    page_header,
+    recording_switcher,
+    source_loader,
+)
 
 
 def render() -> None:
@@ -25,12 +30,7 @@ def render() -> None:
         "content, entropy) computed from this recording's own landmark "
         "trajectories -- no sensor worn. See the Index for method details.",
     )
-    st.warning(
-        "These biomarkers are computed differently from the similarly-named "
-        "ones in the cohort tables (Analysis): different normalisation and "
-        "filtering, not the same numbers. Don't compare a value from this "
-        "page directly against a cohort-view value of the same name."
-    )
+    accelerometry_non_comparable_note()
     source = state.get_source()
     if source is None:
         source_loader(
