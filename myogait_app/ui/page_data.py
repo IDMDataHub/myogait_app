@@ -857,6 +857,20 @@ def _video_tab() -> None:
     _live_jobs()
 
 
+#: Shared across every _study_form call in the same session (video tab,
+#: C3D tab, ...), independently of their own key_prefix -- so the second
+#: form a user fills in pre-fills with what was just typed in the first,
+#: instead of both resetting to "P001"/"baseline" and relying on the user
+#: to retype an identical value by hand (a stray space or different casing
+#: then silently keeps a video and its C3D from being paired -- see the
+#: Index guide "Compare a video extraction against its Vicon C3D"). Only
+#: ever used as a text_input `value=` default, so it only takes effect the
+#: first time a given key_prefix's widget renders -- it never overwrites
+#: something the user already typed for that specific tab.
+_K_LAST_PATIENT_ID = "_last_study_patient_id"
+_K_LAST_CONDITION = "_last_study_condition"
+
+
 def _study_form(source_path: Path, key_prefix: str = "study") -> dict:
     """Study identifiers written into the output JSON for pooled analysis.
 
@@ -881,14 +895,22 @@ def _study_form(source_path: Path, key_prefix: str = "study") -> dict:
             "automatically."
         )
         c1, c2 = st.columns(2)
-        patient_id = c1.text_input("Patient ID", value="P001", key=f"{key_prefix}_patient")
+        patient_id = c1.text_input(
+            "Patient ID",
+            value=st.session_state.get(_K_LAST_PATIENT_ID, "P001"),
+            key=f"{key_prefix}_patient",
+        )
+        st.session_state[_K_LAST_PATIENT_ID] = patient_id
         # Keyed on the recording's stem so a different file resets the default.
         run = c2.text_input("Run", value=stem, key=f"{key_prefix}_run::{stem}")
         c3, c4 = st.columns(2)
         group = c3.text_input("Group", value="control", key=f"{key_prefix}_group")
         condition = c4.text_input(
-            "Condition", value="baseline", key=f"{key_prefix}_condition"
+            "Condition",
+            value=st.session_state.get(_K_LAST_CONDITION, "baseline"),
+            key=f"{key_prefix}_condition",
         )
+        st.session_state[_K_LAST_CONDITION] = condition
         c5, c6 = st.columns(2)
         # Height (and optionally age) travel with the JSON so the cohort can
         # report step length in metres and pick an age-matched normative band.
