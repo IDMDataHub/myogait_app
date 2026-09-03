@@ -23,7 +23,19 @@ from ..quality import assess_quality
 from ..runtime import get_runtime
 from ..settings import SETTINGS
 from . import state
-from .components import page_header, recording_switcher, reproducibility_panel, source_loader
+from .components import (
+    _job_label,
+    page_header,
+    recording_switcher,
+    reproducibility_panel,
+    source_loader,
+)
+
+#: Session-state key for named job groups staged here, for Advanced's
+#: rebuilt Patient over time / Two groups scopes to recall directly
+#: (Phase 3 of the audit's action plan -- see _group_staging_section).
+#: Nothing reads this back yet; this module only produces it.
+_GROUPS_KEY = "_named_job_groups"
 
 #: myogait plotting functions, with what each one needs.
 FIGURE_SPECS: dict[str, dict] = {
@@ -47,7 +59,18 @@ FIGURE_SPECS: dict[str, dict] = {
 }
 
 
-def render() -> None:
+def render(scope: str = "full") -> None:
+    """*scope* controls which tabs actually show.
+
+    ``"full"`` (default, Advanced's own Export tab) is unchanged: every
+    tab, video included. ``"light"`` (Analysis's Export scope) keeps only
+    Data files, Figures and PDF report (myogait's own native report) --
+    Video, Video report and MoCap report are Advanced-only there, plus it
+    adds the group-staging tool below. The audit found the un-scoped
+    version's full surface duplicated across two nav locations with no
+    distinction (UX-06); this is what makes the "slim" side of that split
+    real rather than cosmetic.
+    """
     source = state.get_source()
     if source is None:
         page_header("Export")
@@ -62,7 +85,10 @@ def render() -> None:
     config = state.get_config()
     result = state.get_runner().run(config)
 
-    page_header("Export", "Data files, publication figures, and rendered video.")
+    if scope == "light":
+        page_header("Export", "Data files, publication figures, and the native report.")
+    else:
+        page_header("Export", "Data files, publication figures, and rendered video.")
     recording_switcher("export")
 
     if not result.ok:
@@ -77,22 +103,30 @@ def render() -> None:
             "are a generated signal."
         )
 
-    tab_data, tab_figures, tab_video, tab_report, tab_video_report, tab_mocap_report = st.tabs(
-        ["Data files", "Figures", "Video", "PDF report", "Video report", "MoCap report"]
-    )
-
-    with tab_data:
-        _data_tab(result, source)
-    with tab_figures:
-        _figures_tab(result)
-    with tab_video:
-        _video_tab(result, source)
-    with tab_report:
-        _report_tab(result, config)
-    with tab_video_report:
-        _video_report_tab(result, source)
-    with tab_mocap_report:
-        _mocap_report_tab(result, config, source)
+    if scope == "light":
+        tab_data, tab_figures, tab_report = st.tabs(["Data files", "Figures", "PDF report"])
+        with tab_data:
+            _data_tab(result, source)
+        with tab_figures:
+            _figures_tab(result)
+        with tab_report:
+            _report_tab(result, config)
+    else:
+        tab_data, tab_figures, tab_video, tab_report, tab_video_report, tab_mocap_report = st.tabs(
+            ["Data files", "Figures", "Video", "PDF report", "Video report", "MoCap report"]
+        )
+        with tab_data:
+            _data_tab(result, source)
+        with tab_figures:
+            _figures_tab(result)
+        with tab_video:
+            _video_tab(result, source)
+        with tab_report:
+            _report_tab(result, config)
+        with tab_video_report:
+            _video_report_tab(result, source)
+        with tab_mocap_report:
+            _mocap_report_tab(result, config, source)
 
     st.divider()
     reproducibility_panel(
@@ -101,6 +135,66 @@ def render() -> None:
         c3d_options=source.c3d_options if source.kind == "c3d" else None,
         key="export",
     )
+
+    if scope == "light":
+        _group_staging_section()
+
+
+def _group_staging_section() -> None:
+    """Name and save a set of finished jobs, for Advanced to recall later.
+
+    Phase 3 of the audit's action plan rebuilds Advanced's "Patient over
+    time" and "Two groups" scopes to work from a *named* set of recordings
+    picked once, rather than re-selected from scratch on every visit. This
+    is the producing half only: pick jobs, name the set, save it here in
+    session state (not yet persisted to disk -- a session-scoped group is
+    the deliberate default until Phase 3 defines what "recall" needs).
+    Nothing reads these groups back yet.
+    """
+    from ..jobs import DONE, JobManager
+
+    st.divider()
+    with st.expander("Prepare a named group for Advanced", expanded=False):
+        st.caption(
+            "Pick finished recordings and give them a name. Once Advanced's "
+            "Patient over time and Two groups scopes are rebuilt to use "
+            "this (a later phase), they will recall this exact set directly "
+            "instead of re-selecting files by hand each visit."
+        )
+        jobs = [j for j in JobManager(SETTINGS).list_jobs() if j.status == DONE]
+        if not jobs:
+            st.caption("No finished extraction yet.")
+            return
+
+        labels = {j.ticket: _job_label(j) for j in jobs}
+        picked = st.multiselect(
+            "Recordings", list(labels), format_func=lambda t: labels[t],
+            key="group_staging_picks",
+        )
+        name = st.text_input(
+            "Group name", key="group_staging_name",
+            placeholder="e.g. Suivi Patient 004",
+        )
+        if st.button(
+            "Save group", key="group_staging_save",
+            disabled=not (picked and name.strip()),
+        ):
+            groups = dict(st.session_state.get(_GROUPS_KEY, {}))
+            groups[name.strip()] = list(picked)
+            st.session_state[_GROUPS_KEY] = groups
+            st.success(f"Saved '{name.strip()}' ({len(picked)} recording(s)).")
+
+        saved = st.session_state.get(_GROUPS_KEY, {})
+        if saved:
+            st.markdown("**Saved groups**")
+            for group_name, tickets in list(saved.items()):
+                c1, c2 = st.columns([4, 1])
+                c1.caption(f"**{group_name}** — {len(tickets)} recording(s)")
+                if c2.button("Remove", key=f"group_staging_remove_{group_name}"):
+                    remaining = dict(st.session_state[_GROUPS_KEY])
+                    remaining.pop(group_name, None)
+                    st.session_state[_GROUPS_KEY] = remaining
+                    st.rerun()
 
 
 # ── Data files ───────────────────────────────────────────────────────

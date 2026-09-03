@@ -189,6 +189,6 @@ def render() -> None:
     elif scope == _ACCURACY:
         page_pool.render(show_header=False, mode="accuracy")
     elif scope == _EXPORT:
-        page_export.render()
+        page_export.render(scope="light")
     else:
         page_pool.render(show_header=False, mode="single")
