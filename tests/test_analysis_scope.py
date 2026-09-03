@@ -1,7 +1,7 @@
 """Analysis scope selection: data-aware default, legacy remap, Export pill.
 
 The Analysis page must open on the view that shows the data actually loaded
-(a single freshly loaded source -> "Single run", a built cohort -> a group
+(a single freshly loaded source -> "Trial Explorer", a built cohort -> a group
 view), survive scope labels stored by an older app version, and expose the
 export surface as a scope of its own.
 """
@@ -15,7 +15,7 @@ from myogait_app.pooling import RunResult
 
 APP_PY = Path(__file__).resolve().parents[1] / "app.py"
 
-SCOPES = ("Single run", "Patient over time", "One group", "Two groups",
+SCOPES = ("Trial Explorer", "Patient over time", "One group", "Two groups",
           "Accuracy vs C3D", "Export")
 
 
