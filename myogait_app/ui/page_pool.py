@@ -522,6 +522,19 @@ def _condition_view(
     joints: tuple[str, ...] = SAGITTAL_JOINTS,
     sides: tuple[str, ...] = ("left", "right"),
 ) -> None:
+    all_runs = list(runs)
+    excluded = set(st.session_state.get("pool_excluded_runs") or [])
+    excluded_here = st.multiselect(
+        "Exclude recordings from statistics (kept in the cohort)",
+        [run.name for run in all_runs],
+        default=[run.name for run in all_runs if run.name in excluded],
+        key=f"pool_exclude_{label}",
+    )
+    updated = (excluded - {run.name for run in all_runs}) | set(excluded_here)
+    if updated != excluded:
+        st.session_state["pool_excluded_runs"] = list(updated)
+        st.rerun()
+    runs = [run for run in all_runs if run.name not in excluded]
     summary = condition_summary(runs, joints)
     spatio = summary["spatiotemporal"]
 
