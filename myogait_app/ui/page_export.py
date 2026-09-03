@@ -47,10 +47,15 @@ FIGURE_SPECS: dict[str, dict] = {
 }
 
 
-def render() -> None:
+def render(mode: str = "advanced") -> None:
+    """Render the full Advanced export surface or Analysis's clinical subset."""
+    if mode not in {"analysis", "advanced"}:
+        raise ValueError(f"Unknown export mode: {mode}")
     source = state.get_source()
     if source is None:
         page_header("Export")
+        if mode == "analysis":
+            _prepared_groups()
         source_loader(
             "Nothing loaded.",
             "Pick a finished extraction below, or go to New assessment to load "
@@ -62,7 +67,11 @@ def render() -> None:
     config = state.get_config()
     result = state.get_runner().run(config)
 
-    page_header("Export", "Data files, publication figures, and rendered video.")
+    page_header(
+        "Export",
+        "Data files, publication figures, and a native PDF report."
+        if mode == "analysis" else "Data files, publication figures, and rendered video.",
+    )
     recording_switcher("export")
 
     if not result.ok:
@@ -77,22 +86,28 @@ def render() -> None:
             "are a generated signal."
         )
 
-    tab_data, tab_figures, tab_video, tab_report, tab_video_report, tab_mocap_report = st.tabs(
-        ["Data files", "Figures", "Video", "PDF report", "Video report", "MoCap report"]
-    )
+    labels = ["Data files", "Figures", "PDF report"]
+    if mode == "advanced":
+        labels = ["Data files", "Figures", "Video", "PDF report", "Video report", "MoCap report"]
+    tabs = st.tabs(labels)
 
-    with tab_data:
+    with tabs[0]:
         _data_tab(result, source)
-    with tab_figures:
+    with tabs[1]:
         _figures_tab(result)
-    with tab_video:
-        _video_tab(result, source)
-    with tab_report:
+    report_tab = tabs[2] if mode == "analysis" else tabs[3]
+    with report_tab:
         _report_tab(result, config)
-    with tab_video_report:
-        _video_report_tab(result, source)
-    with tab_mocap_report:
-        _mocap_report_tab(result, config, source)
+    if mode == "advanced":
+        with tabs[2]:
+            _video_tab(result, source)
+        with tabs[4]:
+            _video_report_tab(result, source)
+        with tabs[5]:
+            _mocap_report_tab(result, config, source)
+
+    if mode == "analysis":
+        _prepared_groups()
 
     st.divider()
     reproducibility_panel(
@@ -101,6 +116,36 @@ def render() -> None:
         c3d_options=source.c3d_options if source.kind == "c3d" else None,
         key="export",
     )
+
+
+def _prepared_groups() -> None:
+    """Store named selections of completed jobs for Advanced cohort views."""
+    from ..jobs import DONE, JobManager
+
+    jobs = [job for job in JobManager(SETTINGS).list_jobs() if job.status == DONE]
+    st.divider()
+    st.subheader("Prepare groups for Advanced")
+    st.caption("Named selections live for this browser session and can be reused in Advanced.")
+    if not jobs:
+        st.caption("No completed recording is available on this machine yet.")
+        return
+
+    def label(job) -> str:
+        study = job.study or {}
+        tags = " / ".join(str(study[key]) for key in ("patient_id", "condition") if study.get(key))
+        return f"{job.video_name} ({job.model})" + (f" — {tags}" if tags else "")
+
+    selected = st.multiselect("Completed recordings", jobs, format_func=label, key="prepared_group_jobs")
+    name = st.text_input("Group name", key="prepared_group_name", placeholder="e.g. baseline cohort")
+    if st.button("Save prepared group", key="prepared_group_save", disabled=not name.strip() or not selected):
+        groups = dict(st.session_state.get("prepared_groups") or {})
+        groups[name.strip()] = [job.ticket for job in selected]
+        st.session_state["prepared_groups"] = groups
+        st.success(f"Saved {name.strip()!r} ({len(selected)} recording(s)).")
+
+    groups = st.session_state.get("prepared_groups") or {}
+    if groups:
+        st.caption("Available in this session: " + ", ".join(sorted(groups)))
 
 
 # ── Data files ───────────────────────────────────────────────────────
