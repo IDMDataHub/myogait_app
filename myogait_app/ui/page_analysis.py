@@ -1,11 +1,12 @@
 """Analysis -- one guided screen for every scope the loaded data supports.
 
-A clinician thinks in questions, not in page names: one run, one patient over
-time, one group, two groups compared, or how the markerless measure agrees
-with a C3D reference. This page offers exactly those scopes, tells at a
-glance which ones the loaded data can answer (and what is missing for the
-others), and keeps the export surface one click away. The scope views
-themselves are the existing pages, rendered underneath.
+A clinician thinks in questions, not in page names: one run, a general
+browse of a cohort, one patient over time, one group, two groups compared,
+or how the markerless measure agrees with a C3D reference. This page
+offers exactly those scopes, tells at a glance which ones the loaded data
+can answer (and what is missing for the others), and keeps the export
+surface one click away. The scope views themselves are the existing
+pages, rendered underneath.
 """
 
 from __future__ import annotations
@@ -20,12 +21,17 @@ from .components import page_header
 
 #: Scope labels, in display order.
 _RUN = "Trial Explorer"
+_MARKERBASED = "Markerbased vs Monocular"
 _PATIENT = "Patient over time"
 _GROUP = "One group"
 _TWO_GROUPS = "Two groups"
 _ACCURACY = "Accuracy vs C3D"
 _EXPORT = "Export"
-_SCOPES = (_RUN, _PATIENT, _GROUP, _TWO_GROUPS, _ACCURACY, _EXPORT)
+#: "Patient over time" / "One group" / "Two groups" are a bridge to Phase 3
+#: of the audit's action plan, which rebuilds them in Advanced with full
+#: cross-parameter analyses -- kept here, unchanged, until that lands so
+#: nothing currently reachable becomes unreachable mid-migration.
+_SCOPES = (_RUN, _MARKERBASED, _PATIENT, _GROUP, _TWO_GROUPS, _ACCURACY, _EXPORT)
 
 #: Older labels stored in a previous session -> their new home.
 _LEGACY_SCOPES = {"Single run": _RUN, "Study & conditions": _GROUP}
@@ -93,6 +99,8 @@ def _availability(inv: _Inventory) -> dict[str, str]:
     hints: dict[str, str] = {s: "" for s in _SCOPES}
     if not inv.source_name:
         hints[_RUN] = "Load a recording on New assessment first."
+    if not inv.ok_runs:
+        hints[_MARKERBASED] = "Build a cohort below (upload several pivot JSONs)."
     if not inv.n_sessions and not inv.source_name:
         hints[_PATIENT] = "Upload several visits of one patient."
     if not inv.ok_runs:
@@ -140,9 +148,10 @@ def _strip(inv: _Inventory) -> None:
 def render() -> None:
     page_header(
         "Analysis",
-        "Pick the question: one run, one patient over time, one group, two "
-        "groups compared, or accuracy against a C3D reference -- and export "
-        "from here. Greyed hints say what data each scope still needs.",
+        "Pick the question: one run, a general browse of a cohort, one "
+        "patient over time, one group, two groups compared, or accuracy "
+        "against a C3D reference -- and export from here. Greyed hints say "
+        "what data each scope still needs.",
     )
 
     inv = _inventory()
@@ -171,6 +180,8 @@ def render() -> None:
     st.session_state["_embedded_header"] = True
     if scope == _RUN:
         page_pipeline.render()
+    elif scope == _MARKERBASED:
+        page_pool.render(show_header=False, mode="markerbased")
     elif scope == _PATIENT:
         page_longitudinal.render()
     elif scope == _TWO_GROUPS:
