@@ -541,8 +541,21 @@ def _angles_section(cfg: AnglesConfig, runtime, source=None) -> AnglesConfig:
                     f"source that doesn't resolve the paired landmarks, so "
                     f"safe to leave on."
                 )
+            # Deliberately a separate on/off from the Cohort page's own ISB
+            # checkbox (page_pool.py) -- this one applies only to the single
+            # recording open here (Pipeline explorer, Comparator, etc), that
+            # one to every recording loaded into a cohort. The two are not
+            # linked; changing one does not change the other. Flagged by the
+            # audit (UX-03) as a source of confusion given the near-identical
+            # wording -- full unification is deferred, this note is the
+            # interim fix.
+            isb_hint += (
+                " This is a separate setting from the Cohort page's own "
+                "'ISB reconstruction for Vicon/C3D references' checkbox -- "
+                "changing one does not change the other."
+            )
             isb_reconstruction = st.checkbox(
-                "ISB reconstruction (hip/knee/ankle)",
+                "ISB reconstruction (hip/knee/ankle) -- this recording",
                 value=cfg.isb_reconstruction and isb_ok,
                 disabled=not isb_ok,
                 help=isb_hint,

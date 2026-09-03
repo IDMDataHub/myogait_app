@@ -111,7 +111,7 @@ def render(show_header: bool = True, mode: str = "single") -> None:
     )
     auto_mode = st.session_state.get("pool_config_mode", _AUTO_RECIPE) == _AUTO_RECIPE
     isb_on = st.checkbox(
-        "ISB reconstruction for Vicon/C3D references", value=True, key="pool_isb",
+        "ISB reconstruction for Vicon/C3D references -- this cohort", value=True, key="pool_isb",
         disabled=auto_mode,
         help=(
             "Not controllable here in Auto-detect mode -- each recording keeps "
@@ -126,7 +126,10 @@ def render(show_header: bool = True, mode: str = "single") -> None:
             "accuracy against Vicon if you want hip/knee bias to reflect "
             "pure markerless tracking error rather than also the ISB-vs-"
             "sagittal angle-definition offset (see the caption under "
-            "Accuracy below)."
+            "Accuracy below). Separate setting from the sidebar's own 'ISB "
+            "reconstruction' checkbox used elsewhere in the app (Pipeline "
+            "explorer, Comparator) -- this one applies only to recordings "
+            "loaded into this cohort, changing one does not change the other."
         ),
     )
 
@@ -376,6 +379,12 @@ def _group_biomarkers(groups: dict, a: str, b: str, joints: tuple[str, ...]) -> 
         "published IMU numbers. Hedges g is the bias-corrected effect size; "
         "the Welch p-value ignores repeated runs per patient, so read it as "
         "descriptive."
+    )
+    st.warning(
+        "These pelvis-derived accelerometry values are a different, simpler "
+        "computation than the virtual-accelerometer biomarkers on the "
+        "Accelerometry page (different site, no torso normalisation) -- "
+        "don't compare the two directly even where a name matches."
     )
     rows = group_comparison_biomarkers(runs, a, b, tuple(params), joints, by="condition")
     table = []

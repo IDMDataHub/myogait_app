@@ -31,6 +31,8 @@ from ..validation import validate_pivot
 from ..storage import exceeds_in_memory_warning, store_uploaded_file
 from . import state
 from .components import (
+    backend_availability_refresh_button,
+    cached_backend_availability,
     empty_state,
     page_header,
     runtime_badge,
@@ -710,13 +712,14 @@ def _build_isb_context(
 def _video_tab() -> None:
     runtime = get_runtime()
     runtime_badge(runtime)
-    availability = runtime.backend_availability()
+    availability = cached_backend_availability(runtime, key="video_tab")
 
     if not any(availability.values()):
         st.warning(
             "No pose backend's package is installed yet -- pick one below and "
             "install it, for example: `pip install \"myogait[mediapipe]\"`."
         )
+    backend_availability_refresh_button(runtime, key="video_tab")
 
     labels = {
         b.name: f"{b.label} - {b.keypoints} kp"
