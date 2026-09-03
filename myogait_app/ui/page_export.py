@@ -54,14 +54,19 @@ def render(mode: str = "advanced") -> None:
     source = state.get_source()
     if source is None:
         page_header("Export")
+        # Both tools below read finished jobs, not the loaded recording, so a
+        # user who has only built a cohort can still reach them here.
         if mode == "analysis":
             _prepared_groups()
         source_loader(
-            "Nothing loaded.",
+            "Nothing loaded — the single-recording exports (data, figures, "
+            "report) need one. The tool below works off finished jobs.",
             "Pick a finished extraction below, or go to New assessment to load "
             "one.",
             slot="export",
         )
+        if mode == "advanced":
+            _combined_pair_export_section(state.get_config())
         return
 
     config = state.get_config()
@@ -116,6 +121,172 @@ def render(mode: str = "advanced") -> None:
         c3d_options=source.c3d_options if source.kind == "c3d" else None,
         key="export",
     )
+
+    if mode == "advanced":
+        _combined_pair_export_section(config)
+
+
+def _ready_pairs() -> dict[tuple[str, str], list]:
+    """(patient_id, condition) -> finished jobs, for groups holding both a
+    video extraction and a C3D import -- the same "ready to compare"
+    definition New assessment -> Recent jobs and Accuracy vs C3D's history
+    picker use, so "paired" means one thing across the app."""
+    from ..jobs import DONE, JobManager
+    from .page_data import C3D_IMPORT_MODEL_LABEL
+
+    grouped: dict[tuple[str, str], list] = {}
+    for job in JobManager(SETTINGS).list_jobs():
+        if job.status != DONE:
+            continue
+        study = job.study or {}
+        patient = str(study.get("patient_id") or "").strip()
+        condition = str(study.get("condition") or "").strip()
+        if patient and condition:
+            grouped.setdefault((patient, condition), []).append(job)
+    return {
+        key: jobs for key, jobs in grouped.items()
+        if any(j.model == C3D_IMPORT_MODEL_LABEL for j in jobs)
+        and any(j.model != C3D_IMPORT_MODEL_LABEL for j in jobs)
+    }
+
+
+def _combined_pair_export_section(config) -> None:
+    """One file for a whole cohort of matched video+C3D pairs.
+
+    Alongside (not instead of) the per-recording exports above and
+    page_pool.py's "Export cohort bundle (zip)" -- a different thing: the
+    zip aggregates statistics/figures *across* a condition-grouped cohort;
+    this keeps each *pair's* own complete pipeline result together.
+
+    Each selected pair is re-run through the current sidebar configuration
+    (state.get_config()), like every other export on this page.
+
+    JSON keeps full fidelity (every side's complete data/cycles/stats,
+    exactly what PipelineRunner.run returned) -- for re-import or an
+    external script. Excel is a compact side-by-side summary
+    (spatio-temporal metrics, cycle counts): a workbook is the wrong shape
+    for nested per-frame data, which the JSON option already carries.
+    """
+    groups = _ready_pairs()
+    st.divider()
+    with st.expander("Export a cohort of video+C3D pairs as one file", expanded=False):
+        st.caption(
+            "Every selected pair's complete pipeline result (current sidebar "
+            "configuration), combined into a single file."
+        )
+        if not groups:
+            st.caption("No ready video+C3D pair in Recent jobs yet.")
+            return
+
+        labels = {key: f"{key[0]} / {key[1]}" for key in groups}
+        picked = st.multiselect(
+            "Pairs", list(groups), format_func=lambda key: labels[key],
+            key="combined_export_pairs",
+        )
+        fmt = st.radio(
+            "Format", ["JSON (full fidelity)", "Excel (summary)"],
+            key="combined_export_format", horizontal=True,
+        )
+        if st.button(
+            "Build combined file", type="primary", key="combined_export_go",
+            disabled=not picked,
+        ):
+            with st.spinner(f"Running the pipeline on {len(picked)} pair(s)..."):
+                try:
+                    pairs_data = [_combine_pair(key, groups[key], config) for key in picked]
+                except Exception as exc:  # noqa: BLE001 -- shown verbatim, not raised
+                    st.error(f"Could not process one pair: {type(exc).__name__}: {exc}")
+                    return
+
+            if fmt.startswith("JSON"):
+                _run_export(
+                    "Combined pairs (JSON)",
+                    state.workspace().outputs / "cohort_pairs.json",
+                    lambda path: _write_combined_json(pairs_data, path),
+                    spinner="Writing the combined file...",
+                )
+            else:
+                _run_export(
+                    "Combined pairs (Excel summary)",
+                    state.workspace().outputs / "cohort_pairs.xlsx",
+                    lambda path: _write_combined_excel(pairs_data, path),
+                    spinner="Writing the combined file...",
+                )
+
+
+def _combine_pair(key: tuple[str, str], jobs: list, config) -> dict:
+    """Run *config* on both sides of one pair, keyed "video"/"c3d"."""
+    from .page_data import C3D_IMPORT_MODEL_LABEL
+
+    record: dict = {"patient_id": key[0], "condition": key[1]}
+    for job in jobs:
+        kind = "c3d" if job.model == C3D_IMPORT_MODEL_LABEL else "video"
+        path = job.result_path(SETTINGS)
+        if path is None:
+            continue
+        record[kind] = _run_pipeline_on_result_file(path, config)
+    return record
+
+
+def _run_pipeline_on_result_file(path: Path, config) -> dict:
+    """{"data":..., "cycles":..., "stats":...} for one saved job result,
+    run through *config* -- exactly what PipelineRunner.run returns."""
+    from myogait import load_json
+
+    from ..pipeline import PipelineRunner
+
+    raw = load_json(str(path))
+    runner = PipelineRunner(raw, source_key=str(path))
+    result = runner.run(config)
+    return {"data": result.data, "cycles": result.cycles, "stats": result.stats}
+
+
+def _json_default(obj):
+    """json.dumps fallback for numpy scalars/arrays left in cycles/stats --
+    myogait.schema.save_json covers `data` alone; this export bundles
+    cycles/stats too."""
+    import numpy as np
+
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, np.generic):
+        return obj.item()
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+
+def _write_combined_json(pairs_data: list[dict], path: Path) -> None:
+    import json
+
+    path.write_text(
+        json.dumps({"pairs": pairs_data}, indent=2, default=_json_default),
+        encoding="utf-8",
+    )
+
+
+def _write_combined_excel(pairs_data: list[dict], path: Path) -> None:
+    """One row per (pair, kind): patient/condition, cycle count, and each
+    spatio-temporal / step-length metric that side's stats carry."""
+    import pandas as pd
+
+    rows = []
+    for pair in pairs_data:
+        for kind in ("video", "c3d"):
+            side = pair.get(kind)
+            if not side:
+                continue
+            stats = side.get("stats") or {}
+            spatio = stats.get("spatiotemporal") or {}
+            step = stats.get("step_length") or {}
+            n_cycles = len((side.get("cycles") or {}).get("cycles", []))
+            rows.append({
+                "Patient": pair["patient_id"],
+                "Condition": pair["condition"],
+                "Kind": kind,
+                "Cycles": n_cycles,
+                **{f"spatiotemporal.{k}": v for k, v in spatio.items()},
+                **{f"step_length.{k}": v for k, v in step.items()},
+            })
+    pd.DataFrame(rows).to_excel(path, index=False, sheet_name="Cohort pairs summary")
 
 
 def _prepared_groups() -> None:
