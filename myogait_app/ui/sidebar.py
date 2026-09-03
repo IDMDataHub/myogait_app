@@ -61,6 +61,21 @@ def _available_filters() -> list[str]:
 _K_LAST_SUBJECT_FEMUR = "mg_last_subject_femur_mm"
 
 
+#: Session key for the essential/expert sidebar density switch (UX-07).
+_K_EXPERT = "sidebar_expert"
+
+
+def _expert_mode() -> bool:
+    """Whether the pipeline sections open expanded (expert) or stay collapsed.
+
+    The Trial Explorer sidebar carries ~45 controls; opening every stage by
+    default made it a wall of settings. Essential mode (the default) keeps the
+    advanced stages collapsed so the sidebar reads at a glance, without hiding
+    or removing any control -- expert mode simply re-expands them.
+    """
+    return bool(st.session_state.get(_K_EXPERT, False))
+
+
 def render(config: PipelineConfig, source=None) -> PipelineConfig:
     """Draw the controls and return the configuration they describe.
 
@@ -72,6 +87,15 @@ def render(config: PipelineConfig, source=None) -> PipelineConfig:
     on purpose; do not grow this into a general escape hatch.
     """
     runtime = get_runtime()
+
+    st.checkbox(
+        "Expert settings",
+        value=False,
+        key=_K_EXPERT,
+        help="Off keeps the advanced pipeline sections (signal conditioning, "
+             "joint kinematics, gait events) collapsed for a lighter sidebar; "
+             "on re-expands them. Every control stays available either way.",
+    )
 
     config = _seed_metadata_from_source(config, source)
     subject = _subject_section(config.subject)
@@ -313,7 +337,7 @@ def _sync_femur_from_subject(cfg: EventsConfig, subject: SubjectConfig) -> Event
 
 def _normalize_section(cfg: NormalizeConfig) -> NormalizeConfig:
     components.sidebar_section_marker("01", BRANDING.primary_red)
-    with st.expander("1. Signal conditioning", expanded=True):
+    with st.expander("1. Signal conditioning", expanded=_expert_mode()):
         options = _available_filters()
         filters = st.multiselect(
             "Filters (applied in order)",
@@ -393,7 +417,7 @@ def _normalize_section(cfg: NormalizeConfig) -> NormalizeConfig:
 
 def _angles_section(cfg: AnglesConfig, runtime, source=None) -> AnglesConfig:
     components.sidebar_section_marker("02", BRANDING.primary_blue)
-    with st.expander("2. Joint kinematics", expanded=True):
+    with st.expander("2. Joint kinematics", expanded=_expert_mode()):
         methods = list(runtime.angle_methods)
         method = st.selectbox(
             "Angle method", methods,
@@ -693,7 +717,7 @@ def _bias_section(cfg: BiasConfig, angles: AnglesConfig, runtime) -> BiasConfig:
 
 def _events_section(cfg: EventsConfig, runtime) -> EventsConfig:
     components.sidebar_section_marker("03", BRANDING.accent_mark)
-    with st.expander("3. Gait events", expanded=True):
+    with st.expander("3. Gait events", expanded=_expert_mode()):
         methods = list(runtime.event_methods) or ["zeni"]
         use_consensus = st.checkbox(
             "Consensus across methods",
