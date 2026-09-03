@@ -29,8 +29,8 @@ def render() -> None:
         "identifiers, start it. It runs as a job (see *Recent jobs*).\n"
         "2. **C3D**: import the matching Vicon trial and give it the *same* "
         "patient and condition.\n\n"
-        "They then pair **automatically by patient** in **Analysis → Study & "
-        "conditions**, where the markerless-vs-Vicon accuracy appears on its "
+        "They then pair **automatically by patient** in **Analysis → Accuracy "
+        "vs C3D**, where the markerless-vs-Vicon accuracy appears on its "
         "own. A single video alone is fine too — you just get variability, not "
         "accuracy."
     )
