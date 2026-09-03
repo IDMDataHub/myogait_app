@@ -55,6 +55,12 @@ def render() -> None:
         "Comparator",
         "Vary one thing at a time and see what it changes.",
     )
+    st.caption(
+        "Every value in a sweep is a **real pipeline run** — the recording is "
+        "re-analysed end to end for each one, not interpolated between two "
+        "results. A wide numeric sweep therefore costs one full run per value "
+        "(the shared stage cache keeps the unchanged stages free)."
+    )
     tab_sweep, tab_models = st.tabs(["Parameter sweep", "Compare extractions"])
     with tab_sweep:
         _sweep_tab()
