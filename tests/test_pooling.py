@@ -16,6 +16,7 @@ from myogait_app.pooling import (
     _duration_s,
     analyse_data,
     condition_agreement,
+    condition_descriptives,
     condition_summary,
     group_by_condition,
     overall_agreement,
@@ -195,6 +196,13 @@ def test_condition_summary_joint_selection():
     runs = [_run("video", "base", "P1", "r1")]
     summary = condition_summary(runs, joints=("hip",))
     assert set(summary["rom_deg"]) == {"hip"}
+
+
+def test_condition_descriptives_reports_spatiotemporal_and_rom_values():
+    rows = condition_descriptives([_run("video", "base", "P1", "r1")])
+    parameters = {row["parameter"] for row in rows}
+    assert "Cadence Steps Per Min" in parameters
+    assert "Hip ROM (deg)" in parameters
 
 
 def test_condition_agreement_side_selection():

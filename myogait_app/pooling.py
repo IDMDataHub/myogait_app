@@ -406,6 +406,27 @@ def _mean_or_none(values):
     return float(np.mean(nums)) if nums else None
 
 
+def condition_descriptives(runs: list[RunResult], joints: tuple[str, ...] = SAGITTAL_JOINTS) -> list[dict]:
+    """Descriptive statistics for the v1 cohort parameters."""
+    values: dict[str, list[float]] = {}
+    for run in runs:
+        for key, value in _spatiotemporal(run).items():
+            if _finite_number(value):
+                values.setdefault(key.replace("_", " ").title(), []).append(float(value))
+    for joint in joints:
+        values[f"{joint.title()} ROM (deg)"] = [
+            value for subject in rom_values_by_subject(runs, joint) for value in subject
+        ]
+    rows = []
+    for parameter, series in values.items():
+        if series:
+            arr = np.asarray(series, dtype=float)
+            rows.append({"parameter": parameter, "n": len(arr), "mean": float(arr.mean()),
+                         "sd": float(arr.std(ddof=1)) if len(arr) > 1 else 0.0,
+                         "min": float(arr.min()), "max": float(arr.max())})
+    return rows
+
+
 def rom_values_by_subject(runs: list[RunResult], joint: str) -> list[list[float]]:
     """Per-cycle joint ROM (deg), grouped by patient.
 

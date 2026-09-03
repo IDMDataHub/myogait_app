@@ -31,6 +31,7 @@ from ..pooling import (
     UNSPECIFIED,
     condition_agreement,
     condition_comparison,
+    condition_descriptives,
     condition_summary,
     group_by_condition,
     load_runs,
@@ -535,6 +536,11 @@ def _condition_view(
     cols[4].metric("Duration", _fmt(summary.get("duration_s"), "s"))
 
     _scores_row(summary)
+
+    descriptives = condition_descriptives(runs, joints)
+    if descriptives:
+        st.markdown("**Descriptive statistics**")
+        st.dataframe(pd.DataFrame(descriptives).round(2), use_container_width=True, hide_index=True)
 
     pooled = summary["cycles"]
     dark = is_dark()
