@@ -18,7 +18,8 @@ from pathlib import Path
 import streamlit as st
 
 from ..pipeline import PipelineRunner
-from ..pivot_io import load_uploaded_pivot
+from ..jobs import DONE, JobManager
+from ..settings import SETTINGS
 from ..runtime import get_runtime
 from . import state
 from .components import empty_state, page_header
@@ -39,34 +40,46 @@ def render() -> None:
         "time, all run through the sidebar's current pipeline configuration.",
     )
 
-    uploaded = st.file_uploader(
-        "Pivot JSON files - one per session", type=["json"],
-        accept_multiple_files=True, key="long_upload",
-    )
-    if not uploaded:
+    jobs = [job for job in JobManager(SETTINGS).list_jobs() if job.status == DONE and (job.study or {}).get("patient_id")]
+    groups = st.session_state.get("prepared_groups") or {}
+    if not jobs:
         empty_state(
             "No sessions loaded.",
-            "Upload two or more pivot JSON files exported from earlier "
-            "extractions, one per recording session.",
+            "Complete recordings on New assessment first; they will appear here by Patient ID.",
         )
         return
 
-    st.caption(
-        f"{len(uploaded)} file(s). Give each a session date - defaults to "
-        "today, in upload order."
+    patient_ids = sorted({str(job.study["patient_id"]) for job in jobs})
+    source = st.radio("Session source", ["Patient history", "Prepared group"], horizontal=True)
+    if source == "Patient history":
+        patient = st.selectbox("Patient ID", patient_ids, key="long_patient")
+        candidates = [job for job in jobs if str(job.study.get("patient_id")) == patient]
+    else:
+        if not groups:
+            st.info("No prepared group yet. Create one in Analysis → Export.")
+            return
+        group_name = st.selectbox("Prepared group", sorted(groups), key="long_prepared_group")
+        tickets = set(groups[group_name])
+        candidates = [job for job in jobs if job.ticket in tickets]
+    selected = st.multiselect(
+        "Sessions", candidates, default=candidates, key="long_history_sessions",
+        format_func=lambda job: f"{job.video_name} — {(job.study or {}).get('condition', 'no condition')}",
     )
-    dated_files = []
-    for i, upload in enumerate(uploaded):
+    if not selected:
+        return
+
+    dated_jobs = []
+    for i, job in enumerate(selected):
         columns = st.columns([3, 1])
-        columns[0].text(upload.name)
+        columns[0].text(job.video_name)
         session_date = columns[1].date_input(
-            "Date", value=date_cls.today(), key=f"long_date_{i}_{upload.name}",
+            "Date", value=date_cls.today(), key=f"long_date_{job.ticket}",
             label_visibility="collapsed",
         )
-        dated_files.append((upload, session_date))
+        dated_jobs.append((job, session_date))
 
     if st.button("Run all sessions", type="primary", use_container_width=True):
-        _run_sessions(dated_files)
+        _run_sessions(dated_jobs)
 
     sessions = state.get_longitudinal_sessions()
     if not sessions:
@@ -99,10 +112,15 @@ def _run_sessions(dated_files) -> None:
     sessions = []
 
     with st.spinner(f"Running {len(dated_files)} session(s)..."):
-        for upload, session_date in dated_files:
-            label = upload.name
+        for job, session_date in dated_files:
+            label = job.video_name
             try:
-                data = load_uploaded_pivot(state.workspace(), upload, upload.name)
+                path = job.result_path(SETTINGS)
+                if path is None:
+                    raise FileNotFoundError("The completed job result has been purged.")
+                from myogait import load_json
+
+                data = load_json(str(path))
                 runner = PipelineRunner(data, source_key=f"long-{label}-{session_date}")
                 result = runner.run(config)
                 if not result.ok:
@@ -192,9 +210,37 @@ def _pairwise_section(sessions: list[dict]) -> None:
     figure = plot_session_comparison(sessions[idx_a], sessions[idx_b])
     st.pyplot(figure, use_container_width=True)
 
+    from ..mdc import exceeds_mdc, mdc95, pooled_sw
+
+    rows = []
+    for joint in ("hip", "knee", "ankle"):
+        values_a = _cycle_rom(sessions[idx_a], joint)
+        values_b = _cycle_rom(sessions[idx_b], joint)
+        if not values_a or not values_b:
+            continue
+        delta = sum(values_a) / len(values_a) - sum(values_b) / len(values_b)
+        threshold = mdc95(pooled_sw([values_a, values_b]), n=min(len(values_a), len(values_b)))
+        rows.append({"Parameter": f"{joint.title()} ROM (deg)", "Difference": round(delta, 1),
+                     "MDC95": None if threshold is None else round(threshold, 1),
+                     "Beyond MDC": "yes" if exceeds_mdc(delta, threshold) else "no / unavailable"})
+    if rows:
+        st.caption("Change beyond MDC95 is unlikely to be explained by cycle-to-cycle measurement noise.")
+        st.dataframe(rows, use_container_width=True, hide_index=True)
+
     import matplotlib.pyplot as plt
 
     plt.close(figure)
+
+
+def _cycle_rom(session: dict, joint: str) -> list[float]:
+    """Finite per-cycle ROM values used for the longitudinal MDC estimate."""
+    values = []
+    for cycle in (session.get("cycles") or {}).get("cycles", []):
+        wave = (cycle.get("angles_normalized") or {}).get(joint) or []
+        finite = [float(value) for value in wave if isinstance(value, (int, float))]
+        if len(finite) >= 2:
+            values.append(max(finite) - min(finite))
+    return values
 
 
 # ── PDF report ───────────────────────────────────────────────────────
