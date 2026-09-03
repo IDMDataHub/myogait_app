@@ -78,6 +78,16 @@ def test_generate_mocap_report_produces_a_downloadable_file():
     )
 
 
+def test_advanced_export_keeps_video_and_mocap_actions():
+    """Analysis is slimmed down, but Advanced must retain all export routes."""
+    pytest.importorskip("streamlit")
+    pytest.importorskip("myogait")
+    app = _app_on_export_with_demo_data()
+
+    assert app.button(key="vidrep_go")
+    assert app.button(key="mocaprep_go")
+
+
 def test_generate_excel_workbook_produces_a_downloadable_file():
     """A Data files export, for coverage on _run_export's non-report path
     too -- button key "exp_xlsx"."""
