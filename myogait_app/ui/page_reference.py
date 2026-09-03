@@ -85,6 +85,15 @@ extraction or a C3D import register for pairing today.
 """,
     ),
     (
+        "Method validation: status",
+        """
+**Method validation is frozen while its next scope is discussed with Frédéric
+Fer.** The Advanced tab remains available for its existing AIM benchmark and
+server-side `.mat` workflow, but it is not the video-versus-C3D accuracy route.
+Use **Analysis → Accuracy vs C3D** for paired local video/C3D recordings.
+""",
+    ),
+    (
         "Interpreting ISB reconstruction and its effect on reported bias",
         """
 ISB reconstruction is **on by default**, in two places, and it changes
