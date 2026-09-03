@@ -543,7 +543,7 @@ def _angles_section(cfg: AnglesConfig, runtime, source=None) -> AnglesConfig:
                 )
             # Deliberately a separate on/off from the Cohort page's own ISB
             # checkbox (page_pool.py) -- this one applies only to the single
-            # recording open here (Pipeline explorer, Comparator, etc), that
+            # recording open here (Trial Explorer, Comparator, etc), that
             # one to every recording loaded into a cohort. The two are not
             # linked; changing one does not change the other. Flagged by the
             # audit (UX-03) as a source of confusion given the near-identical

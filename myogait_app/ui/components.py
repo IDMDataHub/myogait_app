@@ -122,7 +122,7 @@ _PAGE_META: dict[str, tuple[str, str]] = {
     "Advanced": ("03", "Research tools"),
     "Index": ("04", "Reference & guides"),
     # Nested views (shown inside a tab or a scope) keep their own eyebrow.
-    "Pipeline explorer": ("02", "Parametric explorer"),
+    "Trial Explorer": ("02", "Parametric explorer"),
     "Comparator": ("03", "Colour encodes method"),
     "Longitudinal": ("04", "Track over time"),
     "Export": ("05", "Data & figures out"),
@@ -511,22 +511,23 @@ def source_loader(message: str, hint: str = "", *, slot: str = "") -> None:
 def recording_switcher(slot: str) -> None:
     """A compact, always-on control to switch which recording this tab reads.
 
-    Advanced's four tabs (Pipeline explorer, Comparator, Export, Method
-    validation) all read the one shared active source (``state.get_source``)
-    -- so once a video extraction *and* its C3D are both ready (Recent jobs),
-    there was previously no way to explore the other one from inside a tab;
-    only ``source_loader``'s empty-state picker offered this, and it
-    disappears the moment a source is loaded. This renders unconditionally,
-    loaded-or-not, right below each tab's own header.
+    Analysis's Trial Explorer scope and Advanced's tabs (Comparator, Export,
+    Method validation) all read the one shared active source
+    (``state.get_source``) -- so once a video extraction *and* its C3D are
+    both ready (Recent jobs), there was previously no way to explore the
+    other one from inside a tab; only ``source_loader``'s empty-state picker
+    offered this, and it disappears the moment a source is loaded. This
+    renders unconditionally, loaded-or-not, right below each tab's own
+    header.
 
     Switching here changes the *shared* active source (the same one every
-    other Advanced tab and New assessment/Analysis read) -- there is one
-    recording being explored at a time, not an independent choice held per
-    tab. Good enough to compare two ready recordings without leaving the
-    tab; if trying to hold e.g. Pipeline explorer on the video while Export
-    stays on the C3D at the same time turns out to matter, that needs each
-    tab to cache its own source+runner independently, a bigger change than
-    this control -- not attempted here.
+    other tab, New assessment and Analysis read) -- there is one recording
+    being explored at a time, not an independent choice held per tab. Good
+    enough to compare two ready recordings without leaving the tab; if
+    trying to hold e.g. Trial Explorer on the video while Export stays on
+    the C3D at the same time turns out to matter, that needs each tab to
+    cache its own source+runner independently, a bigger change than this
+    control -- not attempted here.
     """
     from ..jobs import DONE, JobManager
 

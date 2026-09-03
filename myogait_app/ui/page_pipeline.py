@@ -41,7 +41,7 @@ NORMATIVE_COLUMNS = ("joint", "percent", "mean", "sd")
 def render() -> None:
     source = state.get_source()
     if source is None:
-        page_header("Pipeline explorer")
+        page_header("Trial Explorer")
         source_loader(
             "Nothing loaded.",
             "Pick a finished extraction below, or go to New assessment to load "
@@ -53,7 +53,7 @@ def render() -> None:
     config = state.get_config()
     runner = state.get_runner()
     page_header(
-        "Pipeline explorer",
+        "Trial Explorer",
         "Move any control on the left. Only the stages below it are recomputed.",
     )
     recording_switcher("pipeline")

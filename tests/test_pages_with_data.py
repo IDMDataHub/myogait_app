@@ -18,10 +18,12 @@ APP_PY = Path(__file__).resolve().parent.parent / "app.py"
 
 @pytest.mark.parametrize(
     "page",
-    # Advanced hosts the chart-bearing pages (Pipeline explorer, Comparator,
-    # Export) as tabs; AppTest executes every tab body, so rendering it with a
-    # loaded source draws all those figures in one go.
-    ["Advanced"],
+    # Advanced hosts the chart-bearing pages (Comparator, Export) as tabs;
+    # AppTest executes every tab body, so rendering it with a loaded source
+    # draws all those figures in one go. Trial Explorer moved out of Advanced
+    # (it is Analysis's own default scope now, UX-01) -- Analysis is included
+    # too so page_pipeline.py's charts stay exercised with real demo data.
+    ["Advanced", "Analysis"],
 )
 def test_page_renders_with_demo_data(page: str) -> None:
     pytest.importorskip("streamlit")

@@ -71,12 +71,13 @@ group; pairing across it would risk comparing two different patients, so
 the accuracy table for that group explains why it is withheld instead of
 silently showing numbers.
 
-**Once both are loaded, Advanced's tabs can switch between them too.**
-Pipeline explorer, Comparator's Sweep tab, Export, and Method validation's
-Vicon tab each show a compact **"Recording: …"** picker once two or more
-finished recordings exist, so exploring the C3D instead of the video (or
-back) does not require a trip to New assessment — though it switches the
-one recording every Advanced tab reads, not an independent choice per tab.
+**Once both are loaded, several tabs can switch between them too.**
+Analysis's Trial Explorer, Comparator's Sweep tab, Export, and Method
+validation's Vicon tab each show a compact **"Recording: …"** picker once
+two or more finished recordings exist, so exploring the C3D instead of the
+video (or back) does not require a trip to New assessment — though it
+switches the one recording every one of those reads, not an independent
+choice per tab.
 
 **Current limitation.** A pre-extracted video pivot loaded through the
 "Pivot JSON" tab (rather than run as a fresh extraction) has no Study

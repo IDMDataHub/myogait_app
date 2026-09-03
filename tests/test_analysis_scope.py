@@ -1,9 +1,9 @@
 """Analysis scope selection: data-aware default, legacy remap, Export pill.
 
 The Analysis page must open on the view that shows the data actually loaded
-(a single freshly loaded source -> "Single run", a built cohort -> a group
-view), survive scope labels stored by an older app version, and expose the
-export surface as a scope of its own.
+(a single freshly loaded source -> "Trial Explorer", a built cohort -> a
+group view), survive scope labels stored by an older app version, and
+expose the export surface as a scope of its own.
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from myogait_app.pooling import RunResult
 
 APP_PY = Path(__file__).resolve().parents[1] / "app.py"
 
-SCOPES = ("Single run", "Patient over time", "One group", "Two groups",
+SCOPES = ("Trial Explorer", "Patient over time", "One group", "Two groups",
           "Accuracy vs C3D", "Export")
 
 
@@ -67,6 +67,17 @@ def test_legacy_study_scope_is_remapped() -> None:
     app.run()
     assert not app.exception
     assert app.session_state["analysis_scope"] == "One group"
+
+
+def test_legacy_single_run_scope_is_remapped_to_trial_explorer() -> None:
+    """"Single run" was this scope's label before it was renamed "Trial
+    Explorer" (UX-01) -- a session that stored the old label must not land
+    on a scope that no longer exists."""
+    app = _app()
+    app.session_state["analysis_scope"] = "Single run"
+    app.run()
+    assert not app.exception
+    assert app.session_state["analysis_scope"] == "Trial Explorer"
 
 
 def test_stale_scope_value_is_dropped_not_fatal() -> None:

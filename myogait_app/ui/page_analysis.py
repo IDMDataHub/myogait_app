@@ -19,7 +19,7 @@ from . import page_export, page_longitudinal, page_pipeline, page_pool, state
 from .components import page_header
 
 #: Scope labels, in display order.
-_RUN = "Single run"
+_RUN = "Trial Explorer"
 _PATIENT = "Patient over time"
 _GROUP = "One group"
 _TWO_GROUPS = "Two groups"
@@ -28,7 +28,7 @@ _EXPORT = "Export"
 _SCOPES = (_RUN, _PATIENT, _GROUP, _TWO_GROUPS, _ACCURACY, _EXPORT)
 
 #: Older labels stored in a previous session -> their new home.
-_LEGACY_SCOPES = {"Study & conditions": _GROUP}
+_LEGACY_SCOPES = {"Study & conditions": _GROUP, "Single run": _RUN}
 
 
 @dataclass
