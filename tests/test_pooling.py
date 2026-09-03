@@ -19,6 +19,7 @@ from myogait_app.pooling import (
     condition_summary,
     group_by_condition,
     overall_agreement,
+    paired_accuracy_runs,
     pool_cycles,
 )
 
@@ -113,25 +114,27 @@ def test_condition_agreement_requires_a_reference():
     assert agreement["vicon_pooled"]["summary"]["left"]["hip_mean"] == pytest.approx(_HIP)
 
 
-def test_overall_agreement_pairs_by_patient_across_conditions():
-    # Same patient, markerless and marker in DIFFERENT conditions.
+def test_overall_agreement_requires_a_shared_patient_and_condition():
+    # Same patient but different visits is not a valid accuracy pair.
     runs = [
         _run("video", "iphone", "P1", "r1"),
         _run("vicon", "lab", "P1", "r2"),
         _run("video", "iphone", "P2", "r1"),  # P2 has no reference
     ]
-    agreement = overall_agreement(runs)
-    assert agreement is not None
-    assert agreement["n_patients"] == 1  # only P1 has both kinds
-    assert agreement["n_video"] == 1 and agreement["n_reference"] == 1
-    assert "hip" in agreement["by_joint"]
-    assert agreement["video_pooled"]["summary"]["left"]["n_cycles"] == 1
-    assert agreement["vicon_pooled"]["summary"]["left"]["n_cycles"] == 1
+    assert overall_agreement(runs) is None
+    assert paired_accuracy_runs(runs) == []
 
-    # condition_agreement finds nothing here: the two kinds never share a
-    # condition. Pairing by patient is what makes accuracy appear automatically.
-    for _cond, cond_runs in group_by_condition(runs).items():
-        assert condition_agreement(cond_runs) is None
+
+def test_accuracy_pairs_do_not_mix_patients_in_one_condition():
+    runs = [
+        _run("video", "baseline", "P1", "video"),
+        _run("vicon", "baseline", "P2", "c3d"),
+        _run("vicon", "baseline", "P1", "c3d"),
+    ]
+
+    paired = paired_accuracy_runs(runs)
+    assert {run.patient for run in paired} == {"P1"}
+    assert overall_agreement(runs)["n_patients"] == 1
 
 
 def test_overall_agreement_none_without_any_reference():

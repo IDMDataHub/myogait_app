@@ -234,6 +234,28 @@ def group_by_condition(runs: Iterable[RunResult]) -> dict[str, list[RunResult]]:
     return dict(sorted(groups.items()))
 
 
+def paired_accuracy_runs(runs: Iterable[RunResult]) -> list[RunResult]:
+    """Return only explicit video--C3D pairs suitable for accuracy metrics.
+
+    A shared condition alone is not an identity: a cohort can contain several
+    patients at the same visit.  Conversely, a patient alone can contain
+    recordings from different visits.  Accuracy therefore requires both a
+    known patient identifier and a real condition, with at least one video and
+    one marker-based recording in that exact group.
+    """
+    grouped: dict[tuple[str, str], list[RunResult]] = {}
+    for run in runs:
+        if not run.ok or run.patient == "?" or run.condition == UNSPECIFIED:
+            continue
+        grouped.setdefault((run.patient, run.condition), []).append(run)
+
+    paired: list[RunResult] = []
+    for group in grouped.values():
+        if any(not run.is_reference for run in group) and any(run.is_reference for run in group):
+            paired.extend(group)
+    return paired
+
+
 def pool_cycles(runs: Iterable[RunResult], joints: tuple[str, ...] = SAGITTAL_JOINTS) -> dict:
     """Merge several runs' cycles into one figure-ready ``cycles`` dict.
 
@@ -464,8 +486,9 @@ def condition_agreement(
     compares them with :func:`agreement.curve_metrics`. Returns ``None`` when
     one of the two kinds is absent (video alone -> variability only).
     """
-    video_runs = [r for r in runs if r.ok and not r.is_reference]
-    vicon_runs = [r for r in runs if r.ok and r.is_reference]
+    paired_runs = paired_accuracy_runs(runs)
+    video_runs = [r for r in paired_runs if not r.is_reference]
+    vicon_runs = [r for r in paired_runs if r.is_reference]
     if not video_runs or not vicon_runs:
         return None
 
@@ -526,10 +549,9 @@ def overall_agreement(
     Vicon C3D into the Cohort surfaces accuracy on its own, with no condition
     tagging. Returns ``None`` when no patient has both kinds.
     """
-    by_patient: dict[str, list[RunResult]] = {}
-    for run in runs:
-        if run.ok and run.patient != "?":
-            by_patient.setdefault(run.patient, []).append(run)
+    by_patient: dict[tuple[str, str], list[RunResult]] = {}
+    for run in paired_accuracy_runs(runs):
+        by_patient.setdefault((run.patient, run.condition), []).append(run)
 
     per_joint_side: list[dict] = []
     all_videos: list[RunResult] = []

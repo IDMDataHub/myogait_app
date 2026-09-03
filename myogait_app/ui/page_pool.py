@@ -99,7 +99,7 @@ def render(show_header: bool = True, mode: str = "single") -> None:
             "(patient, run, group, condition)."
         )
 
-    paths = _collect_inputs()
+    paths = _collect_inputs(mode)
 
     st.radio(
         "Pipeline recipe", [_AUTO_RECIPE, _SIDEBAR_RECIPE],
@@ -250,7 +250,7 @@ def _joint_side_selection() -> tuple[tuple[str, ...], tuple[str, ...]]:
 # ── Inputs ───────────────────────────────────────────────────────────
 
 
-def _collect_inputs() -> list:
+def _collect_inputs(mode: str = "single") -> list:
     """Uploaded pivots plus, optionally, JSONs from the server folder."""
     paths: list = []
     uploads = st.file_uploader(
@@ -270,6 +270,46 @@ def _collect_inputs() -> list:
                 candidates, format_func=lambda p: p.name, key="pool_server_pick",
             )
             paths.extend(picked)
+
+    if mode == "accuracy":
+        paths.extend(_select_history_pairs())
+    return paths
+
+
+def _select_history_pairs() -> list:
+    """Offer only completed, explicitly matched video--C3D job pairs."""
+    from ..jobs import DONE, JobManager
+    from .page_data import C3D_IMPORT_MODEL_LABEL
+
+    grouped: dict[tuple[str, str], list] = {}
+    for job in JobManager(SETTINGS).list_jobs():
+        study = job.study or {}
+        patient = str(study.get("patient_id") or "").strip()
+        condition = str(study.get("condition") or "").strip()
+        if job.status == DONE and patient and condition:
+            grouped.setdefault((patient, condition), []).append(job)
+
+    pairs = {
+        key: jobs for key, jobs in grouped.items()
+        if any(job.model == C3D_IMPORT_MODEL_LABEL for job in jobs)
+        and any(job.model != C3D_IMPORT_MODEL_LABEL for job in jobs)
+    }
+    if not pairs:
+        return []
+
+    selected = st.multiselect(
+        "Completed video–C3D pairs from history",
+        list(pairs),
+        format_func=lambda key: f"{key[0]} / {key[1]} ({len(pairs[key])} recordings)",
+        key="pool_accuracy_history_pairs",
+        help="Only recordings with the same Patient ID and Condition are offered.",
+    )
+    paths = []
+    for key in selected:
+        for job in pairs[key]:
+            path = job.result_path(SETTINGS)
+            if path is not None:
+                paths.append(path)
     return paths
 
 
