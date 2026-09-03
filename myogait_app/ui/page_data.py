@@ -14,7 +14,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from ..jobs import DONE, FAILED, JobManager, RUNNING
+from ..jobs import C3D_IMPORT_MODEL_LABEL, DONE, FAILED, JobManager, RUNNING
 from ..runtime import (
     BACKENDS,
     DEVICE_CHOICES,
@@ -76,13 +76,6 @@ MEDIAPIPE_LANDMARKS = (
 def job_manager() -> JobManager:
     """One pool per server process, surviving Streamlit reruns."""
     return JobManager(SETTINGS)
-
-
-#: JobManager.register_immediate's kind_label for a C3D import (see
-#: _load_c3d) -- shared with _ticket_tab's readiness grouping so the two
-#: places that need to recognise "this job is a C3D, not a pose backend"
-#: cannot drift apart into two different strings.
-C3D_IMPORT_MODEL_LABEL = "c3d-import"
 
 
 def render() -> None:

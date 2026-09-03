@@ -1,7 +1,15 @@
 from __future__ import annotations
 
 from myogait_app.demo import make_demo_data
-from myogait_app.jobs import DONE, FAILED, RUNNING, Job, JobManager
+from myogait_app.jobs import (
+    C3D_IMPORT_MODEL_LABEL,
+    DONE,
+    FAILED,
+    RUNNING,
+    Job,
+    JobManager,
+    paired_ready_groups,
+)
 from myogait_app.settings import Settings
 from myogait_app.storage import job_dir, write_json_atomic
 
@@ -94,3 +102,31 @@ def test_register_immediate_lists_a_c3d_import_like_a_finished_job(tmp_path):
 
     assert any(j.ticket == ticket for j in manager.list_jobs())
     manager._pool.shutdown(wait=True)
+
+
+def test_paired_ready_groups_finds_only_complete_video_c3d_pairs():
+    """Feeds page_pool.py's "Accuracy vs C3D" history picker (audit UX-04):
+    only a (patient_id, condition) group holding both a video job and a
+    C3D-import job is "ready" -- a lone video, a lone C3D, or an untagged
+    job (no patient_id) must never show up as pairable."""
+    video = Job(ticket="MG-0001-AAAA", status=DONE, model="mediapipe",
+                study={"patient_id": "P03", "condition": "walk"})
+    c3d = Job(ticket="MG-0002-BBBB", status=DONE, model=C3D_IMPORT_MODEL_LABEL,
+              study={"patient_id": "P03", "condition": "walk"})
+    video_only = Job(ticket="MG-0003-CCCC", status=DONE, model="mediapipe",
+                      study={"patient_id": "P04", "condition": "walk"})
+    untagged = Job(ticket="MG-0004-DDDD", status=DONE, model="mediapipe", study={})
+
+    groups = paired_ready_groups([video, c3d, video_only, untagged])
+
+    assert set(groups) == {("P03", "walk")}
+    assert {j.ticket for j in groups[("P03", "walk")]} == {video.ticket, c3d.ticket}
+
+
+def test_paired_ready_groups_ignores_a_second_c3d_without_a_video():
+    c3d_a = Job(ticket="MG-0005-EEEE", status=DONE, model=C3D_IMPORT_MODEL_LABEL,
+                study={"patient_id": "P05", "condition": "walk"})
+    c3d_b = Job(ticket="MG-0006-FFFF", status=DONE, model=C3D_IMPORT_MODEL_LABEL,
+                study={"patient_id": "P05", "condition": "walk"})
+
+    assert paired_ready_groups([c3d_a, c3d_b]) == {}

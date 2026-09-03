@@ -58,6 +58,14 @@ CANCELLED = "cancelled"
 
 _TERMINAL = (DONE, FAILED, CANCELLED)
 
+#: The synthetic "model" label register_immediate uses for a C3D import
+#: job -- distinguishes it from a video extraction job when grouping by
+#: patient/condition to find matched pairs. Lives here, not in the UI
+#: layer, so page_data.py's "Recent jobs" grouping and page_pool.py's
+#: "Accuracy vs C3D" history picker read the exact same definition of
+#: "paired" instead of each keeping (and risking diverging on) their own.
+C3D_IMPORT_MODEL_LABEL = "c3d-import"
+
 #: Env vars are process-global, so two concurrent jobs with different
 #: device overrides would clobber each other's setting. Serialising on
 #: this lock is a non-issue at the default MYOGAIT_APP_MAX_JOBS=1; at a
@@ -178,6 +186,29 @@ class Job:
             "error": self.error,
             "result_file": self.result_file,
         }
+
+
+def paired_ready_groups(jobs: list["Job"]) -> dict[tuple[str, str], list["Job"]]:
+    """(patient_id, condition) -> jobs, for groups holding both a video
+    extraction and a C3D import -- ready to compare for accuracy.
+
+    Pass only finished (``Job.succeeded``) jobs. Untagged jobs (no
+    ``patient_id``) are never grouped here -- pairing across an untagged
+    bucket would risk comparing recordings from different patients (see
+    ``pooling.UNSPECIFIED`` for the same rule applied to loaded cohorts).
+    """
+    groups: dict[tuple[str, str], list[Job]] = {}
+    for job in jobs:
+        patient_id = (job.study or {}).get("patient_id")
+        if not patient_id:
+            continue
+        condition = (job.study or {}).get("condition") or "unspecified"
+        groups.setdefault((patient_id, condition), []).append(job)
+    return {
+        key: group for key, group in groups.items()
+        if any(j.model != C3D_IMPORT_MODEL_LABEL for j in group)
+        and any(j.model == C3D_IMPORT_MODEL_LABEL for j in group)
+    }
 
 
 class JobManager:

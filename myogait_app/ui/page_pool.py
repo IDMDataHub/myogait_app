@@ -267,7 +267,7 @@ def _joint_side_selection() -> tuple[tuple[str, ...], tuple[str, ...]]:
 
 
 def _collect_inputs() -> list:
-    """Uploaded pivots plus, optionally, JSONs from the server folder."""
+    """Uploaded pivots, JSONs from the server folder, and paired job history."""
     paths: list = []
     uploads = st.file_uploader(
         "Pivot JSONs", type=["json"], accept_multiple_files=True,
@@ -286,6 +286,47 @@ def _collect_inputs() -> list:
                 candidates, format_func=lambda p: p.name, key="pool_server_pick",
             )
             paths.extend(picked)
+
+    paths.extend(_paired_history_picker())
+    return paths
+
+
+def _paired_history_picker() -> list:
+    """Load already-paired video+C3D recordings straight from Recent jobs.
+
+    Before this, comparing accuracy against a Vicon reference meant leaving
+    this page, going to New assessment -> Recent jobs, ticking the same
+    pair, pressing "Open as cohort", then coming back -- or re-uploading
+    the same two JSONs by hand. The pairing itself (same Patient ID and
+    Condition on a video extraction and a C3D import) still has to happen
+    at load time in New assessment; this only removes the extra trip once
+    that pairing already exists (audit: UX-04).
+    """
+    from ..jobs import DONE, JobManager, paired_ready_groups
+
+    jobs = [j for j in JobManager(SETTINGS).list_jobs() if j.status == DONE]
+    groups = paired_ready_groups(jobs)
+    if not groups:
+        return []
+
+    labels = {
+        key: f"{key[0]} / {key[1]} ({len(group)} file(s))"
+        for key, group in groups.items()
+    }
+    picked = st.multiselect(
+        "Or paired recordings already in Recent jobs",
+        list(groups),
+        format_func=lambda key: labels[key],
+        key="pool_history_pairs",
+        help="Video + C3D pairs detected by matching Patient ID and Condition "
+        "(New assessment -> Recent jobs shows the same grouping).",
+    )
+    paths: list = []
+    for key in picked:
+        for job in groups[key]:
+            path = job.result_path(SETTINGS)
+            if path:
+                paths.append(path)
     return paths
 
 
