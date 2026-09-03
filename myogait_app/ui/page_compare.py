@@ -85,6 +85,10 @@ def _sweep_tab() -> None:
         "Everything except the swept parameter stays exactly as configured in the "
         "sidebar, so any difference below is attributable to that parameter alone."
     )
+    st.caption(
+        "Each selected value re-runs the downstream pipeline on this recording; "
+        "the displayed curves are computed results, not interpolated estimates."
+    )
 
     which = st.selectbox("Parameter to sweep", list(SWEEP_SPECS), key="sweep_param")
     stage, field, kind = SWEEP_SPECS[which]
