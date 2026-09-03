@@ -61,3 +61,33 @@ def test_saving_and_removing_a_named_group_round_trips_through_session_state(tmp
 
     assert not app.exception
     assert "Suivi Patient 009" not in app.session_state["_named_job_groups"]
+
+
+def test_group_staging_shows_with_no_recording_loaded(tmp_path, monkeypatch):
+    """It only needs finished jobs, not a loaded recording -- it used to
+    sit behind Analysis Export's "nothing loaded" guard, so a user who
+    had built a cohort but loaded no single source could not reach it."""
+    pytest.importorskip("streamlit")
+    pytest.importorskip("myogait")
+    from streamlit.testing.v1 import AppTest
+
+    from myogait_app.demo import make_demo_data
+    from myogait_app.jobs import JobManager
+    from myogait_app.settings import Settings
+
+    settings = Settings(workspace_root=tmp_path)
+    manager = JobManager(settings)
+    manager.register_immediate(make_demo_data(), "video.mp4", "mediapipe",
+                                study={"patient_id": "P09", "condition": "walk"})
+    manager._pool.shutdown(wait=True)
+    monkeypatch.setattr("myogait_app.ui.page_export.SETTINGS", settings)
+
+    app = AppTest.from_file(str(APP_PY), default_timeout=90)
+    app.run()
+    # No state.K_SOURCE set -- nothing loaded.
+    app.session_state["nav_page"] = "Analysis"
+    app.session_state["analysis_scope"] = "Export"
+    app.run()
+
+    assert not app.exception
+    assert len(app.multiselect(key="group_staging_picks").options) == 1

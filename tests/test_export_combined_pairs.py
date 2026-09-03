@@ -51,3 +51,33 @@ def test_combined_json_export_succeeds_for_a_ready_pair(tmp_path, monkeypatch):
 
     assert not app.exception
     assert any("Combined pairs (JSON) ready" in s.value for s in app.success)
+
+
+def test_combined_export_section_shows_with_no_recording_loaded(tmp_path, monkeypatch):
+    """The section drives off job history, not the loaded recording, so a
+    user who has only built a cohort must still reach it -- it used to sit
+    behind Export's "nothing loaded" guard and was unreachable."""
+    pytest.importorskip("streamlit")
+    pytest.importorskip("myogait")
+    from streamlit.testing.v1 import AppTest
+
+    from myogait_app.demo import make_demo_data
+    from myogait_app.jobs import JobManager
+    from myogait_app.settings import Settings
+
+    settings = Settings(workspace_root=tmp_path)
+    manager = JobManager(settings)
+    study = {"patient_id": "P07", "condition": "walk"}
+    manager.register_immediate(make_demo_data(), "video.mp4", "mediapipe", study=study)
+    manager.register_immediate(make_demo_data(), "markers.c3d", "c3d-import", study=study)
+    manager._pool.shutdown(wait=True)
+    monkeypatch.setattr("myogait_app.ui.page_export.SETTINGS", settings)
+
+    app = AppTest.from_file(str(APP_PY), default_timeout=90)
+    app.run()
+    # No state.K_SOURCE set -- nothing loaded.
+    app.session_state["nav_page"] = "Advanced"
+    app.run()
+
+    assert not app.exception
+    assert app.multiselect(key="combined_export_pairs").options == ["P07 / walk"]

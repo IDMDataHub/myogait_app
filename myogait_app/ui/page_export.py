@@ -70,16 +70,30 @@ def render(scope: str = "full") -> None:
     version's full surface duplicated across two nav locations with no
     distinction (UX-06); this is what makes the "slim" side of that split
     real rather than cosmetic.
+
+    The job-history tools at the bottom (group staging for ``"light"``,
+    combined video+C3D pair export for ``"full"``) render even with no
+    recording loaded -- they read finished jobs, not ``state.get_source()``,
+    so a user who has only built a cohort must still reach them.
     """
     source = state.get_source()
     if source is None:
         page_header("Export")
         source_loader(
-            "Nothing loaded.",
+            "Nothing loaded — the single-recording exports (data files, "
+            "figures, report) need one. The tool below works off finished "
+            "jobs and does not.",
             "Pick a finished extraction below, or go to New assessment to load "
             "one.",
             slot="export",
         )
+        # These two work off job history, not the loaded recording, so a user
+        # who has only built a cohort (a different session-state store than
+        # `source`) can still reach them here.
+        if scope == "light":
+            _group_staging_section()
+        else:
+            _combined_pair_export_section(state.get_config())
         return
 
     config = state.get_config()
