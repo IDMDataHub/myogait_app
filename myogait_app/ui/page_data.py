@@ -872,6 +872,7 @@ def _study_form(source_path: Path, key_prefix: str = "study") -> dict:
     see ``_c3d_tab``.
     """
     stem = Path(source_path).stem
+    last_study = st.session_state.get("last_study_identifiers") or {}
     with st.expander("Study identifiers (saved in the output)", expanded=True):
         st.caption(
             "Stored under `study` in the exported JSON, so several pooled "
@@ -881,13 +882,15 @@ def _study_form(source_path: Path, key_prefix: str = "study") -> dict:
             "automatically."
         )
         c1, c2 = st.columns(2)
-        patient_id = c1.text_input("Patient ID", value="P001", key=f"{key_prefix}_patient")
+        patient_id = c1.text_input(
+            "Patient ID", value=last_study.get("patient_id", "P001"), key=f"{key_prefix}_patient"
+        )
         # Keyed on the recording's stem so a different file resets the default.
         run = c2.text_input("Run", value=stem, key=f"{key_prefix}_run::{stem}")
         c3, c4 = st.columns(2)
         group = c3.text_input("Group", value="control", key=f"{key_prefix}_group")
         condition = c4.text_input(
-            "Condition", value="baseline", key=f"{key_prefix}_condition"
+            "Condition", value=last_study.get("condition", "baseline"), key=f"{key_prefix}_condition"
         )
         c5, c6 = st.columns(2)
         # Height (and optionally age) travel with the JSON so the cohort can
@@ -911,6 +914,9 @@ def _study_form(source_path: Path, key_prefix: str = "study") -> dict:
         study["height_m"] = float(height_m)
     if age and age > 0:
         study["age"] = int(age)
+    st.session_state["last_study_identifiers"] = {
+        key: study[key] for key in ("patient_id", "condition")
+    }
     return study
 
 
