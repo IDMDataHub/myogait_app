@@ -81,11 +81,23 @@ def _effective_config(isb_on: bool) -> PipelineConfig | None:
 def render(show_header: bool = True, mode: str = "single") -> None:
     """Render the cohort view. As a Data-page tab, pass ``show_header=False``.
 
-    *mode* orders the cross-condition material for the guided Analysis
-    scopes: ``"single"`` (one-group read, default), ``"compare"`` (the
-    two-condition comparison leads) or ``"accuracy"`` (the vs-Vicon agreement
-    leads). Every mode keeps the full content below -- the mode is emphasis,
-    not a filter.
+    *mode* selects which cross-condition material Analysis's guided scopes
+    actually show:
+
+    - ``"single"`` (default, "One group") -- everything: overview,
+      condition comparison, accuracy. Kept as-is for that scope, a bridge
+      until it is rebuilt in Advanced (Phase 3 of the audit's action plan).
+    - ``"compare"`` ("Two groups") -- same, comparison-first. Also a bridge,
+      also unchanged here.
+    - ``"markerbased"`` ("Markerbased vs Monocular") -- overview and
+      condition comparison *only*: a general browse of every recording in
+      the cohort, not a precision read.
+    - ``"accuracy"`` ("Accuracy vs C3D") -- the vs-Vicon precision material
+      *only* (agreement, ICC validity/test-retest). Until 2026-09,
+      "accuracy" showed the full page like every other mode, just
+      reordered ("mode is emphasis, not a filter") -- the audit (UX-02)
+      flagged this as misleading for a scope named after one specific
+      analysis; it is now a real filter, the one mode that actually is one.
     """
     if show_header:
         page_header(
@@ -183,6 +195,10 @@ def render(show_header: bool = True, mode: str = "single") -> None:
     elif mode == "accuracy":
         _overall_accuracy(runs, joints, sides)
         _validity_retest_section(runs, joints)
+        st.divider()
+        _bundle_export(runs, joints, sides)
+        return
+    elif mode == "markerbased":
         _overview(groups, joints)
         _condition_comparison(groups, joints)
     else:

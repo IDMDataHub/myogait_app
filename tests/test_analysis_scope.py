@@ -15,8 +15,8 @@ from myogait_app.pooling import RunResult
 
 APP_PY = Path(__file__).resolve().parents[1] / "app.py"
 
-SCOPES = ("Trial Explorer", "Patient over time", "One group", "Two groups",
-          "Accuracy vs C3D", "Export")
+SCOPES = ("Trial Explorer", "Markerbased vs Monocular", "Patient over time",
+          "One group", "Two groups", "Accuracy vs C3D", "Export")
 
 
 def _pool_fixture(conditions=("base",)) -> list[RunResult]:
