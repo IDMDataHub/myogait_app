@@ -169,6 +169,23 @@ perspective-corrected residuals; skipping that step double-counts the
 projection).
 """,
     ),
+    (
+        "Method validation (Accuracy vs Vicon) — frozen for now",
+        """
+Advanced's **Method validation** tab ("Accuracy vs Vicon") is a research
+bench: it reads `.mat` trial files from the AIM optical rig on the
+server, a different route from the normal `.c3d` import every other part
+of this app uses.
+
+It is **deliberately untouched** by the Analysis/Advanced restructuring.
+An earlier request to let it pick a trial from job history actually
+concerned **"Accuracy vs C3D"** (the Analysis scope, now a real filter),
+not this tab. Any evolution of Method validation itself — selecting a
+`.mat` or a video from history, or folding it into the normal C3D route —
+is a question for **Frédéric Fer** before any work starts, and is not
+planned in the current chantier.
+""",
+    ),
 ]
 
 
