@@ -71,36 +71,52 @@ def render(scope: str = "full") -> None:
     distinction (UX-06); this is what makes the "slim" side of that split
     real rather than cosmetic.
 
-    The job-history tools at the bottom (group staging for ``"light"``,
-    combined video+C3D pair export for ``"full"``) render even with no
-    recording loaded -- they read finished jobs, not ``state.get_source()``,
-    so a user who has only built a cohort must still reach them.
+    Export reads three independent session-state stores, and offers what
+    each holds rather than dead-ending on the one that is empty:
+
+    - ``state.get_source()`` -- one recording, for the data / figures /
+      report tabs.
+    - ``pool_runs`` -- a loaded cohort, for the cohort bundle (``"light"``
+      only; ``"full"`` keeps it under Advanced's cohort scope views).
+    - finished jobs on disk -- for the group-staging tool (``"light"``)
+      and the combined video+C3D pair export (``"full"``).
+
+    A user who has built a cohort but loaded no single recording used to
+    hit "Nothing loaded" here with no way forward, even as Analysis's own
+    header advertised the cohort right above.
     """
     source = state.get_source()
+    config = state.get_config()
+    cohort = list(st.session_state.get("pool_runs") or [])
+
     if source is None:
         page_header("Export")
+        if cohort and scope == "light":
+            st.caption(
+                f"No single recording loaded — the {len(cohort)}-run cohort is, "
+                "though. Per-recording data / figures / report need a recording "
+                "(pick one below); the cohort bundle is further down."
+            )
         source_loader(
             "Nothing loaded — the single-recording exports (data files, "
-            "figures, report) need one. The tool below works off finished "
-            "jobs and does not.",
+            "figures, report) need one.",
             "Pick a finished extraction below, or go to New assessment to load "
             "one.",
             slot="export",
         )
-        # These two work off job history, not the loaded recording, so a user
-        # who has only built a cohort (a different session-state store than
-        # `source`) can still reach them here.
+        if cohort and scope == "light":
+            _cohort_bundle_section(cohort)
+        # Works off finished jobs, not the loaded recording.
         if scope == "light":
             _group_staging_section()
         else:
-            _combined_pair_export_section(state.get_config())
+            _combined_pair_export_section(config)
         return
 
-    config = state.get_config()
     result = state.get_runner().run(config)
 
     if scope == "light":
-        page_header("Export", "Data files, publication figures, and the native report.")
+        page_header("Export", "Data files, publication figures, the native report, and the loaded cohort.")
     else:
         page_header("Export", "Data files, publication figures, and rendered video.")
     recording_switcher("export")
@@ -109,6 +125,8 @@ def render(scope: str = "full") -> None:
         failed = result.failed_stage
         st.error(f"The pipeline is failing at **{failed.name}** - fix that first.")
         st.caption(failed.error)
+        if cohort and scope == "light":
+            _cohort_bundle_section(cohort)
         return
 
     if source.is_demo:
@@ -151,9 +169,34 @@ def render(scope: str = "full") -> None:
     )
 
     if scope == "light":
+        if cohort:
+            _cohort_bundle_section(cohort)
         _group_staging_section()
     else:
         _combined_pair_export_section(config)
+
+
+def _cohort_bundle_section(runs: list) -> None:
+    """The "Export cohort bundle (zip)" that sits at the foot of every
+    cohort scope view (``page_pool``), surfaced on Analysis -> Export too.
+
+    A user who builds a cohort and then clicks Export looks for the
+    cohort's export here, not only under the scope view it was built in.
+    The full ``page_pool._bundle_export`` widget is reused verbatim (all
+    joints/sides -- the per-scope joint filter is a reading aid, the
+    bundle is "everything" regardless), so the two entry points cannot
+    drift. Analysis renders one scope per run, so ``page_pool``'s own
+    ``bundle_*`` widget keys never collide with this call.
+    """
+    from ..pooling import SAGITTAL_JOINTS
+    from .page_pool import _bundle_export
+
+    ok = [r for r in runs if getattr(r, "ok", False)]
+    if not ok:
+        st.divider()
+        st.caption("The loaded cohort has no usable run to export yet.")
+        return
+    _bundle_export(ok, SAGITTAL_JOINTS, ("left", "right"))
 
 
 def _group_staging_section() -> None:
