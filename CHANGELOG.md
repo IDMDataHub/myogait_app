@@ -4,6 +4,36 @@ All notable changes to this project, grouped by date. Newest first. Every
 entry below is attributed to its actual author; where that is not stated, it
 is Romain Feigean.
 
+## 0.9.0 — 2026-09-03 (Frédéric Fer)
+
+**Analysis / Advanced restructure + audit remediation (Phases 1-3).** Acts on
+the 2 September audit: Analysis becomes the analysis entry point (four tabs);
+Advanced becomes the fullest screen (cohorts, group stats, search).
+
+- **Analysis** — `Single run` renamed to **Trial Explorer** (the full Pipeline
+  explorer, now living only here; the Advanced duplicate is removed, UX-01).
+  **Accuracy vs C3D** now filters to real video+C3D pairs and can pick completed
+  pairs from job history instead of manual re-entry (UX-02, UX-04). **Export**
+  slimmed to Data files / Figures / native PDF report, plus a *Prepare groups
+  for Advanced* section that saves named job selections (UX-06).
+- **Advanced** — **Patient over time** driven from job history with MDC-based
+  change flagging across the available parameters (B1). **One group**
+  descriptive statistics per parameter (B2). **Two groups** with a retainable
+  individual-exclusion control and comparison stats (B3). Comparator clarifies
+  that a sweep re-runs the pipeline (DOC-05); Method validation frozen (note).
+- **Reliability / clinical safety** — the silent ISB→sagittal fallback is now
+  surfaced in the UI, not just logged (DEV-04); the two accelerometry-style
+  calculations carry a non-comparability warning (DEV-01/DOC-01); the two ISB
+  toggles are relabelled and cross-referenced (UX-03).
+- **UI density** — the Trial Explorer sidebar gains an *Expert settings* switch
+  that keeps the advanced pipeline sections collapsed by default without hiding
+  any control (UX-07).
+- **Robustness / tests / docs** — per-session pose-backend detection cache
+  (DEV-05); upload-limit sync guard (DEV-07); dedicated export/page_data tests
+  (DEV-02/03); glossary + ISB/bias/navigation guides (DOC-03/04); metadata
+  carried across the two New-assessment forms (UX-04). Ships the previously
+  unreleased Video / MoCap Export reports (below).
+
 ## Unreleased — 2026-09-01 (Romain Feigean)
 
 - **Two new Export reports, both carrying the Institut de Myologie mark
