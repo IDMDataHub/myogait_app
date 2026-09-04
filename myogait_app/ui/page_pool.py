@@ -31,11 +31,11 @@ from ..pooling import (
     UNSPECIFIED,
     condition_agreement,
     condition_comparison,
-    condition_descriptives,
     condition_summary,
     group_by_condition,
     load_runs,
     overall_agreement,
+    parameter_descriptives,
 )
 from ..settings import SETTINGS
 from ..storage import store_uploaded_file
@@ -282,6 +282,20 @@ def _collect_inputs(mode: str = "single") -> list:
 
     if mode == "accuracy":
         paths.extend(_select_history_pairs())
+
+    if mode == "single":
+        from .group_sources import group_source_picker
+
+        with st.expander(
+            "Import a prepared group or recordings from job history",
+            expanded=not paths,
+        ):
+            st.caption(
+                "Recall a group prepared on the Export screen, or pick "
+                "finished recordings straight from job history -- no export / "
+                "re-upload round trip (audit action plan, B2)."
+            )
+            paths.extend(group_source_picker("pool_single_import"))
     return paths
 
 
@@ -558,10 +572,16 @@ def _condition_view(
 
     _scores_row(summary)
 
-    descriptives = condition_descriptives(runs, joints)
+    descriptives = parameter_descriptives(runs, joints)
     if descriptives:
-        st.markdown("**Descriptive statistics**")
-        st.dataframe(pd.DataFrame(descriptives).round(2), use_container_width=True, hide_index=True)
+        st.markdown("**Descriptive statistics — every parameter (n, mean, SD, min, max)**")
+        st.caption(
+            "One value per recording, across joint ROM, spatiotemporal and the "
+            "pelvis-derived accelerometry family — the same parameters the "
+            "two-group comparison uses (audit action plan, B2)."
+        )
+        table = pd.DataFrame(descriptives).rename(columns=str.title)
+        st.dataframe(table.round(2), use_container_width=True, hide_index=True)
 
     pooled = summary["cycles"]
     dark = is_dark()

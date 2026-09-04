@@ -19,6 +19,15 @@ Statistical choices
 - **Bland-Altman**: bias = mean(a-b), limits of agreement = bias +/- 1.96*SD
   of the differences; the paired means/differences are kept on the result for
   plotting.
+- **Two independent groups (Advanced -> Groups -> Two groups)**: the test is
+  picked from the data -- Welch's t-test when a Shapiro-Wilk check does not
+  reject normality in *both* groups, Mann-Whitney U otherwise (also whenever a
+  group is too small to assess, n < 3). Effect size follows the test: Hedges g
+  (bias-corrected standardised mean difference) for the t-test, rank-biserial
+  correlation for Mann-Whitney. No multiple-comparison correction is applied --
+  when many parameters are compared at once the UI warns and reports how many
+  reach p < 0.05, leaving the correction choice to the reader (audit action
+  plan, chantier B3).
 
 Guard rails mirror :mod:`myogait_app.mdc`: too little data returns ``None``
 (the UI must say "not enough paired subjects"), never an unstable number.
@@ -512,10 +521,153 @@ def group_comparison_biomarkers(
             entry["delta"] = entry["mean_a"] - entry["mean_b"]
             entry["hedges_g"] = _hedges_g(va, vb)
             entry["p_welch"] = _welch_p(va, vb)
+            diff = group_difference(va, vb)
+            if diff:
+                entry.update(
+                    test=diff["test"], p=diff["p"],
+                    effect=diff["effect"], effect_name=diff["effect_name"],
+                    normal=diff["normal"],
+                )
+            else:
+                entry.update(test=None, p=None, effect=None, effect_name=None, normal=None)
         else:
-            entry.update(delta=None, hedges_g=None, p_welch=None)
+            entry.update(
+                delta=None, hedges_g=None, p_welch=None,
+                test=None, p=None, effect=None, effect_name=None, normal=None,
+            )
         rows.append(entry)
     return rows
+
+
+def compare_two_groups(
+    runs_a: list[RunResult],
+    runs_b: list[RunResult],
+    joints: tuple[str, ...] = SAGITTAL_JOINTS,
+) -> list[dict]:
+    """Every parameter present in *both* run lists, with descriptives + test.
+
+    Unlike :func:`group_comparison_biomarkers` (which splits one run list on a
+    ``group``/``condition`` field), the two groups here are two independently
+    imported sets -- Advanced's Two groups screen, where group membership is
+    the import zone, not a tag inside the pivot. One row per shared parameter:
+    n / mean / SD / min / max per group, the difference, and the adaptive test
+    (:func:`group_difference`).
+    """
+    table_a = biomarker_table(runs_a, joints)
+    table_b = biomarker_table(runs_b, joints)
+    params_a = {row["parameter"] for row in table_a}
+    params_b = {row["parameter"] for row in table_b}
+    shared = [p for p in _stable_params(table_a + table_b) if p in params_a and p in params_b]
+
+    rows: list[dict] = []
+    for parameter in shared:
+        va = [r["value"] for r in table_a if r["parameter"] == parameter]
+        vb = [r["value"] for r in table_b if r["parameter"] == parameter]
+        entry: dict = {
+            "parameter": parameter,
+            "n_a": len(va), "n_b": len(vb),
+            "mean_a": float(np.mean(va)), "mean_b": float(np.mean(vb)),
+            "sd_a": float(np.std(va, ddof=1)) if len(va) > 1 else None,
+            "sd_b": float(np.std(vb, ddof=1)) if len(vb) > 1 else None,
+            "min_a": float(np.min(va)), "max_a": float(np.max(va)),
+            "min_b": float(np.min(vb)), "max_b": float(np.max(vb)),
+            "delta": float(np.mean(va)) - float(np.mean(vb)),
+        }
+        diff = group_difference(va, vb)
+        if diff:
+            entry.update(
+                test=diff["test"], p=diff["p"],
+                effect=diff["effect"], effect_name=diff["effect_name"],
+                normal=diff["normal"],
+            )
+        else:
+            entry.update(test=None, p=None, effect=None, effect_name=None, normal=None)
+        rows.append(entry)
+    return rows
+
+
+def _stable_params(table: list[dict]) -> list[str]:
+    seen: list[str] = []
+    for row in table:
+        if row["parameter"] not in seen:
+            seen.append(row["parameter"])
+    return seen
+
+
+def group_difference(a: list[float], b: list[float], alpha: float = 0.05) -> dict | None:
+    """One adaptive two-group difference test, chosen from the data.
+
+    Welch's t-test when a Shapiro-Wilk check does not reject normality in both
+    groups (and both have n >= 3); Mann-Whitney U otherwise. The effect size
+    follows: Hedges g for the parametric branch, rank-biserial correlation for
+    the non-parametric one. Returns ``None`` when either group has fewer than
+    two finite values -- no test is meaningful there.
+
+    ``normal`` reports which branch ran (True = parametric), so the caller can
+    show the reader why a given parameter used the test it used.
+    """
+    a = [float(v) for v in a if isinstance(v, (int, float)) and math.isfinite(v)]
+    b = [float(v) for v in b if isinstance(v, (int, float)) and math.isfinite(v)]
+    if len(a) < 2 or len(b) < 2:
+        return None
+
+    parametric = _shapiro_normal(a, alpha) and _shapiro_normal(b, alpha)
+    if parametric:
+        return {
+            "test": "Welch t", "p": _welch_p(a, b),
+            "effect": _hedges_g(a, b), "effect_name": "Hedges g", "normal": True,
+        }
+    return {
+        "test": "Mann-Whitney U", "p": _mann_whitney_p(a, b),
+        "effect": _rank_biserial(a, b), "effect_name": "rank-biserial r", "normal": False,
+    }
+
+
+def significant_count(rows: list[dict], alpha: float = 0.05) -> tuple[int, int]:
+    """(# parameters with p < alpha, # parameters actually tested) over *rows*.
+
+    Drives the Two-groups multiple-comparison warning: the plan's choice is to
+    report the uncorrected tally and let the reader decide on a correction,
+    not to silently apply one.
+    """
+    tested = [r for r in rows if isinstance(r.get("p"), (int, float)) and math.isfinite(r["p"])]
+    hits = sum(1 for r in tested if r["p"] < alpha)
+    return hits, len(tested)
+
+
+def _shapiro_normal(sample: list[float], alpha: float = 0.05) -> bool:
+    """True when Shapiro-Wilk does not reject normality. n < 3 -> False (cannot
+    assess -> the non-parametric branch is the safe default)."""
+    if len(sample) < 3 or len(set(sample)) < 2:
+        return False
+    try:
+        from scipy.stats import shapiro
+
+        return float(shapiro(sample).pvalue) > alpha
+    except Exception:  # pragma: no cover - scipy ships with myogait
+        return False
+
+
+def _mann_whitney_p(a: list[float], b: list[float]) -> float | None:
+    try:
+        from scipy.stats import mannwhitneyu
+
+        return float(mannwhitneyu(a, b, alternative="two-sided").pvalue)
+    except Exception:  # pragma: no cover
+        return None
+
+
+def _rank_biserial(a: list[float], b: list[float]) -> float | None:
+    """Rank-biserial correlation from the Mann-Whitney U of group *a*:
+    ``r = 1 - 2U / (n_a * n_b)`` -- +1 when every a exceeds every b, -1 the
+    reverse, 0 at full overlap."""
+    try:
+        from scipy.stats import mannwhitneyu
+
+        u = float(mannwhitneyu(a, b, alternative="two-sided").statistic)
+        return 1.0 - (2.0 * u) / (len(a) * len(b))
+    except Exception:  # pragma: no cover
+        return None
 
 
 def _hedges_g(a: list[float], b: list[float]) -> float | None:

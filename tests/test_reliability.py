@@ -15,11 +15,14 @@ from myogait_app.reliability import (
     ICCResult,
     biomarker_table,
     bland_altman,
+    compare_two_groups,
     group_comparison_biomarkers,
+    group_difference,
     icc,
     paired_video_reference,
     retest_battery,
     retest_matrix,
+    significant_count,
     validity_battery,
 )
 
@@ -202,6 +205,73 @@ def test_group_comparison_biomarkers():
     assert entry["n_a"] == 4 and entry["n_b"] == 4
     assert entry["delta"] == pytest.approx(20.0)
     assert entry["hedges_g"] is not None and entry["hedges_g"] > 5.0
+    # The adaptive fields ride alongside the legacy hedges_g / p_welch.
+    assert entry["test"] in {"Welch t", "Mann-Whitney U"}
+    assert 0.0 <= entry["p"] <= 1.0
+
+
+# ── Adaptive two-group difference (B3) ───────────────────────────────
+
+
+def test_group_difference_picks_welch_for_normal_samples():
+    rng = np.random.default_rng(1)
+    a = list(rng.normal(50.0, 4.0, 20))
+    b = list(rng.normal(40.0, 4.0, 20))
+    result = group_difference(a, b)
+    assert result["test"] == "Welch t"
+    assert result["effect_name"] == "Hedges g"
+    assert result["normal"] is True
+    assert result["p"] < 0.001
+
+
+def test_group_difference_falls_back_to_mann_whitney_when_not_normal():
+    # A heavy outlier breaks normality -> non-parametric branch.
+    a = [1.0, 1.1, 1.2, 1.0, 1.3, 40.0]
+    b = [2.0, 2.1, 1.9, 2.2, 2.0, 2.1]
+    result = group_difference(a, b)
+    assert result["test"] == "Mann-Whitney U"
+    assert result["effect_name"] == "rank-biserial r"
+    assert result["normal"] is False
+    assert -1.0 <= result["effect"] <= 1.0
+
+
+def test_group_difference_needs_two_per_group():
+    assert group_difference([1.0], [2.0, 3.0]) is None
+    assert group_difference([], [1.0, 2.0]) is None
+
+
+def test_group_difference_small_groups_go_non_parametric():
+    # n < 3 cannot be normality-tested; the safe default is Mann-Whitney.
+    assert group_difference([1.0, 2.0], [8.0, 9.0])["test"] == "Mann-Whitney U"
+
+
+def test_compare_two_groups_shared_parameters_only():
+    runs_a = [_run(f"A{i}", rom=45.0 + i, cadence=120.0) for i in range(5)]
+    runs_b = [_run(f"B{i}", rom=25.0 + i, cadence=95.0) for i in range(5)]
+    rows = compare_two_groups(runs_a, runs_b)
+    by_param = {r["parameter"]: r for r in rows}
+    assert "hip_rom" in by_param and "cadence_steps_per_min" in by_param
+    hip = by_param["hip_rom"]
+    assert hip["n_a"] == 5 and hip["n_b"] == 5
+    assert hip["delta"] == pytest.approx(20.0)
+    assert hip["min_a"] == pytest.approx(45.0) and hip["max_a"] == pytest.approx(49.0)
+    assert hip["test"] in {"Welch t", "Mann-Whitney U"}
+
+
+def test_compare_two_groups_drops_unshared_parameters():
+    a = [_run("A1", rom=40.0)]
+    b = [_run("B1", rom=20.0)]
+    # Give group B an accelerometry key group A lacks.
+    b[0].stats["accelerometric"] = {"rms_accel_ap": 1.2}
+    rows = compare_two_groups(a, b)
+    params = {r["parameter"] for r in rows}
+    assert "hip_rom" in params
+    assert "rms_accel_ap" not in params  # only in B
+
+
+def test_significant_count_ignores_untested_rows():
+    rows = [{"p": 0.01}, {"p": 0.20}, {"p": None}, {"p": 0.049}, {"p": float("nan")}]
+    assert significant_count(rows) == (2, 3)
 
 
 # ── Accelerometric scalars ───────────────────────────────────────────

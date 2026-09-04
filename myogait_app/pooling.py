@@ -61,6 +61,11 @@ class RunResult:
     #: Metric step length (m) read straight off 3-D markers, when the pivot
     #: carries them -- a real length that needs no pixel calibration.
     marker_step_length_m: float | None = None
+    #: The source this run was loaded from (a filesystem path for ``load_run``,
+    #: the in-memory source key otherwise). A stable per-recording identity --
+    #: unlike ``name``, which is only the file's basename and collides when
+    #: several job-history recordings are all stored as ``result.json``.
+    source_key: str = ""
 
     def _s(self, key: str, default: str = "") -> str:
         value = self.study.get(key)
@@ -152,6 +157,7 @@ def analyse_data(
     study = dict(data.get("study") or {})
     kind = _detect_kind(data)
     duration_s = _duration_s(data)
+    identity = source_key or name
     # A subject height in the study block makes step length metric (unit "m").
     base = _apply_study_subject(config or PipelineConfig(), study)
 
@@ -170,7 +176,7 @@ def analyse_data(
     except Exception as exc:  # noqa: BLE001
         return RunResult(
             name=name, study=study, ok=False, kind=kind, duration_s=duration_s,
-            error=f"pipeline: {exc}",
+            error=f"pipeline: {exc}", source_key=identity,
         )
 
     if not result.ok:
@@ -178,7 +184,7 @@ def analyse_data(
         reason = f"{failed.name}: {failed.error}" if failed else "pipeline failed"
         return RunResult(
             name=name, study=study, ok=False, kind=kind, duration_s=duration_s,
-            error=reason, config_note=note,
+            error=reason, config_note=note, source_key=identity,
         )
 
     marker_step_length_m = step_length_m_from_markers(data.get("c3d_markers_3d") or {})
@@ -199,7 +205,7 @@ def analyse_data(
     return RunResult(
         name=name, study=study, ok=True, kind=kind, duration_s=duration_s,
         cycles=result.cycles, stats=stats, config_note=note,
-        marker_step_length_m=marker_step_length_m,
+        marker_step_length_m=marker_step_length_m, source_key=identity,
     )
 
 
@@ -215,7 +221,8 @@ def load_run(path, config: PipelineConfig | None = None) -> RunResult:
     try:
         data = load_json(str(path))
     except Exception as exc:  # noqa: BLE001 - reported per-run, not raised
-        return RunResult(name=name, study={}, ok=False, error=f"read: {exc}")
+        return RunResult(name=name, study={}, ok=False, error=f"read: {exc}",
+                         source_key=str(path))
 
     return analyse_data(name, data, config, source_key=str(path))
 
@@ -424,6 +431,39 @@ def condition_descriptives(runs: list[RunResult], joints: tuple[str, ...] = SAGI
             rows.append({"parameter": parameter, "n": len(arr), "mean": float(arr.mean()),
                          "sd": float(arr.std(ddof=1)) if len(arr) > 1 else 0.0,
                          "min": float(arr.min()), "max": float(arr.max())})
+    return rows
+
+
+def parameter_descriptives(
+    runs: list[RunResult],
+    joints: tuple[str, ...] = SAGITTAL_JOINTS,
+) -> list[dict]:
+    """N / mean / SD / min / max per parameter, over every scalar biomarker a
+    run yields (joint ROM, spatiotemporal, step length, accelerometry family).
+
+    One value per run -- the same granularity the two-group comparison uses --
+    so B2's descriptive table and B3's comparison read the same numbers. Wider
+    than :func:`condition_descriptives` (spatiotemporal + joint ROM only), which
+    is kept for the per-condition tab that predates this.
+    """
+    from .reliability import biomarker_table
+
+    series: dict[str, list[float]] = {}
+    for row in biomarker_table(runs, joints):
+        if _finite_number(row["value"]):
+            series.setdefault(row["parameter"], []).append(float(row["value"]))
+
+    rows: list[dict] = []
+    for parameter, values in series.items():
+        arr = np.asarray(values, dtype=float)
+        rows.append({
+            "parameter": parameter,
+            "n": int(arr.size),
+            "mean": float(arr.mean()),
+            "sd": float(arr.std(ddof=1)) if arr.size > 1 else 0.0,
+            "min": float(arr.min()),
+            "max": float(arr.max()),
+        })
     return rows
 
 

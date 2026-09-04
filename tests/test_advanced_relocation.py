@@ -4,9 +4,9 @@ Analysis (audit action plan, chantier B).
 Analysis keeps the clinical read (Trial Explorer, Markerbased vs
 Monocular, Accuracy vs C3D, Export); Advanced is the fullest analysis
 screen. This checks the relocation actually happened -- the tabs exist on
-Advanced, the scopes are gone from Analysis -- and that rendering
-Advanced (which now calls page_pool twice via the Groups switch) does not
-raise a duplicate-widget error.
+Advanced, the scopes are gone from Analysis -- and that Advanced's Groups
+tab (now two real sub-tabs, One group + Two groups, with page_pool
+rendered once) does not raise a duplicate-widget error.
 """
 
 from __future__ import annotations
@@ -40,10 +40,11 @@ def test_advanced_has_the_relocated_analysis_tabs():
     assert "Export" in labels
 
 
-def test_advanced_group_switch_offers_one_and_two_groups():
+def test_advanced_groups_tab_has_one_and_two_group_subtabs():
     app = _run("Advanced")
-    radio = app.radio(key="advanced_group_view")
-    assert set(radio.options) == {"One group", "Two groups"}
+    labels = [t.label for t in app.get("tab")]
+    assert "One group" in labels
+    assert "Two groups" in labels
 
 
 def test_analysis_no_longer_offers_the_departed_scopes():
@@ -59,9 +60,10 @@ def test_analysis_no_longer_offers_the_departed_scopes():
         assert gone not in page_analysis._SCOPES
 
 
-def test_switching_the_groups_view_does_not_raise():
+def test_two_groups_subtab_renders_its_import_zones():
     app = _run("Advanced")
-    app.radio(key="advanced_group_view").set_value("Two groups").run()
-    assert not app.exception
-    app.radio(key="advanced_group_view").set_value("One group").run()
-    assert not app.exception
+    # Two named import zones, each with a name field defaulting to Group 1/2.
+    name_values = {ti.value for ti in app.text_input}
+    assert {"Group 1", "Group 2"} <= name_values
+    infos = " ".join(i.value for i in app.info)
+    assert "press Compare" in infos
