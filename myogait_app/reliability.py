@@ -316,11 +316,22 @@ def accelerometric_scalars(data: dict) -> dict[str, float]:
 # ── Per-run biomarker extraction ─────────────────────────────────────
 
 
-def _run_joint_rom(run: RunResult, joint: str) -> float | None:
-    """Mean per-cycle ROM of *joint* over one run's cycles (deg)."""
+#: The ISB abd/add and internal/external-rotation cycle keys
+#: ``pipeline._enrich_cycles_with_isb_dof`` writes into ``angles_normalized``
+#: (and ``K.ISB_CYCLE_JOINTS`` mirrors for the chart pickers). Only present
+#: when ISB reconstruction ran on a marker source, so every use here is
+#: self-gating -- a key that is not in the cycles yields no biomarker.
+ISB_DOF_CYCLE_KEYS = (
+    "hip_abd_add_deg", "knee_abd_add_deg", "ankle_abd_add_deg",
+    "hip_int_ext_rot_deg", "knee_int_ext_rot_deg", "ankle_int_ext_rot_deg",
+)
+
+
+def _cycles_rom(cycles: dict | None, key: str) -> float | None:
+    """Mean per-cycle ROM of *key* over a cycles dict (deg)."""
     roms = []
-    for cycle in (run.cycles or {}).get("cycles", []):
-        wave = (cycle.get("angles_normalized") or {}).get(joint)
+    for cycle in (cycles or {}).get("cycles", []):
+        wave = (cycle.get("angles_normalized") or {}).get(key)
         if wave:
             finite = [float(v) for v in wave if isinstance(v, (int, float)) and math.isfinite(v)]
             if len(finite) >= 2:
@@ -328,36 +339,64 @@ def _run_joint_rom(run: RunResult, joint: str) -> float | None:
     return float(np.mean(roms)) if roms else None
 
 
-def _run_scalars(run: RunResult, joints: tuple[str, ...]) -> dict[str, float]:
-    """Every scalar biomarker one run yields, keyed by parameter name."""
+def _run_joint_rom(run: RunResult, joint: str) -> float | None:
+    """Mean per-cycle ROM of *joint* over one run's cycles (deg)."""
+    return _cycles_rom(run.cycles, joint)
+
+
+def scalars_from(
+    cycles: dict | None,
+    stats: dict | None,
+    joints: tuple[str, ...] = SAGITTAL_JOINTS,
+) -> dict[str, float]:
+    """Every scalar biomarker a recording yields, from its cycles + stats.
+
+    The granular core of :func:`_run_scalars` -- also called with a
+    longitudinal session's own ``cycles``/``stats`` (Advanced -> Patient
+    over time), which are not wrapped in a ``RunResult``. Covers sagittal
+    joint ROM, the ISB abd/add + rotation DOF when a marker source carried
+    them, spatiotemporal parameters, metric step length, and the
+    pelvis-derived accelerometry family.
+    """
+    cycles = cycles or {}
+    stats = stats or {}
     out: dict[str, float] = {}
+
     for joint in joints:
-        rom = _run_joint_rom(run, joint)
+        rom = _cycles_rom(cycles, joint)
         if rom is not None:
             out[f"{joint}_rom"] = rom
-    spatio = (run.stats or {}).get("spatiotemporal") or {}
+    for key in ISB_DOF_CYCLE_KEYS:
+        rom = _cycles_rom(cycles, key)
+        if rom is not None:
+            out[f"{key}_rom"] = rom
+
+    spatio = stats.get("spatiotemporal") or {}
     for key in SPATIOTEMPORAL_BIOMARKERS:
         value = spatio.get(key)
         if isinstance(value, (int, float)) and math.isfinite(value):
             out[key] = float(value)
-    step = (run.stats or {}).get("step_length") or {}
+    step = stats.get("step_length") or {}
     if step.get("unit") == "m":
         lengths = [step.get("step_length_left"), step.get("step_length_right")]
         lengths = [v for v in lengths if isinstance(v, (int, float)) and math.isfinite(v)]
         if lengths:
             out["step_length_m"] = float(np.mean(lengths))
-    # Accelerometry family: the pelvis-derived scalars analyse_data stashes,
-    # plus myogait's own harmonic ratio.
-    accel = (run.stats or {}).get("accelerometric") or {}
+    accel = stats.get("accelerometric") or {}
     for key, value in accel.items():
         if isinstance(value, (int, float)) and math.isfinite(value):
             out[key] = float(value)
-    hr = (run.stats or {}).get("harmonic_ratio") or {}
+    hr = stats.get("harmonic_ratio") or {}
     for key in ("hr_ap", "hr_vertical"):
         value = hr.get(key)
         if isinstance(value, (int, float)) and math.isfinite(value):
             out[key] = float(value)
     return out
+
+
+def _run_scalars(run: RunResult, joints: tuple[str, ...]) -> dict[str, float]:
+    """Every scalar biomarker one run yields, keyed by parameter name."""
+    return scalars_from(run.cycles, run.stats, joints)
 
 
 def biomarker_table(
