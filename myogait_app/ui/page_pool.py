@@ -244,6 +244,35 @@ def _bundle_export(runs: list, joints: tuple[str, ...], sides: tuple[str, ...]) 
             )
 
 
+def _present_isb_dof(runs: list) -> tuple[str, ...]:
+    """The ISB abd/add + rotation cycle keys (``K.ISB_CYCLE_JOINTS``) at
+    least one of *runs* actually carries -- self-gating, since a marker
+    source without ISB calibration simply never writes them."""
+    present = []
+    for key in K.ISB_CYCLE_JOINTS:
+        if any(
+            (cycle.get("angles_normalized") or {}).get(key)
+            for run in runs
+            for cycle in (run.cycles or {}).get("cycles") or []
+        ):
+            present.append(key)
+    return tuple(present)
+
+
+def _bands_with_isb(joints: tuple[str, ...], stratum: str) -> dict:
+    """``normative_bands``, translating an ISB DOF key through
+    ``K.ISB_NORMATIVE_JOINT`` first (myogait's own normative table knows hip
+    abd/add and knee abd/add only under their clinical names, "hip_adduction"
+    / "knee_valgus"; ankle abd/add and every rotation DOF have no band)."""
+    translated = [K.ISB_NORMATIVE_JOINT.get(j, j) for j in joints]
+    raw = normative_bands(translated, stratum)
+    return {
+        joint: raw[K.ISB_NORMATIVE_JOINT.get(joint, joint)]
+        for joint in joints
+        if K.ISB_NORMATIVE_JOINT.get(joint, joint) in raw
+    }
+
+
 def _joint_side_selection() -> tuple[tuple[str, ...], tuple[str, ...]]:
     """The joints/sides every cohort view below honours (defaults: all)."""
     c1, c2 = st.columns([2, 1])
@@ -559,7 +588,11 @@ def _condition_view(
         st.session_state["pool_excluded_runs"] = list(updated)
         st.rerun()
     runs = [run for run in all_runs if run.name not in excluded]
-    summary = condition_summary(runs, joints)
+    # Sagittal joints drive the accuracy / overview paths; the pooled cycle
+    # curves below also show the ISB abd/add + rotation DOF whenever a marker
+    # source in this condition carried them (audit B2 extension).
+    curve_joints = joints + _present_isb_dof(runs)
+    summary = condition_summary(runs, curve_joints)
     spatio = summary["spatiotemporal"]
 
     cols = st.columns(5)
@@ -587,14 +620,20 @@ def _condition_view(
 
     pooled = summary["cycles"]
     dark = is_dark()
-    bands = normative_bands(joints, summary.get("stratum", "adult"))
+    bands = _bands_with_isb(curve_joints, summary.get("stratum", "adult"))
 
     st.markdown(
         "**Variability — kinematic curves (all runs pooled, mean +/- SD, "
         f"vs {summary.get('stratum', 'adult')} normative band)**"
     )
-    joint_cols = st.columns(max(len(joints), 1))
-    for column, joint in zip(joint_cols, joints):
+    if len(curve_joints) > len(joints):
+        st.caption(
+            "Includes the ISB abd/add + rotation DOF a marker (C3D) source in "
+            "this condition carried, alongside the sagittal flex/ext joints "
+            "(audit B2 extension)."
+        )
+    joint_cols = st.columns(max(len(curve_joints), 1))
+    for column, joint in zip(joint_cols, curve_joints):
         with column:
             chart(
                 K.cycle_overlay(

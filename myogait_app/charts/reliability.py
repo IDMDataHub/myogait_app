@@ -49,6 +49,46 @@ def bland_altman_plot(
     return apply(fig, dark, height=height)
 
 
+def biomarker_trend_plot(
+    labels: list[str],
+    values: list[float],
+    parameter: str = "",
+    mdc: float | None = None,
+    dark: bool = False,
+    height: int = 340,
+) -> go.Figure:
+    """One parameter's value across sessions, in the order given.
+
+    Advanced -> Patient over time's biomarker trend (audit B1 extension):
+    when *mdc* is available (a within-session cycle-to-cycle repeatability
+    estimate for a joint-ROM-type parameter, see ``page_longitudinal.
+    _param_mdc``), a shaded band +/- MDC95 around the first session marks
+    the zone a later point cannot leave without being a real change rather
+    than measurement noise -- the trend equivalent of the pairwise MDC
+    table already on this page.
+    """
+    colours = series_colors(dark)
+    accent = colours[0]
+    fig = go.Figure()
+    if mdc is not None and values:
+        baseline = values[0]
+        fig.add_hrect(
+            y0=baseline - mdc, y1=baseline + mdc, line_width=0,
+            fillcolor=rgba(accent, 0.12),
+            annotation_text=f"±MDC95 ({mdc:.2f}) around session 1",
+            annotation_position="top left",
+        )
+    fig.add_trace(go.Scatter(
+        x=labels, y=values, mode="lines+markers",
+        line=dict(color=accent, width=2.5), marker=dict(size=9),
+        name=parameter or "value",
+        hovertemplate="%{x}<br>%{y:.2f}<extra></extra>",
+    ))
+    fig.update_yaxes(title_text=parameter or "Value")
+    fig.update_xaxes(title_text="Session")
+    return apply(fig, dark, height=height)
+
+
 def group_boxplot(
     rows: list[dict],
     parameter: str,

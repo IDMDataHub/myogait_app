@@ -11,6 +11,7 @@ import pytest
 
 from myogait_app.pooling import RunResult
 from myogait_app.reliability import (
+    ISB_DOF_CYCLE_KEYS,
     BlandAltman,
     ICCResult,
     biomarker_table,
@@ -22,6 +23,7 @@ from myogait_app.reliability import (
     paired_video_reference,
     retest_battery,
     retest_matrix,
+    scalars_from,
     significant_count,
     validity_battery,
 )
@@ -150,6 +152,37 @@ def test_biomarker_table_long_format():
     assert params["hip_rom"] == pytest.approx(100.0)
     assert params["cadence_steps_per_min"] == pytest.approx(110.0)
     assert all(r["patient"] == "P1" for r in rows)
+
+
+# ── scalars_from / ISB DOF (B1/B2 extension) ─────────────────────────
+
+
+def test_scalars_from_picks_up_isb_dof_when_present():
+    wave = np.linspace(0.0, 12.0, 101).tolist()
+    cycles = {"cycles": [
+        {"side": "left", "angles_normalized": {
+            "hip": [0.0] * 101, "hip_abd_add_deg": wave,
+        }},
+    ], "summary": {}}
+    out = scalars_from(cycles, stats={})
+    assert out["hip_abd_add_deg_rom"] == pytest.approx(12.0)
+    # A DOF this run does not carry stays absent, not zero.
+    assert "knee_abd_add_deg_rom" not in out
+    present_dof_roms = {f"{key}_rom" for key in ISB_DOF_CYCLE_KEYS} & set(out)
+    assert present_dof_roms == {"hip_abd_add_deg_rom"}
+
+
+def test_scalars_from_matches_run_scalars_via_biomarker_table():
+    # scalars_from is the core _run_scalars now delegates to -- same
+    # numbers reached through biomarker_table (a RunResult) or directly.
+    run = _run("P1", rom=42.0)
+    direct = scalars_from(run.cycles, run.stats)
+    via_table = {r["parameter"]: r["value"] for r in biomarker_table([run])}
+    assert direct == via_table
+
+
+def test_scalars_from_handles_missing_cycles_and_stats():
+    assert scalars_from(None, None) == {}
 
 
 def test_paired_video_reference_needs_both_kinds():

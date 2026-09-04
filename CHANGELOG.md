@@ -6,6 +6,32 @@ is Romain Feigean.
 
 ## Unreleased — 2026-09-04 (Romain Feigean)
 
+**B1/B2 extension — accelerometry + ISB DOF pooled into trends, not just
+single-trial views.** The plan's phased scope (open point 1): v1 shipped
+sagittal joint ROM + spatiotemporal only; this adds the rest wherever a
+recording actually carries it, without touching what does not.
+
+- **`reliability.scalars_from(cycles, stats, joints)`** — the granular core
+  `_run_scalars` now delegates to, callable straight from a session dict
+  (not only a `RunResult`). Adds `ISB_DOF_CYCLE_KEYS` (the abd/add + rotation
+  ROM `pipeline._enrich_cycles_with_isb_dof` writes) to every scalar
+  extraction — `biomarker_table`, `parameter_descriptives`, `compare_
+  two_groups` and `group_comparison_biomarkers` all pick them up for free
+  when a marker (C3D) source carried them; self-gating, so a video-only
+  cohort is unaffected.
+- **Advanced → Patient over time — "All parameters over time"** (new
+  section): every scalar biomarker across the loaded sessions, one at a
+  time, plotted against session order — not only myogait's own fixed
+  cadence / symmetry / GPS-2D set. A joint-ROM parameter's trend shows an
+  MDC95 band (pooled from each session's own within-session cycle spread)
+  around the first session, so a later point outside it reads as a real
+  change rather than noise; the two-session pairwise MDC table gains the
+  same ISB DOF rows.
+- **Advanced → Groups → One group — pooled cycle curves** now also plot the
+  ISB abd/add + rotation DOF when a run in the condition carried them,
+  alongside the sagittal flex/ext joints (previously `SAGITTAL_JOINTS`-only
+  regardless of what was loaded).
+
 **Advanced → Groups rebuilt to the refonte plan (B2/B3).** The 0.9.0 entry
 below described a four-tab Analysis with the group screens moved to Advanced;
 the code kept them as Analysis scopes. That relocation is now real, and the

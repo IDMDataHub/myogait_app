@@ -15,14 +15,17 @@ import io
 from datetime import date as date_cls
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 
+from ..charts import reliability as RC
 from ..pipeline import PipelineRunner
 from ..jobs import DONE, JobManager
+from ..reliability import scalars_from
 from ..settings import SETTINGS
 from ..runtime import get_runtime
 from . import state
-from .components import empty_state, page_header
+from .components import chart, empty_state, is_dark, page_header
 
 METRIC_LABELS = {
     "cadence": "Cadence (steps/min)",
@@ -102,6 +105,8 @@ def render() -> None:
 
     st.divider()
     _trend_section(ok_sessions)
+    st.divider()
+    _biomarker_trend_section(ok_sessions)
     st.divider()
     _pairwise_section(ok_sessions)
     st.divider()
@@ -216,16 +221,18 @@ def _pairwise_section(sessions: list[dict]) -> None:
     st.pyplot(figure, use_container_width=True)
 
     from ..mdc import exceeds_mdc, mdc95, pooled_sw
+    from ..reliability import ISB_DOF_CYCLE_KEYS
 
+    joints = ("hip", "knee", "ankle") + ISB_DOF_CYCLE_KEYS
     rows = []
-    for joint in ("hip", "knee", "ankle"):
+    for joint in joints:
         values_a = _cycle_rom(sessions[idx_a], joint)
         values_b = _cycle_rom(sessions[idx_b], joint)
         if not values_a or not values_b:
             continue
         delta = sum(values_a) / len(values_a) - sum(values_b) / len(values_b)
         threshold = mdc95(pooled_sw([values_a, values_b]), n=min(len(values_a), len(values_b)))
-        rows.append({"Parameter": f"{joint.title()} ROM (deg)", "Difference": round(delta, 1),
+        rows.append({"Parameter": f"{_joint_label(joint)} ROM (deg)", "Difference": round(delta, 1),
                      "MDC95": None if threshold is None else round(threshold, 1),
                      "Beyond MDC": "yes" if exceeds_mdc(delta, threshold) else "no / unavailable"})
     if rows:
@@ -246,6 +253,93 @@ def _cycle_rom(session: dict, joint: str) -> list[float]:
         if len(finite) >= 2:
             values.append(max(finite) - min(finite))
     return values
+
+
+def _joint_label(joint: str) -> str:
+    """Human label for a plain joint or an ISB DOF cycle key."""
+    return joint.replace("_deg", "").replace("_", " ").title()
+
+
+# ── All parameters over time ─────────────────────────────────────────
+
+
+def _biomarker_trend_section(sessions: list[dict]) -> None:
+    """Every scalar biomarker (joint ROM incl. ISB DOF, spatiotemporal,
+    accelerometry family) tracked across the loaded sessions, one at a
+    time -- the plan's B1 extension beyond myogait's own fixed cadence /
+    symmetry / GPS-2D metric set above."""
+    st.markdown("**All parameters over time**")
+    st.caption(
+        "Spatio-temporal, sagittal + ISB joint ROM (abd/add and rotation, "
+        "when a marker source carried them) and the pelvis-derived "
+        "accelerometry family, one point per session (audit B1 extension)."
+    )
+    if len(sessions) < 2:
+        st.caption("Needs at least two successfully-run sessions.")
+        return
+
+    per_session = [
+        (f"{s['label']} ({s['date']})", scalars_from(s.get("cycles"), s.get("stats")))
+        for s in sessions
+    ]
+    parameters = sorted({name for _, scalars in per_session for name in scalars})
+    if not parameters:
+        st.caption("No scalar biomarker available across these sessions.")
+        return
+
+    parameter = st.selectbox(
+        "Parameter", parameters, format_func=_parameter_label, key="long_trend_param",
+    )
+    rows = [
+        {"Session": label, "Value": scalars[parameter]}
+        for label, scalars in per_session if parameter in scalars
+    ]
+    if len(rows) < 2:
+        st.caption("Fewer than two sessions carry this parameter.")
+        return
+
+    mdc = _param_mdc(sessions, parameter)
+    chart(
+        RC.biomarker_trend_plot(
+            [row["Session"] for row in rows], [row["Value"] for row in rows],
+            parameter=_parameter_label(parameter), mdc=mdc, dark=is_dark(),
+        ),
+        key="long_trend_biomarker",
+    )
+    if mdc is not None:
+        st.caption(
+            "The shaded band is +/- the session-to-session MDC95 (pooled "
+            "within-session cycle-to-cycle spread) around the first session "
+            "-- a point outside it is a change beyond measurement noise, the "
+            "same threshold the pairwise table below applies to two sessions "
+            "at a time."
+        )
+    st.dataframe(pd.DataFrame(rows).round(3), use_container_width=True, hide_index=True)
+
+
+def _param_mdc(sessions: list[dict], parameter: str) -> float | None:
+    """MDC95 for a joint/ISB-DOF ROM parameter, pooled from every session's
+    own within-session per-cycle spread -- each session standing in as one
+    "subject" for :func:`mdc.pooled_sw`, the same repeatability estimate
+    the pairwise section uses for exactly two, generalised to however many
+    sessions are loaded. ``None`` for anything that is not a per-cycle ROM
+    (spatiotemporal / accelerometry values are already one scalar per
+    session, with no per-cycle spread to estimate noise from here)."""
+    if not parameter.endswith("_rom"):
+        return None
+    joint = parameter[: -len("_rom")]
+    from ..mdc import mdc95, pooled_sw
+
+    by_session = [values for s in sessions if (values := _cycle_rom(s, joint))]
+    if len(by_session) < 2:
+        return None
+    return mdc95(pooled_sw(by_session))
+
+
+def _parameter_label(parameter: str) -> str:
+    if parameter.endswith("_rom"):
+        return f"{_joint_label(parameter[: -len('_rom')])} ROM (deg)"
+    return parameter.replace("_", " ").title()
 
 
 # ── PDF report ───────────────────────────────────────────────────────
