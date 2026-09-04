@@ -4,6 +4,36 @@ All notable changes to this project, grouped by date. Newest first. Every
 entry below is attributed to its actual author; where that is not stated, it
 is Romain Feigean.
 
+## Unreleased — 2026-09-04 (Romain Feigean)
+
+**Advanced → Groups rebuilt to the refonte plan (B2/B3).** The 0.9.0 entry
+below described a four-tab Analysis with the group screens moved to Advanced;
+the code kept them as Analysis scopes. That relocation is now real, and the
+two group screens are rebuilt rather than relabelled.
+
+- **Two groups** (new `page_groups.py`, plan B3) — two groups imported
+  *independently*, each named and fed from a prepared group, job history, or
+  uploaded pivots (not one loaded cohort split by condition). Per shared
+  parameter: n / mean / SD per group, the difference, and one adaptive test —
+  Welch's t when a Shapiro-Wilk check keeps normality in both groups,
+  Mann-Whitney U otherwise — with a matching effect size (Hedges g or
+  rank-biserial r). Many parameters at once raises an explicit
+  multiple-comparison warning with the Bonferroni threshold; no correction is
+  imposed. A visual control overlays any one recording on its group's mean ± SD
+  band, with a checkbox that drops it from the statistics while keeping it in
+  the imported group.
+- **One group** (plan B2) — the per-condition descriptive table widens from
+  spatiotemporal + sagittal ROM to every scalar biomarker a recording yields
+  (`pooling.parameter_descriptives`), and the cohort can now be imported from a
+  prepared group or straight from job history, not only by file upload.
+- **Advanced → Groups** is two real sub-tabs (One group / Two groups) instead
+  of an inner radio — possible now that Two groups has its own widget keys, so
+  `page_pool` is still rendered only once per run.
+- **`reliability.group_difference` / `compare_two_groups` / `significant_count`**
+  — the adaptive-test core, Streamlit-free and unit-tested. `RunResult` gains
+  `source_key`, a stable per-recording identity (the bare filename collides —
+  every job-history recording is stored as `result.json`).
+
 ## 0.9.0 — 2026-09-03 (Frédéric Fer)
 
 **Analysis / Advanced restructure + audit remediation (Phases 1-3).** Acts on

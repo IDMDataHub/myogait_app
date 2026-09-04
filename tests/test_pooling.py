@@ -205,6 +205,19 @@ def test_condition_descriptives_reports_spatiotemporal_and_rom_values():
     assert "Hip ROM (deg)" in parameters
 
 
+def test_parameter_descriptives_covers_every_scalar_biomarker():
+    from myogait_app.pooling import parameter_descriptives
+
+    runs = [_run("video", "base", "P1", "r1"), _run("video", "base", "P2", "r2")]
+    rows = {row["parameter"]: row for row in parameter_descriptives(runs)}
+    # joint ROM and spatiotemporal, keyed the way biomarker_table names them.
+    assert "hip_rom" in rows and "cadence_steps_per_min" in rows
+    hip = rows["hip_rom"]
+    assert hip["n"] == 2
+    assert set(hip) == {"parameter", "n", "mean", "sd", "min", "max"}
+    assert hip["min"] <= hip["mean"] <= hip["max"]
+
+
 def test_condition_agreement_side_selection():
     runs = [_run("video", "base", "P1", "r1"), _run("vicon", "base", "P1", "ref")]
     both = condition_agreement(runs)

@@ -7,13 +7,12 @@ clinical path (New assessment -> Analysis) stays focused; the depth lives
 here (audit action plan, chantier B). Every tab is an existing page,
 rendered unchanged.
 
-**One group / Two groups share one tab for now.** They read the same
-loaded cohort and the same input widgets; ``page_pool.render`` uses fixed
-widget keys, so rendering it twice in one script run would collide. An
-inner switch picks the emphasis (one group's read vs the two-condition
-comparison). The plan's full split -- two tabs, each with its own named
-import zone and comparison statistics -- is the B2/B3 rebuild, separate
-work with its own open questions.
+**Groups is two sub-tabs.** *One group* (``page_pool`` mode ``"single"``)
+reads a single loaded cohort; *Two groups* (``page_groups``) imports two
+named groups independently and compares them (audit action plan, B2/B3).
+``page_pool.render`` is called once per run (only inside *One group*), so
+its fixed widget keys no longer collide -- the reason the two used to
+share an inner switch.
 """
 
 from __future__ import annotations
@@ -21,11 +20,15 @@ from __future__ import annotations
 import streamlit as st
 
 from ..settings import SETTINGS
-from . import page_biomarkers, page_compare, page_export, page_longitudinal, page_pool
+from . import (
+    page_biomarkers,
+    page_compare,
+    page_export,
+    page_groups,
+    page_longitudinal,
+    page_pool,
+)
 from .components import page_header
-
-_ONE_GROUP = "One group"
-_TWO_GROUPS = "Two groups"
 
 
 def render() -> None:
@@ -63,16 +66,15 @@ def render() -> None:
 
 
 def _groups_tab() -> None:
-    """One group vs Two groups: a switch, not two tabs -- see the module
-    docstring for why. Renders ``page_pool`` exactly once per run."""
-    choice = st.radio(
-        "View", [_ONE_GROUP, _TWO_GROUPS], horizontal=True,
-        key="advanced_group_view", label_visibility="collapsed",
-    )
-    st.caption(
-        "**One group** reads a single cohort. **Two groups** leads with the "
-        "condition-by-condition comparison. Both work off the cohort loaded "
-        "below."
-    )
-    mode = "single" if choice == _ONE_GROUP else "compare"
-    page_pool.render(show_header=False, mode=mode)
+    """One group vs Two groups as two real sub-tabs. ``page_pool.render`` is
+    called once (One group only), so its fixed widget keys don't collide."""
+    one_group, two_groups = st.tabs(["One group", "Two groups"])
+    with one_group:
+        st.caption(
+            "Descriptive read of a single loaded cohort: pooled curves, ROM, "
+            "stance/swing and per-parameter descriptive statistics, per "
+            "condition. Load the cohort below."
+        )
+        page_pool.render(show_header=False, mode="single")
+    with two_groups:
+        page_groups.render()

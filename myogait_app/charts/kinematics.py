@@ -358,6 +358,82 @@ def video_vs_reference_overlay(
     return apply(fig, dark, height=height)
 
 
+def group_vs_individual_overlay(
+    group_pooled: dict,
+    individual_pooled: dict,
+    joint: str = "knee",
+    sides: tuple[str, ...] = ("left", "right"),
+    group_label: str = "Group mean",
+    individual_label: str = "This recording",
+    dark: bool = False,
+    height: int = 320,
+) -> go.Figure:
+    """One recording's mean cycle curve against its group's mean +/- SD band.
+
+    The visual-control chart on Advanced's Two groups screen: pick a recording
+    and see whether it tracks the group or sits apart before deciding to
+    exclude it. Colour carries *which* (group vs the picked recording), the
+    same deliberate exception :func:`video_vs_reference_overlay` makes; side
+    stays solid (left) / dashed (right).
+    """
+    fig = go.Figure()
+    percent = np.arange(101)
+    palette = series_colors(dark)
+    group_colour, individual_colour = palette[0], palette[1]
+    dash_for = {"left": "solid", "right": "dash"}
+
+    group_summary = (group_pooled or {}).get("summary") or {}
+    for side in sides:
+        entry = group_summary.get(side) or {}
+        mean = entry.get(f"{joint}_mean")
+        if not mean:
+            continue
+        mean_arr = np.asarray(mean, dtype=float)
+        std = entry.get(f"{joint}_std")
+        if std:
+            std_arr = np.asarray(std, dtype=float)
+            fig.add_trace(
+                go.Scatter(
+                    x=np.concatenate([percent, percent[::-1]]),
+                    y=np.concatenate([mean_arr + std_arr, (mean_arr - std_arr)[::-1]]),
+                    fill="toself",
+                    fillcolor=rgba(group_colour, 0.14),
+                    line=dict(width=0),
+                    hoverinfo="skip",
+                    showlegend=False,
+                    name=f"{group_label} {side} SD",
+                )
+            )
+        fig.add_trace(
+            go.Scatter(
+                x=percent, y=mean_arr, mode="lines",
+                name=f"{group_label} {side.title()}",
+                line=dict(color=group_colour, width=2, dash=dash_for.get(side, "solid")),
+                hovertemplate="%{y:.1f}&deg; at %{x}%<extra>"
+                + f"{group_label} {side.title()}</extra>",
+            )
+        )
+
+    individual_summary = (individual_pooled or {}).get("summary") or {}
+    for side in sides:
+        mean = (individual_summary.get(side) or {}).get(f"{joint}_mean")
+        if not mean:
+            continue
+        fig.add_trace(
+            go.Scatter(
+                x=percent, y=np.asarray(mean, dtype=float), mode="lines",
+                name=f"{individual_label} {side.title()}",
+                line=dict(color=individual_colour, width=3, dash=dash_for.get(side, "solid")),
+                hovertemplate="%{y:.1f}&deg; at %{x}%<extra>"
+                + f"{individual_label} {side.title()}</extra>",
+            )
+        )
+
+    fig.update_xaxes(title_text="Gait cycle (%)", range=[0, 100], dtick=20)
+    fig.update_yaxes(title_text=f"{JOINT_LABELS.get(joint, joint.title())} angle (deg)")
+    return apply(fig, dark, height=height)
+
+
 def _add_normative_band(fig: go.Figure, normative: dict, dark: bool) -> None:
     """Reference band, drawn achromatic and first so it sits behind."""
     lower = normative.get("lower")
