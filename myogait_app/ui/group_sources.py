@@ -38,6 +38,12 @@ def group_source_picker(key: str, *, label: str = "Source") -> list:
         label, options, horizontal=True, key=f"{key}_source",
         label_visibility="collapsed",
     )
+    st.caption(
+        "A prepared group is a named job selection saved on **Analysis → "
+        "Export** or **Advanced → Export**. The same recordings are also "
+        "loadable on **Patient over time** and one at a time on **New "
+        "assessment** (audit C10)."
+    )
 
     if source == _PREPARED:
         name = st.selectbox(

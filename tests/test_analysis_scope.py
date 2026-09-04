@@ -83,7 +83,11 @@ def test_stale_scope_value_is_dropped_not_fatal() -> None:
     assert app.session_state["analysis_scope"] in SCOPES
 
 
-def test_legacy_single_run_label_still_maps_to_trial_explorer() -> None:
+def test_legacy_single_run_label_lands_on_trial_explorer() -> None:
+    # "Single run" was the pre-refonte label for Trial Explorer. The
+    # _LEGACY_SCOPES remap that used to translate it is gone (audit C4); an
+    # unknown stored value is now simply dropped, and with no data loaded
+    # the data-aware default is Trial Explorer -- the same destination.
     app = _app()
     app.session_state["analysis_scope"] = "Single run"
     app.run()

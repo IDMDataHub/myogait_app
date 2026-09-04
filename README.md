@@ -94,7 +94,7 @@ machine and restart their session. Do not use the `\\?\` path prefix with pip:
 it conflicts with relative paths created internally by package installers. For
 Git on Windows, also run `git config --global core.longpaths true`.
 
-Then open the **Data** page and load a pivot JSON or a video — or follow
+Then open **New assessment** and load a pivot JSON or a video — or follow
 [**TUTORIAL.md**](TUTORIAL.md) for a five-minute walkthrough from an
 uploaded video to the first kinematic curves and everything else the app
 can measure.
@@ -151,7 +151,7 @@ Every pose backend myogait implements is requested above except two: `mmpose`
 (OpenMMLab's usual install path resolves `mmcv` through its own `mim install`,
 not plain pip — myogait's own `[all]`/`[full]` extras exclude it for the same
 reason) and `intel-extension-for-pytorch` (see GPU acceleration, next). The
-Data page's model picker always lists every backend regardless — an
+model picker on **New assessment** always lists every backend regardless — an
 uninstalled one shows the exact command to add it, instead of disappearing.
 `detectron2`'s extra installs only its prerequisite (`torch`): the
 `detectron2` package itself is not on PyPI under any name, on any platform,
@@ -253,13 +253,16 @@ already do:
 
 ## What is in it
 
-| Page | Does |
+Four screens, ordered as a clinician moves through an assessment. The first
+two are the clinical path; **Advanced** holds the research depth; **Index**
+is the reference.
+
+| Screen | Does |
 |---|---|
-| **Data** | Load a pivot JSON or a video. Video extraction runs as a background job and returns a recoverable ticket. |
-| **Pipeline explorer** | Every downstream parameter as a control, with kinematics, cycles, spatio-temporal metrics and signal quality updating live. |
-| **Comparator** | Sweep one parameter across values, or compare separate extractions of the same walk, with divergence curves, an RMS matrix and an event-timing raster. |
-| **Export** | CSV, Excel, OpenSim `.mot`/`.trc`, C3D, Pose2Sim, the PDF report, an anonymised stick figure, and publication figures rendered by myogait's own matplotlib functions. |
-| **Experimental** | VICON trial alignment and the AIM input-degradation grid. Scoped as experimental by the package itself. |
+| **New assessment** | Bring a recording in — a video to extract (runs as a background job, returns a recoverable ticket), a Vicon C3D, or an already-exported pivot JSON — and attach it to a patient. Recent jobs live here. |
+| **Analysis** | The clinical read, as four scopes: **Trial Explorer** (every downstream parameter as a control, kinematics / cycles / spatio-temporal / signal quality updating live), **Markerbased vs Monocular** (one video+C3D pair, every parameter, the two methods drawn together), **Accuracy vs C3D** (markerless-vs-Vicon agreement, paired automatically by patient), **Export** (the clinical subset: data files, figures, native PDF). |
+| **Advanced** | The deep dive: **Patient over time**, **Groups** (One group descriptives / Two groups compared with an adaptive difference test), **Comparator** (sweep one parameter, or compare separate extractions), **Accelerometry** (virtual-sensor biomarkers), **Export** (the full surface — video, video report, MoCap PDF), and, when enabled, **Method validation** (Vicon alignment, the AIM degradation grid). |
+| **Index** | Function glossary grounded in myogait's own docstrings, plus task guides. |
 
 ## Design decisions worth knowing
 
@@ -295,9 +298,9 @@ reason described next.
 
 **Nothing is kept.** A browser session gets a scratch directory; the only thing
 that outlives it is a job ticket, and both are purged on a fixed clock
-(`MYOGAIT_APP_RETENTION_HOURS`, default 24). Purging runs at startup and on the
-Data page, and the retention rule is stated in the interface rather than applied
-silently.
+(`MYOGAIT_APP_RETENTION_HOURS`, default 24). Purging runs at startup and on
+**New assessment**, and the retention rule is stated in the interface rather
+than applied silently.
 
 ## Reproducibility for a study
 

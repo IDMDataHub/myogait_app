@@ -26,13 +26,6 @@ _ACCURACY = "Accuracy vs C3D"
 _EXPORT = "Export"
 _SCOPES = (_RUN, _MARKERBASED, _ACCURACY, _EXPORT)
 
-#: Older labels stored in a previous session -> their new home. "One
-#: group" / "Two groups" / "Patient over time" / "Study & conditions"
-#: are no longer Analysis scopes (they are Advanced tabs now); a stored
-#: value naming one of them simply falls through to the data-aware
-#: default below.
-_LEGACY_SCOPES = {"Single run": _RUN}
-
 
 @dataclass
 class _Inventory:
@@ -145,12 +138,13 @@ def render() -> None:
     inv = _inventory()
     _strip(inv)
 
-    # Remap or drop a scope stored by an older app version before the pills
-    # widget is created (it raises on out-of-options values).
+    # Drop a scope stored by an older app version before the pills widget is
+    # created (it raises on out-of-options values). The departed labels
+    # ("Single run", "One group", "Two groups", "Patient over time", "Study &
+    # conditions") then fall through to the data-aware default below -- for
+    # "Single run" that is Trial Explorer, exactly where it used to route.
     stored = st.session_state.get("analysis_scope")
-    if stored in _LEGACY_SCOPES:
-        st.session_state["analysis_scope"] = _LEGACY_SCOPES[stored]
-    elif stored is not None and stored not in _SCOPES:
+    if stored is not None and stored not in _SCOPES:
         st.session_state.pop("analysis_scope", None)
 
     scope = st.pills(

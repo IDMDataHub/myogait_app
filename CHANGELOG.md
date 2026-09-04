@@ -34,6 +34,23 @@ two group screens are rebuilt rather than relabelled.
   `source_key`, a stable per-recording identity (the bare filename collides —
   every job-history recording is stored as `result.json`).
 
+**Phase 4 — cleanup & docs (audit C4 / C5 / C10 / C13).**
+
+- **C4** — `page_data.render()` is gone (the old five-tab "Data" page; nothing
+  routed to it since New assessment took over). `_PAGE_META["Cohort"]` removed,
+  `"One group"` / `"Two groups"` added. `page_analysis._LEGACY_SCOPES` removed —
+  a departed scope label is just dropped now, landing on the same data-aware
+  default it used to be remapped to.
+- **C10 / C13** — minimal cross-references between the separate import zones
+  (New assessment ↔ Advanced → Groups / Patient over time) and between the two
+  Export locations (Analysis' clinical subset ↔ Advanced's full surface).
+- **C5** — README, TUTORIAL and CLAUDE.md updated to the four-screen IA
+  (New assessment / Analysis / Advanced / Index) instead of the old flat page
+  list; the two stale claims the audit flagged are corrected (`myogait` is on
+  PyPI now; `test_cohort_smoke.py` passes `default_timeout=60`). Stale
+  "Analysis → Study & conditions" / "the Cohort page" strings in code comments
+  and user-facing captions repointed.
+
 ## 0.9.0 — 2026-09-03 (Frédéric Fer)
 
 **Analysis / Advanced restructure + audit remediation (Phases 1-3).** Acts on

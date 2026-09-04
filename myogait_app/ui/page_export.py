@@ -77,6 +77,14 @@ def render(mode: str = "advanced") -> None:
         "Data files, publication figures, and a native PDF report."
         if mode == "analysis" else "Data files, publication figures, and rendered video.",
     )
+    st.caption(
+        "The clinical subset — data files, figures, native PDF. The rendered "
+        "video, narrated video report and MoCap PDF are on **Advanced → "
+        "Export** (audit C13)."
+        if mode == "analysis" else
+        "The full surface. The slimmer clinical set (data, figures, PDF) is "
+        "also on **Analysis → Export**."
+    )
     recording_switcher("export")
 
     if not result.ok:

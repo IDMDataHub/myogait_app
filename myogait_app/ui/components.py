@@ -128,7 +128,7 @@ _PAGE_META: dict[str, tuple[str, str]] = {
     "Export": ("05", "Data & figures out"),
     "Accelerometry biomarkers": ("06", "Virtual sensor, no IMU worn"),
     "Experimental": ("07", "AIM benchmark"),
-    "Cohort": ("08", "Study by condition"),
+    "One group": ("03", "Study by condition"),
     "Two groups": ("03", "Two named groups compared"),
 }
 
