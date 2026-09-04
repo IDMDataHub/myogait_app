@@ -1,9 +1,11 @@
-"""Analysis scope selection: data-aware default, legacy remap, Export pill.
+"""Analysis scope selection after the Advanced relocation.
 
-The Analysis page must open on the view that shows the data actually loaded
-(a single freshly loaded source -> "Trial Explorer", a built cohort -> a group
-view), survive scope labels stored by an older app version, and expose the
-export surface as a scope of its own.
+Analysis is now four scopes: Trial Explorer, Markerbased vs Monocular,
+Accuracy vs C3D, Export. "One group" / "Two groups" / "Patient over time"
+moved to Advanced tabs. The page must open on the view that matches the
+data actually loaded, survive scope labels stored by an older app version
+(including the three that left), and expose the export surface as a scope
+of its own.
 """
 from __future__ import annotations
 
@@ -15,8 +17,8 @@ from myogait_app.pooling import RunResult
 
 APP_PY = Path(__file__).resolve().parents[1] / "app.py"
 
-SCOPES = ("Trial Explorer", "Patient over time", "One group", "Two groups",
-          "Accuracy vs C3D", "Export")
+SCOPES = ("Trial Explorer", "Markerbased vs Monocular", "Accuracy vs C3D", "Export")
+DEPARTED = ("One group", "Two groups", "Patient over time", "Study & conditions")
 
 
 def _pool_fixture(conditions=("base",)) -> list[RunResult]:
@@ -41,32 +43,33 @@ def _app():
     return app
 
 
-def test_pool_batch_defaults_to_group_scope() -> None:
+def test_loaded_cohort_defaults_to_markerbased_scope() -> None:
     app = _app()
     app.session_state["pool_runs"] = _pool_fixture()
     app.run()
-    assert app.session_state["analysis_scope"] == "One group"
+    assert app.session_state["analysis_scope"] == "Markerbased vs Monocular"
 
 
-def test_two_condition_batch_defaults_to_two_groups() -> None:
+def test_multi_condition_cohort_also_defaults_to_markerbased() -> None:
     app = _app()
     app.session_state["pool_runs"] = _pool_fixture(("pre", "post"))
     app.run()
-    assert app.session_state["analysis_scope"] == "Two groups"
+    assert app.session_state["analysis_scope"] == "Markerbased vs Monocular"
 
 
-def test_no_data_defaults_to_group_scope() -> None:
+def test_no_data_defaults_to_trial_explorer() -> None:
     app = _app()
     app.run()
-    assert app.session_state["analysis_scope"] == "One group"
+    assert app.session_state["analysis_scope"] == "Trial Explorer"
 
 
-def test_legacy_study_scope_is_remapped() -> None:
+@pytest.mark.parametrize("stale", DEPARTED)
+def test_a_departed_scope_value_is_dropped_not_fatal(stale) -> None:
     app = _app()
-    app.session_state["analysis_scope"] = "Study & conditions"
+    app.session_state["analysis_scope"] = stale
     app.run()
     assert not app.exception
-    assert app.session_state["analysis_scope"] == "One group"
+    assert app.session_state["analysis_scope"] in SCOPES
 
 
 def test_stale_scope_value_is_dropped_not_fatal() -> None:
@@ -75,6 +78,14 @@ def test_stale_scope_value_is_dropped_not_fatal() -> None:
     app.run()
     assert not app.exception
     assert app.session_state["analysis_scope"] in SCOPES
+
+
+def test_legacy_single_run_label_still_maps_to_trial_explorer() -> None:
+    app = _app()
+    app.session_state["analysis_scope"] = "Single run"
+    app.run()
+    assert not app.exception
+    assert app.session_state["analysis_scope"] == "Trial Explorer"
 
 
 def test_export_scope_renders_without_error() -> None:
