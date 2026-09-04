@@ -80,13 +80,12 @@ def _effective_config(isb_on: bool) -> PipelineConfig | None:
 
 
 def render(show_header: bool = True, mode: str = "single") -> None:
-    """Render the cohort view. As a Data-page tab, pass ``show_header=False``.
+    """Render the cohort view. Nested in a screen's tab, pass ``show_header=False``.
 
     *mode* selects which cross-condition material shows:
 
     - ``"single"`` (default, Advanced's "One group") -- overview, condition
       comparison, per-condition tabs, accuracy.
-    - ``"compare"`` (Advanced's "Two groups") -- same, comparison-first.
     - ``"accuracy"`` (Analysis's "Accuracy vs C3D") -- the vs-Vicon
       precision material *only* (aggregate agreement, ICC validity/
       test-retest, bundle export), then returns. "accuracy" used to show
@@ -94,10 +93,13 @@ def render(show_header: bool = True, mode: str = "single") -> None:
       emphasis, not a filter"); the audit (UX-02) flagged that as
       misleading for a scope named after one analysis, so it is now a real
       filter -- the one mode that is.
+    - ``"compare"`` -- kept for callers that want the comparison-first
+      ordering; Advanced's "Two groups" is ``page_groups`` now (named,
+      independent imports), not this mode.
     """
     if show_header:
         page_header(
-            "Cohort",
+            "One group",
             "Load many exported pivots at once and read the study by condition.",
         )
     else:

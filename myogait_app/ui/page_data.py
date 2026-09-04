@@ -34,10 +34,7 @@ from .components import (
     backend_availability_refresh_button,
     cached_backend_availability,
     empty_state,
-    page_header,
     runtime_badge,
-    source_summary,
-    storage_banner,
 )
 
 #: Extensions myogait can open.
@@ -85,41 +82,12 @@ def job_manager() -> JobManager:
 C3D_IMPORT_MODEL_LABEL = "c3d-import"
 
 
-def render() -> None:
-    page_header(
-        "Data",
-        "Load an extraction to explore, or run a new one. Nothing is stored "
-        f"beyond {SETTINGS.retention_hours} hours.",
-    )
-
-    source = state.get_source()
-    if source is not None:
-        st.success(f"Loaded: **{source.name}** ({source.kind})")
-        source_summary(source)
-        if st.button("Unload"):
-            state.clear_source()
-            st.rerun()
-        st.divider()
-
-    tab_json, tab_cohort, tab_c3d, tab_video, tab_ticket = st.tabs(
-        ["Pivot JSON", "Cohort", "C3D", "Video -> extraction", "Jobs"]
-    )
-
-    with tab_json:
-        _json_tab()
-    with tab_cohort:
-        from . import page_pool
-
-        page_pool.render(show_header=False)
-    with tab_c3d:
-        _c3d_tab()
-    with tab_video:
-        _video_tab()
-    with tab_ticket:
-        _ticket_tab()
-
-    st.divider()
-    storage_banner()
+# This module has no ``render()`` of its own any more. Its tabs are the
+# building blocks the New assessment screen assembles (``page_new`` calls
+# ``_video_tab`` / ``_c3d_tab`` / ``_json_tab`` / ``_ticket_tab``
+# directly); reading a cohort moved to Analysis and Advanced. The old
+# five-tab "Data" page -- and its "Cohort" tab that rendered
+# ``page_pool`` -- is gone (audit action plan, C4 / UX-08).
 
 
 # ── Pivot JSON ───────────────────────────────────────────────────────
@@ -573,7 +541,7 @@ def _load_c3d(
     # Register alongside video extractions in Recent jobs -- a C3D load is
     # synchronous and never went through JobManager.submit before, so it had
     # no ticket and could never be tick-selected next to a video extraction
-    # for Analysis -> Study & conditions pairing (see jobs.py's
+    # for Analysis -> Accuracy vs C3D pairing (see jobs.py's
     # register_immediate docstring for the full story).
     try:
         job_manager().register_immediate(data, name, C3D_IMPORT_MODEL_LABEL, study=study)
@@ -1062,8 +1030,7 @@ def _ticket_tab() -> None:
     if not jobs:
         empty_state(
             "No extraction yet.",
-            "Start one from the Video tab; it will appear here and in the bar "
-            "at the top of the page.",
+            "Start one from the Video tab; it will appear here when it finishes.",
         )
         return
 
@@ -1075,9 +1042,9 @@ def _ticket_tab() -> None:
         selected = []
 
         # Grouped by (patient, condition) so a video extraction and its
-        # matching C3D import -- the pair Analysis -> Study & conditions
-        # needs -- show up together with their combined readiness, instead
-        # of two unrelated-looking rows in one flat newest-first list.
+        # matching C3D import -- the pair Analysis -> Accuracy vs C3D needs
+        # -- show up together with their combined readiness, instead of two
+        # unrelated-looking rows in one flat newest-first list.
         groups: dict[tuple[str, str], list] = {}
         for job in done:
             study = job.study or {}
@@ -1152,7 +1119,7 @@ def _selection_actions(selected: list) -> None:
 
     # Two or more: the feasible move is a pooled read -- which compares
     # conditions on its own when the selection spans several.
-    label = "Compare conditions" if len(conditions) >= 2 else "Open as cohort"
+    label = "Compare conditions" if len(conditions) >= 2 else "Load as cohort"
     if st.button(
         label, type="primary", use_container_width=True, key="sel_action_cohort",
     ):
@@ -1165,14 +1132,15 @@ def _selection_actions(selected: list) -> None:
             st.error("None of the selected results are still on disk.")
             return
         # Explicit PipelineConfig(), not autoconfig (config=None) -- matches
-        # the Cohort page's own "Analyse" button exactly (ISB reconstruction
+        # the cohort views' own "Analyse" button exactly (ISB reconstruction
         # on by default there too), so a batch loaded through this shortcut
-        # behaves identically to one loaded by uploading the same JSONs
-        # through the Cohort tab directly, instead of silently taking a
-        # different pipeline recipe depending on which door was used.
+        # behaves identically to one loaded by uploading the same JSONs on
+        # Advanced -> Groups directly, instead of silently taking a different
+        # pipeline recipe depending on which door was used.
         with st.spinner(f"Pooling {len(paths)} recording(s)..."):
             st.session_state[page_pool._RUNS_KEY] = load_runs(paths, PipelineConfig())
             st.session_state[page_pool._ISB_KEY] = True
         st.success(
-            f"Loaded {len(paths)} recording(s) into the Cohort tab — open it above."
+            f"Loaded {len(paths)} recording(s) as a cohort — read it in "
+            "**Analysis → Accuracy vs C3D** or **Advanced → Groups**."
         )

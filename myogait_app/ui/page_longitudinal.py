@@ -50,6 +50,11 @@ def render() -> None:
         return
 
     patient_ids = sorted({str(job.study["patient_id"]) for job in jobs})
+    st.caption(
+        "Reads finished jobs by Patient ID or a prepared group. The same "
+        "recordings feed **Advanced → Groups**; a single one loads on **New "
+        "assessment** (audit C10)."
+    )
     source = st.radio("Session source", ["Patient history", "Prepared group"], horizontal=True)
     if source == "Patient history":
         patient = st.selectbox("Patient ID", patient_ids, key="long_patient")

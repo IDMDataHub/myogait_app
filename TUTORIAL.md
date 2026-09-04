@@ -7,7 +7,7 @@ open in your browser.
 
 ## 1. Upload a video and run an extraction
 
-Open the **Data** page (the sidebar page list) and its **Video → extraction**
+Open **New assessment** (the sidebar page list) and its **Video → extraction**
 tab.
 
 1. **Pose model** — pick a backend. For a first try, `MediaPipe` is the
@@ -22,13 +22,15 @@ tab.
    (`.mp4`/`.mov`/`.avi`/`.mkv`/`.m4v`). For a large file that struggles
    through the browser, the "Already on the server" option covers files
    dropped into the server's watch folder instead.
-4. Click **Start extraction**. You get back a ticket like `MG-XXXX-XXXX` —
-   keep it. Extraction runs in the background: you can navigate away, close
-   the tab, and come back later and recover it from the **Recover a job**
-   tab using that ticket.
-5. Progress shows under **This session's extractions**. When it reaches
-   **Load**, click it — the extraction is now the loaded source, and every
-   other page works from it.
+4. Fill the **patient / condition** identifiers, then click **Start
+   extraction**. Every job also gets a ticket like `MG-XXXX-XXXX`, but you
+   do not need to keep it: extraction runs in the background, and the
+   **Recent jobs** tab lists every job (newest first) with **Analyse** /
+   **Stop** inline — navigate away, close the tab, come back, it is still
+   there.
+5. Progress shows under the Start button and in **Recent jobs**. When the job
+   is finished, click **Analyse** — the extraction is now the loaded source,
+   and every other screen works from it.
 
 Prefer to skip extraction on a first try? The **Pivot JSON** tab loads a
 `.myogait.json` file already produced by a CLI run, instantly. Motion-capture
@@ -37,10 +39,11 @@ video — see the README for how marker-convention detection handles that.
 
 ## 2. Read the first kinematic signals
 
-Switch to the **Pipeline explorer** page. The sidebar now fills with the
-full pipeline configuration — every parameter myogait exposes downstream of
-extraction, each with an explanation at the control. Defaults are sensible;
-nothing here needs touching yet.
+Go to **Analysis** and pick the **Trial Explorer** scope. The sidebar now
+fills with the full pipeline configuration — every parameter myogait exposes
+downstream of extraction, each with an explanation at the control. Defaults
+are sensible; nothing here needs touching yet. (An *Expert settings* switch
+keeps the deeper sections collapsed until you want them.)
 
 The **Kinematics** tab (open by default) is the first thing worth reading:
 raw joint angles plotted against time, left and right in their own colour,
@@ -66,18 +69,21 @@ explains *why* a kinematic curve looks off, rather than leaving you to guess.
 
 ## 3. Explore what else can be measured
 
-Everything below lives on the same **Pipeline explorer** page, one tab over
-from Kinematics, or one page over in the sidebar.
+The tabs below Kinematics are all on **Analysis → Trial Explorer**; the rows
+after them are separate screens.
 
 | Where | What you get |
 |---|---|
 | **Cycles** tab | Time-normalised gait-cycle curves (0–100%), mean ± SD per side, range-of-motion bars, stance/swing split, a per-cycle table. |
 | **Spatio-temporal** tab | Cadence, stride time, step length and walking speed, symmetry, variability, and heuristic pathology screening (Trendelenburg, spastic gait, steppage, crouch — screening signals, never a diagnosis). Step length/speed read in real metres once a height or a measured femur length is entered in the sidebar's **Subject** panel; without one, they stay in normalised units. |
 | **Advanced analysis** tab | Single support time, toe clearance, stride variability, arm swing, cadence drift, centre-of-mass path, postural sway, angular velocity/acceleration, time-frequency analysis, PCA on cycle-to-cycle variation — twelve myogait functions with no other home in the app, each computed on demand. |
-| **Comparator** page | Sweep one parameter across several values on the same recording, or load a second extraction and compare the two directly — divergence curves, an RMS matrix, an event-timing raster. |
-| **Longitudinal** page | Track the same subject or protocol across multiple loaded sessions over time. |
-| **Export** page | CSV, Excel, OpenSim `.mot`/`.trc`, C3D, a PDF report, an anonymised stick-figure video, and publication figures rendered by myogait's own plotting functions. |
-| **Index** page | A glossary of every myogait function this app calls, grounded in the package's own docstrings — the fastest way to look up what a control actually does — plus short step-by-step guides for multi-step workflows (e.g. pairing a video extraction with its Vicon C3D for an accuracy comparison). |
+| **Analysis → Markerbased vs Monocular** | One video+C3D pair, every parameter, the markerless and marker-based results drawn together — where and how the two methods differ, as curves. |
+| **Analysis → Accuracy vs C3D** | Markerless-vs-Vicon agreement (bias, RMSE, r, CMC, ICC), paired automatically by patient, once a video and its C3D share a patient and condition. |
+| **Advanced → Comparator** | Sweep one parameter across several values on the same recording, or load a second extraction and compare the two directly — divergence curves, an RMS matrix, an event-timing raster. |
+| **Advanced → Patient over time** | Track one subject across several sessions, with a minimal-detectable-change threshold on each parameter. |
+| **Advanced → Groups** | One group's descriptive statistics, or two independently imported groups compared parameter by parameter with an adaptive difference test. |
+| **Advanced → Export** / **Analysis → Export** | CSV, Excel, OpenSim `.mot`/`.trc`, C3D, a PDF report, an anonymised stick-figure video, and publication figures rendered by myogait's own plotting functions. Analysis carries the clinical subset; Advanced adds the rendered video and the narrated video / MoCap reports. |
+| **Index** | A glossary of every myogait function this app calls, grounded in the package's own docstrings — the fastest way to look up what a control actually does — plus short step-by-step guides for multi-step workflows (e.g. pairing a video extraction with its Vicon C3D for an accuracy comparison). |
 
 ## 4. Reproduce what you just did
 

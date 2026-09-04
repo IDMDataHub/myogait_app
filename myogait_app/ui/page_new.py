@@ -11,7 +11,7 @@ from __future__ import annotations
 import streamlit as st
 
 from . import page_data, state
-from .components import page_header, source_summary
+from .components import page_header, source_summary, storage_banner
 
 
 def render() -> None:
@@ -52,6 +52,13 @@ def render() -> None:
     with tab_c3d:
         page_data._c3d_tab()
     with tab_json:
+        st.caption(
+            "The same pivot JSON can also be loaded straight into a cohort on "
+            "**Advanced → Groups** or **Advanced → Patient over time** (audit C10)."
+        )
         page_data._json_tab()
     with tab_jobs:
         page_data._ticket_tab()
+
+    st.divider()
+    storage_banner()
