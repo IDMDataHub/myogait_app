@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from myogait_app.demo import make_demo_data
-from myogait_app.jobs import DONE, FAILED, RUNNING, Job, JobManager
+from myogait_app.jobs import C3D_IMPORT_MODEL_LABEL, DONE, FAILED, RUNNING, Job, JobManager
 from myogait_app.settings import Settings
 from myogait_app.storage import job_dir, write_json_atomic
 
@@ -94,3 +94,12 @@ def test_register_immediate_lists_a_c3d_import_like_a_finished_job(tmp_path):
 
     assert any(j.ticket == ticket for j in manager.list_jobs())
     manager._pool.shutdown(wait=True)
+
+
+def test_c3d_import_model_label_lives_in_jobs_module():
+    # Moved here 2026-09-04 from ui/page_data.py: it names a Job.model
+    # sentinel (this module's own domain type), and jobs.py stays
+    # Streamlit-free -- several ui/ pages need this constant without
+    # pulling in Streamlit just to reach a string. Regression guard so it
+    # does not quietly drift back to a ui/ module.
+    assert C3D_IMPORT_MODEL_LABEL == "c3d-import"

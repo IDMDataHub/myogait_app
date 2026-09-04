@@ -58,6 +58,18 @@ CANCELLED = "cancelled"
 
 _TERMINAL = (DONE, FAILED, CANCELLED)
 
+#: The ``Job.model`` sentinel a C3D import registers under (see
+#: ``register_immediate`` below) -- ``kind_label`` fills the slot a real
+#: extraction's pose-backend name occupies, so a C3D-imported job reads as
+#: clearly different from a video extraction wherever jobs are listed or
+#: filtered. Lives here, not in a ``ui/`` module, because it names a value
+#: of this module's own domain type (``Job.model``) and several ``ui/``
+#: pages need it to tell a C3D import from a video extraction without
+#: importing Streamlit just to reach a string (moved here 2026-09-04 --
+#: previously in ``ui/page_data.py``, which every one of those pages had
+#: to import from purely for this constant; see CLAUDE.md).
+C3D_IMPORT_MODEL_LABEL = "c3d-import"
+
 #: Env vars are process-global, so two concurrent jobs with different
 #: device overrides would clobber each other's setting. Serialising on
 #: this lock is a non-issue at the default MYOGAIT_APP_MAX_JOBS=1; at a

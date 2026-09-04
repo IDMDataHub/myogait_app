@@ -4,7 +4,25 @@ All notable changes to this project, grouped by date. Newest first. Every
 entry below is attributed to its actual author; where that is not stated, it
 is Romain Feigean.
 
-## Unreleased — 2026-09-04 (Romain Feigean)
+## 0.10.0 — 2026-09-04 (Romain Feigean)
+
+**Closes out the 2 September audit action plan.** The 0.9.0 release below
+described a four-tab Analysis with the group screens relocated to Advanced;
+the code did not yet do it. This release does: the real relocation, the two
+group screens rebuilt to the plan's spec (not relabelled), the previously
+parked accelerometry/ISB-DOF extension, and the navigation/docs cleanup that
+depended on the new IA actually shipping. Five pull requests since 0.9.0
+(#4-#8), plus this release commit; 325 tests, up from 269 at Phase 1.
+
+**`C3D_IMPORT_MODEL_LABEL` moved from `ui/page_data.py` to `jobs.py`.** It names a
+`Job.model` sentinel — this module's own domain type — and had grown four
+`ui/` consumers (`page_data`, `page_export`, `page_pool`, `page_markerbased`)
+reaching into one of themselves purely for a string, each pulling in a
+Streamlit dependency it did not otherwise need. `jobs.py` stays Streamlit-free
+by design, alongside its other job-domain constants (`DONE`, `FAILED`,
+`RUNNING`); the four call sites now import from there instead. No behaviour
+change — `page_data.C3D_IMPORT_MODEL_LABEL` still resolves (re-exported via
+its own `from ..jobs import ...`), and every test still passes.
 
 **B1/B2 extension — accelerometry + ISB DOF pooled into trends, not just
 single-trial views.** The plan's phased scope (open point 1): v1 shipped
