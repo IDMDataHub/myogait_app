@@ -332,8 +332,7 @@ def _collect_inputs(mode: str = "single") -> list:
 
 def _select_history_pairs() -> list:
     """Offer only completed, explicitly matched video--C3D job pairs."""
-    from ..jobs import DONE, JobManager
-    from .page_data import C3D_IMPORT_MODEL_LABEL
+    from ..jobs import C3D_IMPORT_MODEL_LABEL, DONE, JobManager
 
     grouped: dict[tuple[str, str], list] = {}
     for job in JobManager(SETTINGS).list_jobs():

@@ -139,8 +139,7 @@ def _ready_pairs() -> dict[tuple[str, str], list]:
     video extraction and a C3D import -- the same "ready to compare"
     definition New assessment's Recent jobs and Accuracy vs C3D's history
     picker use, so "paired" means one thing across the app."""
-    from ..jobs import DONE, JobManager
-    from .page_data import C3D_IMPORT_MODEL_LABEL
+    from ..jobs import C3D_IMPORT_MODEL_LABEL, DONE, JobManager
 
     grouped: dict[tuple[str, str], list] = {}
     for job in JobManager(SETTINGS).list_jobs():
@@ -223,7 +222,7 @@ def _combined_pair_export_section(config) -> None:
 
 def _combine_pair(key: tuple[str, str], jobs: list, config) -> dict:
     """Run *config* on both sides of one pair, keyed "video"/"c3d"."""
-    from .page_data import C3D_IMPORT_MODEL_LABEL
+    from ..jobs import C3D_IMPORT_MODEL_LABEL
 
     record: dict = {"patient_id": key[0], "condition": key[1]}
     for job in jobs:

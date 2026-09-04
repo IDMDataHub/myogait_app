@@ -107,8 +107,8 @@ def render() -> None:
 def _load_pair(key: tuple[str, str], jobs: list):
     """(video RunResult, c3d RunResult) for one pair, cached per pair +
     file identity so switching tabs does not re-run the pipeline."""
+    from ..jobs import C3D_IMPORT_MODEL_LABEL
     from ..pooling import load_run
-    from .page_data import C3D_IMPORT_MODEL_LABEL
 
     video_path = c3d_path = None
     for job in jobs:
