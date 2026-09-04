@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 import streamlit as st
 
 from ..pooling import RunResult, analyse_data
-from . import page_export, page_pipeline, page_pool, state
+from . import page_export, page_markerbased, page_pipeline, page_pool, state
 from .components import page_header
 
 #: Scope labels, in display order.
@@ -81,19 +81,22 @@ def _inventory() -> _Inventory:
 def _default_scope(inv: _Inventory) -> str:
     """The scope matching the data actually loaded (first visit only)."""
     if inv.ok_runs:
-        return _MARKERBASED
+        return _ACCURACY
     if inv.source_name:
         return _RUN
     return _RUN
 
 
 def _availability(inv: _Inventory) -> dict[str, str]:
-    """Scope -> hint when its data is missing (empty string = ready)."""
+    """Scope -> hint when its data is missing (empty string = ready).
+
+    Markerbased vs Monocular is driven by ready video+C3D pairs in job
+    history, not the loaded cohort -- its own page explains the empty
+    case, so no hint is set here (that would need a JobManager call).
+    """
     hints: dict[str, str] = {s: "" for s in _SCOPES}
     if not inv.source_name:
         hints[_RUN] = "Load a recording on New assessment first."
-    if not inv.ok_runs:
-        hints[_MARKERBASED] = "Build a cohort below (upload several pivot JSONs)."
     if not inv.has_paired_patient:
         hints[_ACCURACY] = "Needs a C3D reference sharing a patient with a video recording."
     return hints
@@ -166,7 +169,7 @@ def render() -> None:
     if scope == _RUN:
         page_pipeline.render()
     elif scope == _MARKERBASED:
-        page_pool.render(show_header=False, mode="markerbased")
+        page_markerbased.render()
     elif scope == _ACCURACY:
         page_pool.render(show_header=False, mode="accuracy")
     else:

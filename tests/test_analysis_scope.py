@@ -43,18 +43,21 @@ def _app():
     return app
 
 
-def test_loaded_cohort_defaults_to_markerbased_scope() -> None:
+def test_loaded_cohort_defaults_to_accuracy_scope() -> None:
+    # A loaded cohort is the input for Accuracy vs C3D; Markerbased vs
+    # Monocular is history-driven, not cohort-driven, so the cohort opens
+    # on Accuracy.
     app = _app()
     app.session_state["pool_runs"] = _pool_fixture()
     app.run()
-    assert app.session_state["analysis_scope"] == "Markerbased vs Monocular"
+    assert app.session_state["analysis_scope"] == "Accuracy vs C3D"
 
 
-def test_multi_condition_cohort_also_defaults_to_markerbased() -> None:
+def test_multi_condition_cohort_also_defaults_to_accuracy() -> None:
     app = _app()
     app.session_state["pool_runs"] = _pool_fixture(("pre", "post"))
     app.run()
-    assert app.session_state["analysis_scope"] == "Markerbased vs Monocular"
+    assert app.session_state["analysis_scope"] == "Accuracy vs C3D"
 
 
 def test_no_data_defaults_to_trial_explorer() -> None:
