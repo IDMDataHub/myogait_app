@@ -82,11 +82,21 @@ def _effective_config(isb_on: bool) -> PipelineConfig | None:
 def render(show_header: bool = True, mode: str = "single") -> None:
     """Render the cohort view. As a Data-page tab, pass ``show_header=False``.
 
-    *mode* orders the cross-condition material for the guided Analysis
-    scopes: ``"single"`` (one-group read, default), ``"compare"`` (the
-    two-condition comparison leads) or ``"accuracy"`` (the vs-Vicon agreement
-    leads). Every mode keeps the full content below -- the mode is emphasis,
-    not a filter.
+    *mode* selects which cross-condition material shows:
+
+    - ``"single"`` (default, Advanced's "One group") -- overview, condition
+      comparison, per-condition tabs, accuracy.
+    - ``"compare"`` (Advanced's "Two groups") -- same, comparison-first.
+    - ``"markerbased"`` (Analysis's "Markerbased vs Monocular") -- overview
+      and condition comparison only: a general cohort browse, no precision
+      read.
+    - ``"accuracy"`` (Analysis's "Accuracy vs C3D") -- the vs-Vicon
+      precision material *only* (aggregate agreement, ICC validity/
+      test-retest, bundle export), then returns. "accuracy" used to show
+      the whole page like every other mode, just reordered ("mode is
+      emphasis, not a filter"); the audit (UX-02) flagged that as
+      misleading for a scope named after one analysis, so it is now a real
+      filter -- the one mode that is.
     """
     if show_header:
         page_header(
@@ -177,13 +187,17 @@ def render(show_header: bool = True, mode: str = "single") -> None:
 
     joints, sides = _joint_side_selection()
 
+    if mode == "accuracy":
+        _overall_accuracy(runs, joints, sides)
+        _validity_retest_section(runs, joints)
+        st.divider()
+        _bundle_export(runs, joints, sides)
+        return
     if mode == "compare":
         _condition_comparison(groups, joints)
         _overview(groups, joints)
         _overall_accuracy(runs, joints, sides)
-    elif mode == "accuracy":
-        _overall_accuracy(runs, joints, sides)
-        _validity_retest_section(runs, joints)
+    elif mode == "markerbased":
         _overview(groups, joints)
         _condition_comparison(groups, joints)
     else:

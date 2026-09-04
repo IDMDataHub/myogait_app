@@ -1,11 +1,12 @@
-"""Analysis -- one guided screen for every scope the loaded data supports.
+"""Analysis -- the clinical read: one trial, the cohort at a glance,
+accuracy against a C3D reference, and the export surface.
 
-A clinician thinks in questions, not in page names: one run, one patient over
-time, one group, two groups compared, or how the markerless measure agrees
-with a C3D reference. This page offers exactly those scopes, tells at a
-glance which ones the loaded data can answer (and what is missing for the
-others), and keeps the export surface one click away. The scope views
-themselves are the existing pages, rendered underneath.
+A clinician thinks in questions, not in page names. This screen answers the
+four that belong on the clinical path; the deeper cohort work -- one
+patient over time, one group's statistics, two groups compared -- moved to
+**Advanced**, which is now the fullest analysis screen (audit action plan,
+chantier B). The scope views themselves are the existing pages, rendered
+underneath.
 """
 
 from __future__ import annotations
@@ -15,29 +16,30 @@ from dataclasses import dataclass, field
 import streamlit as st
 
 from ..pooling import RunResult, analyse_data
-from . import page_export, page_longitudinal, page_pipeline, page_pool, state
+from . import page_export, page_pipeline, page_pool, state
 from .components import page_header
 
 #: Scope labels, in display order.
 _RUN = "Trial Explorer"
-_PATIENT = "Patient over time"
-_GROUP = "One group"
-_TWO_GROUPS = "Two groups"
+_MARKERBASED = "Markerbased vs Monocular"
 _ACCURACY = "Accuracy vs C3D"
 _EXPORT = "Export"
-_SCOPES = (_RUN, _PATIENT, _GROUP, _TWO_GROUPS, _ACCURACY, _EXPORT)
+_SCOPES = (_RUN, _MARKERBASED, _ACCURACY, _EXPORT)
 
-#: Older labels stored in a previous session -> their new home.
-_LEGACY_SCOPES = {"Single run": _RUN, "Study & conditions": _GROUP}
+#: Older labels stored in a previous session -> their new home. "One
+#: group" / "Two groups" / "Patient over time" / "Study & conditions"
+#: are no longer Analysis scopes (they are Advanced tabs now); a stored
+#: value naming one of them simply falls through to the data-aware
+#: default below.
+_LEGACY_SCOPES = {"Single run": _RUN}
 
 
 @dataclass
 class _Inventory:
-    """What is loaded right now, across the three stores."""
+    """What is loaded right now, across the source and cohort stores."""
 
     source_name: str | None = None
     runs: list = field(default_factory=list)
-    n_sessions: int = 0
 
     @property
     def ok_runs(self) -> list:
@@ -73,19 +75,16 @@ def _inventory() -> _Inventory:
     return _Inventory(
         source_name=source.name if source is not None else None,
         runs=list(st.session_state.get("pool_runs") or []),
-        n_sessions=len(state.get_longitudinal_sessions()),
     )
 
 
 def _default_scope(inv: _Inventory) -> str:
     """The scope matching the data actually loaded (first visit only)."""
     if inv.ok_runs:
-        return _TWO_GROUPS if len(inv.groupings) >= 2 else _GROUP
-    if inv.n_sessions:
-        return _PATIENT
+        return _MARKERBASED
     if inv.source_name:
         return _RUN
-    return _GROUP
+    return _RUN
 
 
 def _availability(inv: _Inventory) -> dict[str, str]:
@@ -93,12 +92,8 @@ def _availability(inv: _Inventory) -> dict[str, str]:
     hints: dict[str, str] = {s: "" for s in _SCOPES}
     if not inv.source_name:
         hints[_RUN] = "Load a recording on New assessment first."
-    if not inv.n_sessions and not inv.source_name:
-        hints[_PATIENT] = "Upload several visits of one patient."
     if not inv.ok_runs:
-        hints[_GROUP] = "Build a cohort below (upload several pivot JSONs)."
-    if len(inv.groupings) < 2:
-        hints[_TWO_GROUPS] = "Needs recordings tagged with at least two groups/conditions."
+        hints[_MARKERBASED] = "Build a cohort below (upload several pivot JSONs)."
     if not inv.has_paired_patient:
         hints[_ACCURACY] = "Needs a C3D reference sharing a patient with a video recording."
     return hints
@@ -115,8 +110,6 @@ def _strip(inv: _Inventory) -> None:
         )
     else:
         parts.append("Cohort: empty")
-    if inv.n_sessions:
-        parts.append(f"Longitudinal: {inv.n_sessions} session(s)")
     st.caption(" • ".join(parts))
 
     # Bridge: the loaded single source can join the cohort in one click.
@@ -125,8 +118,8 @@ def _strip(inv: _Inventory) -> None:
         if st.button(
             "Add loaded source to cohort", key="bridge_source_to_pool",
             help="Analyses the loaded recording with the auto-detected recipe "
-                 "and adds it to the cohort batch, so it counts in the group "
-                 "views below.",
+                 "and adds it to the cohort batch, so it counts in the "
+                 "Markerbased vs Monocular and Accuracy views.",
         ):
             with st.spinner("Analysing the loaded recording..."):
                 run: RunResult = analyse_data(
@@ -140,9 +133,10 @@ def _strip(inv: _Inventory) -> None:
 def render() -> None:
     page_header(
         "Analysis",
-        "Pick the question: one run, one patient over time, one group, two "
-        "groups compared, or accuracy against a C3D reference -- and export "
-        "from here. Greyed hints say what data each scope still needs.",
+        "Pick the question: one trial, the cohort at a glance, accuracy "
+        "against a C3D reference, or export -- one patient over time and "
+        "group statistics are on Advanced now. Greyed hints say what data "
+        "each scope still needs.",
     )
 
     inv = _inventory()
@@ -171,13 +165,9 @@ def render() -> None:
     st.session_state["_embedded_header"] = True
     if scope == _RUN:
         page_pipeline.render()
-    elif scope == _PATIENT:
-        page_longitudinal.render()
-    elif scope == _TWO_GROUPS:
-        page_pool.render(show_header=False, mode="compare")
+    elif scope == _MARKERBASED:
+        page_pool.render(show_header=False, mode="markerbased")
     elif scope == _ACCURACY:
         page_pool.render(show_header=False, mode="accuracy")
-    elif scope == _EXPORT:
-        page_export.render(mode="analysis")
     else:
-        page_pool.render(show_header=False, mode="single")
+        page_export.render(mode="analysis")

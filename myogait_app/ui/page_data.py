@@ -878,7 +878,7 @@ def _study_form(source_path: Path, key_prefix: str = "study") -> dict:
             "Stored under `study` in the exported JSON, so several pooled "
             "recordings can be grouped and labelled for statistical analysis. "
             "**Give a video and its matching Vicon C3D the same Patient ID "
-            "and Condition** so Analysis -> Study & conditions pairs them "
+            "and Condition** so Analysis -> Accuracy vs C3D pairs them "
             "automatically."
         )
         c1, c2 = st.columns(2)

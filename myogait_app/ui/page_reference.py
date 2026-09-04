@@ -49,9 +49,9 @@ same walk, once both are tagged with the same **Patient ID** and
    reads **"ready to compare — video + C3D both present"**; one with only
    one kind says what is missing.
 4. **Send the pair to Analysis.** Tick both rows in that group and press
-   **Open as cohort** (or **Compare conditions** if the tick-selection
-   spans more than one condition).
-5. **Read the accuracy.** *Analysis → "Study & conditions"*: the pair now
+   **Open as cohort**, or pick the pair straight from the history selector
+   on *Analysis → "Accuracy vs C3D"*.
+5. **Read the accuracy.** *Analysis → "Accuracy vs C3D"*: the pair now
    appears automatically — a per-joint accuracy table (bias, RMSE,
    waveform *r*, CMC) and mean-curve charts (blue = video, orange =
    Vicon/C3D; solid = left, dashed = right).
