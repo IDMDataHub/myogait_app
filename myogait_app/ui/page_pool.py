@@ -87,9 +87,6 @@ def render(show_header: bool = True, mode: str = "single") -> None:
     - ``"single"`` (default, Advanced's "One group") -- overview, condition
       comparison, per-condition tabs, accuracy.
     - ``"compare"`` (Advanced's "Two groups") -- same, comparison-first.
-    - ``"markerbased"`` (Analysis's "Markerbased vs Monocular") -- overview
-      and condition comparison only: a general cohort browse, no precision
-      read.
     - ``"accuracy"`` (Analysis's "Accuracy vs C3D") -- the vs-Vicon
       precision material *only* (aggregate agreement, ICC validity/
       test-retest, bundle export), then returns. "accuracy" used to show
@@ -197,9 +194,6 @@ def render(show_header: bool = True, mode: str = "single") -> None:
         _condition_comparison(groups, joints)
         _overview(groups, joints)
         _overall_accuracy(runs, joints, sides)
-    elif mode == "markerbased":
-        _overview(groups, joints)
-        _condition_comparison(groups, joints)
     else:
         _overview(groups, joints)
         _condition_comparison(groups, joints)

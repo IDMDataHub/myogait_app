@@ -1,4 +1,8 @@
-"""Functional smoke test for rendering a populated Cohort tab."""
+"""Functional smoke test for rendering a populated cohort view.
+
+The cohort now lives on **Advanced -> Groups** (the "One group" view is
+``page_pool.render(mode="single")``), not an Analysis scope.
+"""
 
 from __future__ import annotations
 
@@ -54,9 +58,7 @@ def test_cohort_tab_renders_a_paired_video_and_reference_trial() -> None:
     # AppTest default on a cold import.
     app = AppTest.from_file(str(APP_PY), default_timeout=60)
     app.run()
-    # The cohort lives under Analysis -> "Study & conditions".
-    app.session_state["nav_page"] = "Analysis"
-    app.session_state["analysis_scope"] = "Study & conditions"
+    app.session_state["nav_page"] = "Advanced"  # Groups tab, "One group" view
     app.session_state["pool_runs"] = _cohort_fixture()
     app.run()
 
@@ -89,8 +91,7 @@ def test_cohort_unspecified_condition_refuses_to_pair_untagged_runs() -> None:
 
     app = AppTest.from_file(str(APP_PY), default_timeout=60)
     app.run()
-    app.session_state["nav_page"] = "Analysis"
-    app.session_state["analysis_scope"] = "Study & conditions"
+    app.session_state["nav_page"] = "Advanced"  # Groups tab, "One group" view
     app.session_state["pool_runs"] = runs
     app.run()
 
