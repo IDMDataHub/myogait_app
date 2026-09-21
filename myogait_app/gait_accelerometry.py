@@ -293,8 +293,7 @@ class HarmonicRatio:
 
     HR_AP: float = 0.0
     HR_V: float = 0.0
-    IH_AP: float = 0.0  # Index of Harmonicity: fundamental / total power
-    IH_V: float = 0.0
+    IH_V: float = 0.0  # Index of Harmonicity: fundamental / total power
 
 
 @dataclass
@@ -550,7 +549,7 @@ def compute_all_biomarkers(ap: np.ndarray, v: np.ndarray, fs: float, site: str =
     bio.regularity.stability = bio.regularity.C1_V + bio.regularity.C2_V
 
     if stride_freq > 0:
-        bio.harmonic.HR_AP, bio.harmonic.IH_AP = _harmonic_ratio(ap, fs, stride_freq)
+        bio.harmonic.HR_AP, _ = _harmonic_ratio(ap, fs, stride_freq)
         bio.harmonic.HR_V, bio.harmonic.IH_V = _harmonic_ratio(v, fs, stride_freq)
 
     for axis, sig in (("AP", ap), ("V", v)):

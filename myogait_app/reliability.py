@@ -64,7 +64,6 @@ SPATIOTEMPORAL_BIOMARKERS = (
 ACCELEROMETRIC_BIOMARKERS = (
     "rms_accel_ap",
     "rms_accel_vertical",
-    "index_of_harmonicity_ap",
     "lf_hf_ratio_ap",
     "hr_ap",
     "hr_vertical",
@@ -271,9 +270,6 @@ def accelerometric_scalars(data: dict) -> dict[str, float]:
 
     - ``rms_accel_ap`` / ``rms_accel_vertical``: RMS of the detrended
       acceleration.
-    - ``index_of_harmonicity_ap``: power at the dominant locomotor frequency
-      divided by the summed power of its first six harmonics (Lamoth et al.);
-      1.0 = perfectly harmonic (smooth), lower = noisier gait.
     - ``lf_hf_ratio_ap``: spectral power in :data:`LF_BAND` over
       :data:`HF_BAND` -- higher means the movement lives in the locomotor
       band rather than in fast noise.
@@ -291,20 +287,6 @@ def accelerometric_scalars(data: dict) -> dict[str, float]:
 
     freqs = np.fft.rfftfreq(ap.size, d=1.0 / fps)
     power = np.abs(np.fft.rfft(ap - ap.mean())) ** 2
-
-    # Dominant locomotor frequency inside the LF band.
-    lf_mask = (freqs >= LF_BAND[0]) & (freqs < LF_BAND[1])
-    if lf_mask.any() and power[lf_mask].max() > 0:
-        f0 = float(freqs[lf_mask][int(np.argmax(power[lf_mask]))])
-        df = freqs[1] - freqs[0] if freqs.size > 1 else 0.0
-        harmonic_power = []
-        for h in range(1, 7):
-            target = h * f0
-            window = (freqs >= target - df) & (freqs <= target + df)
-            harmonic_power.append(float(power[window].sum()) if window.any() else 0.0)
-        total = sum(harmonic_power)
-        if total > 0:
-            out["index_of_harmonicity_ap"] = float(harmonic_power[0] / total)
 
     hf = _band_power(freqs, power, HF_BAND)
     lf = _band_power(freqs, power, LF_BAND)

@@ -4,6 +4,14 @@ All notable changes to this project, grouped by date. Newest first. Every
 entry below is attributed to its actual author; where that is not stated, it
 is Romain Feigean.
 
+## Unreleased (Romain Feigean)
+
+**Retired one AP-axis accelerometry biomarker from the two virtual-
+accelerometer modules.** Requested removal, not a bug fix. The vertical-axis
+counterpart is untouched, as is myogait's own (differently-computed) harmonic
+smoothness metric. The underlying computation was dropped too, not just the
+displayed value, since nothing else in either module read it.
+
 ## 0.10.0 — 2026-09-04 (Romain Feigean)
 
 **Closes out the 2 September audit action plan.** The 0.9.0 release below
