@@ -4,7 +4,10 @@ All notable changes to this project, grouped by date. Newest first. Every
 entry below is attributed to its actual author; where that is not stated, it
 is Romain Feigean.
 
-## Unreleased (Frédéric Fer)
+## 0.10.1 — 2026-10-07 (Frédéric Fer)
+
+Requires myogait >= 0.9.0.
+
 
 - Recipe detection (`autoconfig.detect_config`) now delegates to myogait's
   `myogait.autoconfig.detect_recipe` (myogait >= 0.9.0), so the app and the
@@ -16,7 +19,7 @@ is Romain Feigean.
 - `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `CITATION.cff`; README links to
   myogait's validation and gives citation and contribution sections.
 
-## Unreleased (Romain Feigean)
+## 0.10.1 — 2026-10-07 (Romain Feigean)
 
 **Retired one AP-axis accelerometry biomarker from the two virtual-
 accelerometer modules.** Requested removal, not a bug fix. The vertical-axis

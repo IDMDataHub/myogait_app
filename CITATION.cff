@@ -10,8 +10,8 @@ authors:
     given-names: Frédéric
     affiliation: "Institut de Myologie, Myodata team, Paris, France"
     email: f.fer@institut-myologie.org
-version: 0.9.0
-date-released: 2026-09-03
+version: 0.10.1
+date-released: 2026-10-07
 license: MIT
 repository-code: "https://github.com/IDMDataHub/myogait_app"
 url: "https://pypi.org/project/myogait-app/"
