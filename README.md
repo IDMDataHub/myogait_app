@@ -18,9 +18,8 @@ heuristic and explicitly labelled as such at the point of use; read them
 alongside the kinematic curves, never as a standalone diagnosis.
 
 **Validation.** The kinematics, events and spatio-temporal parameters the app
-displays come from myogait, validated against marker-based capture in a laboratory (BioCV, Qualisys,
-9 healthy adults) and, preliminarily, in a clinic with a hand-held phone
-(Myokinesis, 15 participants including 5 with a neuromuscular disease): see
+displays come from myogait, validated against marker-based capture in a
+laboratory (BioCV, Qualisys, 9 healthy adults): see
 [myogait's validation](https://github.com/IDMDataHub/myogait/tree/master/validation).
 The automatic recipe choice (overground vs standing-start clip, there-and-back
 walkway) is myogait's own `detect_recipe` (myogait >= 0.9.0), the same one its
