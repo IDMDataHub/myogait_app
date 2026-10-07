@@ -6,7 +6,9 @@ walkway that starts mid-stride and walks there-and-back need calibration
 off, the standstill kept, and physiological cycle bounds -- the validated
 recipe. Rather than make the user know this, introspect the pivot and choose.
 
-Streamlit-free and testable. ``detect_config`` returns a ``PipelineConfig``
+Streamlit-free and testable. The detection itself is
+``myogait.autoconfig.detect_recipe`` (myogait >= 0.9.0), shared with the
+library's ``run_auto``. ``detect_config`` returns a ``PipelineConfig``
 plus a short human rationale; ``run_auto`` runs it and, if segmentation still
 finds no cycle, falls back to the overground recipe once before giving up.
 """
@@ -21,6 +23,20 @@ from .pipeline import (
     PipelineConfig,
     PipelineRunner,
 )
+
+# The recording inspection lives in myogait (myogait.autoconfig, >= 0.9.0)
+# so the library's run_auto and this app pick the same recipe from the same
+# code. The local copies below are only a fallback for an older myogait.
+try:  # pragma: no cover - exercised by whichever myogait is installed
+    from myogait.autoconfig import (
+        detect_recipe as _mg_detect_recipe,
+        has_direction_reversal as _mg_has_direction_reversal,
+        has_static_start as _mg_has_static_start,
+    )
+except ImportError:  # myogait < 0.9.0
+    _mg_detect_recipe = None
+    _mg_has_direction_reversal = None
+    _mg_has_static_start = None
 
 
 def _mid_hip_x(frames: list) -> np.ndarray:
@@ -53,7 +69,7 @@ def _mid_hip_x(frames: list) -> np.ndarray:
     return np.asarray(xs, dtype=float)
 
 
-def _has_static_start(frames: list, n: int = 20, thresh: float = 0.01) -> bool:
+def _local_has_static_start(frames: list, n: int = 20, thresh: float = 0.01) -> bool:
     """True when the first frames barely move -- a standing neutral pose.
 
     A standing start gives calibration a real neutral to key off; a
@@ -64,7 +80,7 @@ def _has_static_start(frames: list, n: int = 20, thresh: float = 0.01) -> bool:
     return xs.size >= 3 and float(xs.std()) < thresh
 
 
-def _has_direction_reversal(frames: list, thresh: float = 0.15) -> bool:
+def _local_has_direction_reversal(frames: list, thresh: float = 0.15) -> bool:
     """True for a there-and-back walkway: the AP progression reverses.
 
     The mid-hip x goes one way then comes back by more than ``thresh`` of the
@@ -84,6 +100,19 @@ def _has_direction_reversal(frames: list, thresh: float = 0.15) -> bool:
     returned_from_high = high - start > thresh and high - end > thresh
     returned_from_low = start - low > thresh and end - low > thresh
     return returned_from_high or returned_from_low
+
+def _has_static_start(frames: list, n: int = 20, thresh: float = 0.01) -> bool:
+    """True when the first frames barely move (myogait's detector)."""
+    if _mg_has_static_start is not None:
+        return _mg_has_static_start(frames, n=n, thresh=thresh)
+    return _local_has_static_start(frames, n=n, thresh=thresh)
+
+
+def _has_direction_reversal(frames: list, thresh: float = 0.15) -> bool:
+    """True for a there-and-back walkway (myogait's detector)."""
+    if _mg_has_direction_reversal is not None:
+        return _mg_has_direction_reversal(frames, thresh=thresh)
+    return _local_has_direction_reversal(frames, thresh=thresh)
 
 
 #: The validated overground/marker recipe: no first-frame calibration, keep
@@ -105,6 +134,22 @@ def detect_config(data: dict, base: PipelineConfig | None = None) -> tuple[Pipel
     angle/event/cycle recipe is adapted.
     """
     base = base or PipelineConfig()
+    if _mg_detect_recipe is not None:
+        recipe, reasons = _mg_detect_recipe(data)
+        if recipe["name"] != "overground":
+            return base, list(reasons)
+        reasons = [r if not r.startswith("overground recipe")
+                   else "overground recipe: standstill kept, cycle bounds 0.8-1.8 s"
+                   for r in reasons]
+        config = _overground(base)
+        if recipe.get("direction_filter"):
+            config = replace(config, cycles=replace(config.cycles, filter_direction=True))
+        return config, reasons
+    return _local_detect_config(data, base)
+
+
+def _local_detect_config(data: dict, base: PipelineConfig) -> tuple[PipelineConfig, list[str]]:
+    """Fallback recipe detection for myogait < 0.9.0 (same rules)."""
     frames = data.get("frames") or []
     reasons: list[str] = []
 

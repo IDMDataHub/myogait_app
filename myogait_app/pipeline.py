@@ -714,9 +714,12 @@ def _apply_cycles(data: dict, cfg: CyclesConfig) -> dict:
         # cycles that survive -- matching what this function's own
         # (myogait-computed) summary reflects for hip/knee/ankle/trunk.
         try:
-            from myogait.pipeline import _filter_cycles_by_direction
-        except ImportError:
-            _filter_cycles_by_direction = None
+            from myogait import filter_cycles_by_direction as _filter_cycles_by_direction
+        except ImportError:  # myogait < 0.9.0 exposed it only privately
+            try:
+                from myogait.pipeline import _filter_cycles_by_direction
+            except ImportError:
+                _filter_cycles_by_direction = None
         if _filter_cycles_by_direction is not None:
             cycles = _filter_cycles_by_direction(data, cycles)
 
