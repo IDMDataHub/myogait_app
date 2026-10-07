@@ -18,7 +18,7 @@ heuristic and explicitly labelled as such at the point of use; read them
 alongside the kinematic curves, never as a standalone diagnosis.
 
 **Validation.** The kinematics, events and spatio-temporal parameters the app
-displays come from myogait, validated against Vicon in a laboratory (BioCV,
+displays come from myogait, validated against marker-based capture in a laboratory (BioCV, Qualisys,
 9 healthy adults) and, preliminarily, in a clinic with a hand-held phone
 (Myokinesis, 15 participants including 5 with a neuromuscular disease): see
 [myogait's validation](https://github.com/IDMDataHub/myogait/tree/master/validation).
