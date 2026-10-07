@@ -17,6 +17,15 @@ screens, clinical scores and normative comparisons throughout the app are
 heuristic and explicitly labelled as such at the point of use; read them
 alongside the kinematic curves, never as a standalone diagnosis.
 
+**Validation.** The kinematics, events and spatio-temporal parameters the app
+displays come from myogait, validated against Vicon in a laboratory (BioCV,
+9 healthy adults) and, preliminarily, in a clinic with a hand-held phone
+(Myokinesis, 15 participants including 5 with a neuromuscular disease): see
+[myogait's validation](https://github.com/IDMDataHub/myogait/tree/master/validation).
+The automatic recipe choice (overground vs standing-start clip, there-and-back
+walkway) is myogait's own `detect_recipe` (myogait >= 0.9.0), the same one its
+`run_auto` uses.
+
 ---
 
 ## Quick start
@@ -376,6 +385,17 @@ de Myologie. Built on [myogait](https://github.com/IDMDataHub/myogait) and
 [gaitkit](https://github.com/IDMDataHub/gaitkit) by Frédéric Fer, developed
 separately from this application. See [**CHANGELOG.md**](CHANGELOG.md) for
 what changed and why, credited by contributor.
+
+## Citation
+
+If you use the application in your research, please cite it together with
+myogait (see [`CITATION.cff`](CITATION.cff) and
+[myogait's citation](https://github.com/IDMDataHub/myogait#citation)).
+
+## Contributing
+
+Bug reports, questions and pull requests are welcome — see
+[CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 

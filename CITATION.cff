@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+message: "If you use myogait-app in your research, please cite it as below, together with myogait."
+title: "myogait-app: an interactive workbench for the myogait markerless gait analysis toolkit"
+type: software
+authors:
+  - family-names: Feigean
+    given-names: Romain
+    affiliation: "Institut de Myologie, Neuromuscular Physiology and Evaluation Laboratory, Paris, France"
+  - family-names: Fer
+    given-names: Frédéric
+    affiliation: "Institut de Myologie, Myodata team, Paris, France"
+    email: f.fer@institut-myologie.org
+version: 0.9.0
+date-released: 2026-09-03
+license: MIT
+repository-code: "https://github.com/IDMDataHub/myogait_app"
+url: "https://pypi.org/project/myogait-app/"
+keywords:
+  - gait analysis
+  - markerless motion capture
+  - streamlit
+  - clinical biomechanics
+references:
+  - type: software
+    title: "myogait: a markerless video-based gait analysis toolkit"
+    authors:
+      - family-names: Fer
+        given-names: Frédéric
+    doi: 10.5281/zenodo.18726412
+    repository-code: "https://github.com/IDMDataHub/myogait"

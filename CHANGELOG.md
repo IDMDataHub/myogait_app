@@ -4,6 +4,18 @@ All notable changes to this project, grouped by date. Newest first. Every
 entry below is attributed to its actual author; where that is not stated, it
 is Romain Feigean.
 
+## Unreleased (Frédéric Fer)
+
+- Recipe detection (`autoconfig.detect_config`) now delegates to myogait's
+  `myogait.autoconfig.detect_recipe` (myogait >= 0.9.0), so the app and the
+  library's `run_auto` choose the same recipe from the same code; the local
+  rules are kept only as a fallback for an older myogait.
+- Direction filtering uses myogait's public `filter_cycles_by_direction`
+  instead of the private `_filter_cycles_by_direction` (fallback kept for
+  myogait < 0.9.0).
+- `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `CITATION.cff`; README links to
+  myogait's validation and gives citation and contribution sections.
+
 ## Unreleased (Romain Feigean)
 
 **Retired one AP-axis accelerometry biomarker from the two virtual-
