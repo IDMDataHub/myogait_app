@@ -547,6 +547,14 @@ def _apply_isb_reconstruction(data: dict, isb_context: dict) -> dict:
     JSON re-import of an old export, or a caller driving PipelineRunner
     directly -- without requiring a trip back through that C3D tab.
     """
+    if data.get("c3d_markers_3d") is None and not (data.get("extraction") or {}).get("source_file"):
+        # A video pivot has no 3-D markers: ISB is not applicable, which is
+        # the expected degrade path, not an unexpected failure.
+        data["_isb_reconstruction_status"] = {
+            "applied": False,
+            "reason": "ISB angles need 3-D marker data (C3D); not applicable to video.",
+        }
+        return data
     try:
         m3d = data.get("c3d_markers_3d")
         if m3d is not None:
@@ -722,6 +730,15 @@ def _apply_cycles(data: dict, cfg: CyclesConfig) -> dict:
                 _filter_cycles_by_direction = None
         if _filter_cycles_by_direction is not None:
             cycles = _filter_cycles_by_direction(data, cycles)
+    else:
+        # Same flexion-positive sign check as the direction filter applies,
+        # for single-direction recordings (myogait >= 0.9.1).
+        try:
+            from myogait import enforce_flexion_positive
+        except ImportError:
+            enforce_flexion_positive = None
+        if enforce_flexion_positive is not None:
+            enforce_flexion_positive(cycles.get("cycles", []))
 
     return _enrich_cycles_with_isb_dof(data, cycles)
 
