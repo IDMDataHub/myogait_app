@@ -4,7 +4,10 @@ All notable changes to this project, grouped by date. Newest first. Every
 entry below is attributed to its actual author; where that is not stated, it
 is Romain Feigean.
 
-## Unreleased (Frédéric Fer)
+## 0.10.2 — 2026-10-07 (Frédéric Fer)
+
+Requires myogait >= 0.9.1.
+
 
 - Single-direction recordings get the same flexion-positive sign check as
   there-and-back ones (myogait's `enforce_flexion_positive`, >= 0.9.1).
