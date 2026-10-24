@@ -23,8 +23,9 @@ from functools import lru_cache
 REQUIRED_MYOGAIT = (0, 6, 1)
 
 #: Minimum gaitkit version exposing the gk_* event detectors that the
-#: comparator puts in competition with the built-in ones.
-REQUIRED_GAITKIT = (1, 4, 8)
+#: comparator puts in competition with the built-in ones. 1.5.0: gk_bike is the
+#: revised BIKE (missing-marker interpolation, axis and walking-direction fixes).
+REQUIRED_GAITKIT = (1, 5, 0)
 
 #: Below this version, load_c3d normalised the antero-posterior and
 #: vertical axes independently, silently distorting angles on any

@@ -4,6 +4,16 @@ All notable changes to this project, grouped by date. Newest first. Every
 entry below is attributed to its actual author; where that is not stated, it
 is Romain Feigean.
 
+## Unreleased (Frédéric Fer)
+
+- Requires myogait >= 0.9.2: with myogait 0.9.1, `compute_angles` passed the
+  hip/knee/ankle positions to gaitkit in pixels and heel/toe in normalised
+  units for non-square videos, which broke the heel/toe-based gk_* detectors
+  (BIKE, Zeni, O'Connor) in the comparator.
+- Requires gaitkit >= 1.5.0 (revised BIKE as `gk_bike`; axis and
+  walking-direction fixes; IntellEvent ONNX sessions reused across calls).
+- To merge once myogait 0.9.2 and gaitkit 1.5.0 are published.
+
 ## 0.10.2 — 2026-10-07 (Frédéric Fer)
 
 Requires myogait >= 0.9.1.

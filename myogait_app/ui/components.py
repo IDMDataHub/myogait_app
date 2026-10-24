@@ -284,7 +284,7 @@ def runtime_warnings(runtime: Runtime | None = None) -> None:
             "```bash\n"
             "pip install --upgrade "
             '"myogait[mediapipe,yolo,excel,yaml] @ '
-            'git+https://github.com/IDMDataHub/myogait.git@master" "gaitkit>=1.4.8"\n'
+            'git+https://github.com/IDMDataHub/myogait.git@master" "gaitkit>=1.5.0"\n'
             "```"
         )
 

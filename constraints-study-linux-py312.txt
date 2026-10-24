@@ -16,7 +16,7 @@ cycler==0.12.1
 et_xmlfile==2.0.0
 ezc3d==1.7.2
 fonttools==4.63.0
-gaitkit==1.4.9
+gaitkit==1.5.0
 h11==0.16.0
 httptools==0.8.0
 idna==3.19
