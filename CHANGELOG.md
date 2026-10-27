@@ -15,6 +15,11 @@ is Romain Feigean.
   mean curves). Optional and non-blocking: it never makes the run fail. A
   `video_path` / `camera_moving` entry in the runner context enables the
   camera-motion test and vertical stabilisation of hand-held videos.
+- Trial screen: new **Kinetics (GRF, moments)** tab — toggles to show the
+  ground reaction forces / centre of pressure and the joint moments / ankle
+  power (mean ± SD per side), a per-stance peak table, and CSV downloads of
+  the peaks and of the 101-point stance curves. Shows what is missing
+  (mass, height) when kinetics cannot be computed.
 
 ## 0.10.2 — 2026-10-07 (Frédéric Fer)
 
