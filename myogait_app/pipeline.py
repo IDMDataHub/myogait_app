@@ -370,6 +370,10 @@ class PipelineResult:
     data: dict | None = None
     cycles: dict | None = None
     stats: dict | None = None
+    #: Markerless kinetics (per-foot GRF, COP, joint moments), filled after the analysis stage only when the
+    #: subject's mass and a length reference are known; ``{"error": ...}`` when it could not run. Never makes
+    #: the run fail. See :mod:`myogait_app.kinetics`.
+    kinetics: dict | None = None
     outcomes: list[StageOutcome] = field(default_factory=list)
 
     @property
@@ -1123,6 +1127,19 @@ class PipelineRunner:
         stats, outcome = self._stage("analysis", key_stats, _run_analysis)
         result.outcomes.append(outcome)
         result.stats = stats if outcome.ok else None
+
+        # kinetics (optional, non-blocking) -------------------------------
+        if outcome.ok and subj.weight_kg and (subj.height_m or subj.femur_length_mm):
+            from .kinetics import compute_kinetics
+
+            key_kin = key_stats + ("kinetics", (subj.weight_kg, subj.height_m, subj.femur_length_mm, subj.sex))
+            try:
+                kin, _ = self._memo(key_kin, lambda: compute_kinetics(
+                    copy.deepcopy(self._cache[key_events]), subj,
+                    video_path=self._isb_context.get("video_path"), camera_moving=self._isb_context.get("camera_moving")))
+            except Exception as exc:  # noqa: BLE001 - kinetics never fails the run
+                kin = {"error": f"{type(exc).__name__}: {exc}"}
+            result.kinetics = kin
         return result
 
     @staticmethod

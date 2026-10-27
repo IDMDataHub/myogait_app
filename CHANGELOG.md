@@ -4,6 +4,18 @@ All notable changes to this project, grouped by date. Newest first. Every
 entry below is attributed to its actual author; where that is not stated, it
 is Romain Feigean.
 
+## Unreleased — 2026-10-28 (Frédéric Fer)
+
+### Added
+- Markerless kinetics (`myogait_app.kinetics`, requires myogait >= 0.10 with
+  `estimate_kinetics`): when the subject's body mass and height (or femur
+  length) are entered, the pipeline adds per-foot ground reaction forces,
+  centre of pressure, ankle/knee/hip moments and ankle power after the
+  analysis stage (`PipelineResult.kinetics`, with a per-stance peak table and
+  mean curves). Optional and non-blocking: it never makes the run fail. A
+  `video_path` / `camera_moving` entry in the runner context enables the
+  camera-motion test and vertical stabilisation of hand-held videos.
+
 ## 0.10.2 — 2026-10-07 (Frédéric Fer)
 
 Requires myogait >= 0.9.1.
