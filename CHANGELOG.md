@@ -4,6 +4,14 @@ All notable changes to this project, grouped by date. Newest first. Every
 entry below is attributed to its actual author; where that is not stated, it
 is Romain Feigean.
 
+
+## Unreleased (Frédéric Fer)
+
+- Study lock (`constraints-study-linux-py312.txt`) regenerated on Linux /
+  CPython 3.12 to clear the dependency-audit alerts: pillow 13.0.0,
+  certifi 2026.10.23, urllib3 2.8.0, streamlit 1.66.1 (1.62 capped pillow
+  below 13). It also pinned myogait 0.8.2, below the app's own floor; it now
+  pins myogait 0.9.2 and gaitkit 1.5.0. pip-audit: no known vulnerabilities.
 ## 0.10.3 — 2026-10-24 (Frédéric Fer)
 
 - Requires myogait >= 0.9.2: with myogait 0.9.1, `compute_angles` passed the
