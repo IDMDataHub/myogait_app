@@ -210,6 +210,12 @@ class CyclesConfig:
     #: automatically by ``autoconfig.detect_config`` when a reversal is
     #: detected; a single-direction walk leaves it a harmless no-op.
     filter_direction: bool = False
+    #: Exclude cycles whose hip/knee/ankle curve is far from the per-side
+    #: median (robust z > 2.5; sides with >= 5 cycles only) before the
+    #: averages are computed -- cycles recorded while the subject enters or
+    #: leaves the frame flatten the mean ankle push-off and knee peak
+    #: (myogait >= 0.9.4 ``reject_outlier_cycles``; ignored on older myogait).
+    reject_outliers: bool = True
 
 
 #: myogait's own femur-to-height ratio (Drillis, Contini & Bluestein,
@@ -727,6 +733,14 @@ def _apply_cycles(data: dict, cfg: CyclesConfig) -> dict:
             enforce_flexion_positive = None
         if enforce_flexion_positive is not None:
             enforce_flexion_positive(cycles.get("cycles", []))
+
+    if cfg.reject_outliers and cycles.get("cycles"):
+        try:
+            from myogait import reject_outlier_cycles
+        except ImportError:  # myogait < 0.9.4
+            reject_outlier_cycles = None
+        if reject_outlier_cycles is not None:
+            cycles = reject_outlier_cycles(cycles)
 
     return _enrich_cycles_with_isb_dof(data, cycles)
 

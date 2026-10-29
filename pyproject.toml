@@ -34,7 +34,7 @@ dynamic = ["version"]
 dependencies = [
     "streamlit>=1.38",
     "plotly>=5.24",
-    "myogait>=0.9.3",
+    "myogait>=0.9.4",
     "ezc3d",
     "c3d>=0.5",
     "numpy>=1.24",

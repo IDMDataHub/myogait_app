@@ -5,6 +5,16 @@ entry below is attributed to its actual author; where that is not stated, it
 is Romain Feigean.
 
 
+## 0.10.5 — 2026-10-29 (Frédéric Fer)
+
+Requires myogait >= 0.9.4.
+
+- Cycles whose hip/knee/ankle curve is atypical (subject entering or leaving
+  the frame, occlusion) are excluded from the averages by default
+  (`CyclesConfig.reject_outliers`, myogait `reject_outlier_cycles`). They
+  flattened the mean ankle push-off on long recordings.
+
+
 ## 0.10.4 — 2026-10-29 (Frédéric Fer)
 
 Requires myogait >= 0.9.3.
