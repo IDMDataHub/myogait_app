@@ -43,7 +43,7 @@ class NormalizeConfig:
 
     #: Applied in order. Names come from myogait.normalize.NORMALIZE_STEPS.
     filters: tuple[str, ...] = ("butterworth",)
-    butterworth_cutoff: float = 4.0
+    butterworth_cutoff: float = 8.0
     butterworth_order: int = 2
     center: bool = False
     align: bool = False
@@ -62,7 +62,7 @@ class AnglesConfig:
     """Joint kinematics, plus the corrections that need only the angles."""
 
     method: str = "sagittal_vertical_axis"
-    correction_factor: float = 0.8
+    correction_factor: float = 1.0
     calibrate: bool = True
     calibration_frames: int = 30
     #: When the first calibration_frames of a joint show no meaningful
@@ -322,24 +322,12 @@ class PipelineConfig:
     cycles: CyclesConfig = field(default_factory=CyclesConfig)
     bias: BiasConfig = field(default_factory=BiasConfig)
     subject: SubjectConfig = field(default_factory=SubjectConfig)
-    #: Restore the markerless ankle push-off the pose estimator attenuates
-    #: (myogait >= 0.8.6 calibrated deconvolution, mean-restoration). On by
-    #: default: it halves the ankle ROM bias vs Vicon (|ROM err| 10.8->6.7 deg
-    #: leave-one-subject-out) while preserving inter-cycle variability exactly,
-    #: and makes no healthy-gait assumption -- the filter is cadence-adaptive
-    #: in Hz and pushes toward no template, so it cannot fabricate a push-off
-    #: that is not there (verified: a cycle with the push-off suppressed is
-    #: NOT reinvented). Robustness probes on the calibration data: restored ROM
-    #: stays 30-33 deg across 60-150 steps/min (out-of-band harmonics clamp,
-    #: they do not extrapolate), and the shipped Wiener lambda=0.08 deliberately
-    #: under-restores (32 vs Vicon 38) rather than amplify noise. Unlike the
-    #: LASSO bias models it carries no healthy-shape assumption, so it is safe
-    #: to default on; it acts on every source, including patient video, which
-    #: is why it stays visibly toggleable (see the sidebar). Not yet validated
-    #: on pathological gait -- there are good theoretical reasons (estimator
-    #: physics, not gait shape) to expect it holds, but no patho data confirms
-    #: it. See ``myogait.restore_ankle_dynamics``.
-    restore_ankle_dynamics: bool = True
+    #: Ankle push-off restoration (myogait.restore_ankle_dynamics, a Wiener
+    #: deconvolution). OFF by default since 0.10.4 and deprecated in myogait
+    #: 0.9.3: it was calibrated to compensate the former defaults (4 Hz landmark
+    #: filter, angle factor 0.8). With the current defaults (8 Hz, factor 1.0)
+    #: the push-off peak is already preserved and the restoration over-corrects.
+    restore_ankle_dynamics: bool = False
 
     def with_stage(self, stage: str, value: Any) -> "PipelineConfig":
         return replace(self, **{stage: value})

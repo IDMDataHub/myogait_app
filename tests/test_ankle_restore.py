@@ -8,21 +8,20 @@ from dataclasses import replace
 import pytest
 
 
-def test_flag_defaults_on_and_is_settable():
-    # On by default: validated, cannot fabricate an absent push-off, and only
-    # ever adds the systematic deficit back. Still switchable (it changes the
-    # ankle measurement on every source).
+def test_flag_defaults_off_and_is_settable():
+    # Off by default since 0.10.4: it compensated the former 4 Hz / x0.8
+    # myogait defaults and over-corrects with the current ones.
     from myogait_app.pipeline import PipelineConfig
     cfg = PipelineConfig()
-    assert cfg.restore_ankle_dynamics is True
-    assert replace(cfg, restore_ankle_dynamics=False).restore_ankle_dynamics is False
+    assert cfg.restore_ankle_dynamics is False
+    assert replace(cfg, restore_ankle_dynamics=True).restore_ankle_dynamics is True
 
 
 def test_flag_participates_in_the_analysis_cache_key():
     # Two configs differing only by the flag must not collide in the cache.
     from myogait_app.pipeline import PipelineConfig
     a = PipelineConfig()
-    b = replace(a, restore_ankle_dynamics=False)
+    b = replace(a, restore_ankle_dynamics=True)
     assert a.to_dict()["restore_ankle_dynamics"] != b.to_dict()["restore_ankle_dynamics"]
 
 

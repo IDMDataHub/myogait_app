@@ -5,7 +5,15 @@ entry below is attributed to its actual author; where that is not stated, it
 is Romain Feigean.
 
 
-## Unreleased (Frédéric Fer)
+## 0.10.4 — 2026-10-29 (Frédéric Fer)
+
+Requires myogait >= 0.9.3.
+
+- Default kinematics follow myogait 0.9.3: landmark Butterworth 8 Hz (was
+  4 Hz) and no angle scaling (correction factor 1.0, was 0.8). The old
+  defaults flattened the ankle push-off and knee swing peaks.
+- Ankle push-off restoration OFF by default (it compensated the old defaults
+  and over-corrects with the new ones; deprecated in myogait 0.9.3).
 
 - Study lock (`constraints-study-linux-py312.txt`) regenerated on Linux /
   CPython 3.12 to clear the dependency-audit alerts: pillow 13.0.0,

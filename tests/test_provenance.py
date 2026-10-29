@@ -19,7 +19,7 @@ def test_provenance_is_reproducible_when_given_a_timestamp():
 
     assert provenance["created_at"] == "2026-08-25T00:00:00+00:00"
     assert provenance["packages"] == {"myogait": "0.8.2", "gaitkit": "1.4.8"}
-    assert provenance["pipeline_config"]["normalize"]["butterworth_cutoff"] == 4.0
+    assert provenance["pipeline_config"]["normalize"]["butterworth_cutoff"] == 8.0
     assert provenance["schema_version"] == 2
 
 

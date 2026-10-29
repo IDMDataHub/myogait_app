@@ -23,7 +23,7 @@ jsonschema-specifications==2025.9.1
 kiwisolver==1.5.1
 MarkupSafe==3.0.4
 matplotlib==3.11.2
-myogait==0.9.2
+myogait==0.9.3
 narwhals==2.28.0
 numpy==2.5.4
 opencv-python-headless==5.0.0.93
