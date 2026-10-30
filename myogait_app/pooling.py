@@ -612,6 +612,8 @@ def overall_agreement(
     """
     by_patient: dict[tuple[str, str], list[RunResult]] = {}
     for run in paired_accuracy_runs(runs):
+        if str(run.patient).strip() in ("", "?"):
+            continue  # an unnamed recording must never pair with another one
         by_patient.setdefault((run.patient, run.condition), []).append(run)
 
     per_joint_side: list[dict] = []

@@ -29,6 +29,40 @@ def _entry_script() -> str:
     )
 
 
+#: The repository's ``.streamlit/config.toml`` is only read when Streamlit is
+#: started from the repository root; a pip-installed ``myogait-app`` launched
+#: from anywhere else lost the Bauhaus theme (white page) and fell back to
+#: Streamlit's 200 MB upload cap. Mirror that file here as default flags;
+#: any flag given on the command line wins. Keep in sync with
+#: ``.streamlit/config.toml``.
+_DEFAULT_FLAGS: dict[str, str] = {
+    "server.maxUploadSize": "2048",
+    "server.maxMessageSize": "2048",
+    "server.enableXsrfProtection": "true",
+    "browser.gatherUsageStats": "false",
+    "theme.base": "light",
+    "theme.primaryColor": "#c21b16",
+    "theme.backgroundColor": "#edeae3",
+    "theme.secondaryBackgroundColor": "#e3dfd6",
+    "theme.textColor": "#111213",
+    "theme.linkColor": "#7f4c00",
+    "theme.borderColor": "#b9b6ac",
+    "theme.showWidgetBorder": "true",
+    "theme.baseRadius": "none",
+    "theme.buttonRadius": "none",
+    "theme.font": "Helvetica Neue, Helvetica, Arial, sans-serif",
+    "theme.headingFont": "Helvetica Neue, Helvetica, Arial, sans-serif",
+    "theme.codeFont": "JetBrains Mono, ui-monospace, monospace",
+    "runner.fastReruns": "true",
+}
+
+
+def _with_default_flags(args: list[str]) -> list[str]:
+    """Prepend ``--key=value`` for every default the user did not pass."""
+    given = {a[2:].split("=", 1)[0] for a in args if a.startswith("--")}
+    return [f"--{k}={v}" for k, v in _DEFAULT_FLAGS.items() if k not in given] + args
+
+
 def main() -> None:
     """Run Streamlit, or print a local diagnostic when explicitly requested."""
     if sys.argv[1:] == ["--diagnose"]:
@@ -39,7 +73,7 @@ def main() -> None:
 
     from streamlit.web import cli as stcli
 
-    sys.argv = ["streamlit", "run", _entry_script(), *sys.argv[1:]]
+    sys.argv = ["streamlit", "run", _entry_script(), *_with_default_flags(sys.argv[1:])]
     sys.exit(stcli.main())
 
 

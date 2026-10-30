@@ -1,6 +1,6 @@
 """The shared clinical-note component (D1) and its accelerometry helper.
 
-One visual language for clinical caveats: A2 (Markerbased vs Monocular) and B5
+One visual language for clinical caveats: A2 (Video vs markers) and B5
 (Accelerometry) both render the *same* non-comparability warning through the
 shared helper rather than each re-phrasing it (DEV-01 / DOC-01).
 """

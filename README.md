@@ -1,57 +1,68 @@
-# app myogait
+<p align="center">
+  <img src="docs/readme/banner.svg" alt="myogait app — markerless gait analysis workbench" width="100%">
+</p>
 
-An interactive workbench for the [myogait](https://github.com/IDMDataHub/myogait)
-markerless gait analysis toolkit.
+<p align="center">
+  <a href="https://pypi.org/project/myogait-app/"><img src="https://img.shields.io/pypi/v/myogait-app?style=flat-square&color=111213&label=PyPI" alt="PyPI"></a>
+  <a href="https://pypi.org/project/myogait/"><img src="https://img.shields.io/pypi/v/myogait?style=flat-square&color=c21b16&label=myogait" alt="myogait"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-1b4fb0?style=flat-square" alt="MIT"></a>
+  <img src="https://img.shields.io/badge/python-3.10%E2%80%933.12-f0b90b?style=flat-square&labelColor=111213" alt="Python 3.10-3.12">
+</p>
 
-It exists to answer one kind of question well: *what does this parameter
-actually change?* Every lever myogait exposes downstream of extraction is a
-control here, the figures redraw against the same recording, and each screen can
-hand back the exact Python, YAML and CLI that produced what is on it. It reads
-from a video, a pre-extracted pivot JSON, or a marker-based `.c3d` motion-capture
-trial (with automatic marker-convention detection across labs and protocols),
-and drives myogait's own functions throughout — this repository contains no
-gait-analysis algorithms of its own.
+**A video of someone walking in, joint-angle curves, gait cycles and
+spatio-temporal parameters out — in a browser, without writing code.**
+myogait app is the interactive workbench of the
+[myogait](https://github.com/IDMDataHub/myogait) markerless gait-analysis
+toolkit: every parameter is a control, the figures redraw on the same recording,
+and each screen hands back the exact Python, YAML and CLI that produced it.
 
-**Research and screening tool, not a diagnostic device.** The pathology
-screens, clinical scores and normative comparisons throughout the app are
-heuristic and explicitly labelled as such at the point of use; read them
-alongside the kinematic curves, never as a standalone diagnosis.
+> **Research and screening tool, not a diagnostic device.** Pathology screens,
+> clinical scores and normative comparisons are heuristic and labelled as such
+> where they appear; read them alongside the kinematic curves.
 
-**Validation.** The kinematics, events and spatio-temporal parameters the app
-displays come from myogait, validated against marker-based capture in a
-laboratory (BioCV, Qualisys, 9 healthy adults): see
-[myogait's validation](https://github.com/IDMDataHub/myogait/tree/master/validation).
-The automatic recipe choice (overground vs standing-start clip, there-and-back
-walkway) is myogait's own `detect_recipe` (myogait >= 0.9.0), the same one its
-`run_auto` uses.
+<table>
+<tr>
+<td width="25%" valign="top"><img src="docs/readme/square.svg" width="18" height="18" alt=""><br><b>Import</b><br>A video (pose extracted on the GPU), a Vicon <code>.c3d</code> trial or a myogait JSON, attached to a patient.</td>
+<td width="25%" valign="top"><img src="docs/readme/circle.svg" width="18" height="18" alt=""><br><b>Analyse</b><br>Hip, knee and ankle curves, gait cycles, cadence, stance, symmetry — updated live.</td>
+<td width="25%" valign="top"><img src="docs/readme/triangle.svg" width="18" height="18" alt=""><br><b>Compare</b><br>Video against markers, a patient over time, two groups, two settings.</td>
+<td width="25%" valign="top"><img src="docs/readme/bar.svg" width="18" height="18" alt=""><br><b>Export</b><br>Data files, figures, a PDF report and a provenance record of every setting.</td>
+</tr>
+</table>
 
----
+<!-- Screenshots: drop the captures in docs/readme/ and uncomment.
+<p align="center">
+  <img src="docs/readme/screen_import.png" width="49%" alt="New assessment">
+  <img src="docs/readme/screen_curves.png" width="49%" alt="Trial Explorer">
+  <img src="docs/readme/screen_vicon.png" width="49%" alt="Video vs markers">
+  <img src="docs/readme/screen_report.png" width="49%" alt="Export">
+</p>
+-->
 
-## Quick start
-
-Choose one installation profile:
+## <img src="docs/readme/square.svg" width="18" height="18" alt=""> Quick start
 
 ```bash
-# Base application: pivots, C3D and installed pose backends.
-pip install .
-
-# Add only the pose backend needed for the study.
-pip install ".[mediapipe]"
-# or: pip install ".[yolo]"
-
-# Tests, build and dependency-audit tools.
-pip install ".[dev]"
+pip install "myogait-app"            # the app and myogait
+pip install "myogait[sapiens2]"      # the validated pose model (Sapiens 2)
+myogait setup-sapiens2               # once: download the model weights
+myogait-app                          # opens http://localhost:8501
 ```
 
-Then start the application.
+The defaults are the validated myogait recipe — Sapiens 2 pose model, 8 Hz
+landmark filter, unscaled angles, Zeni gait events, there-and-back direction
+filter and rejection of atypical cycles — so a first analysis needs no tuning.
+An NVIDIA (CUDA) or Intel Arc (XPU) GPU makes video extraction several times
+faster; see [GPU acceleration](#gpu-acceleration).
+
+<details>
+<summary><b>Install from source, other pose models, Windows notes</b></summary>
 
 ```bash
 # Windows PowerShell
 py -3.12 -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install .
-pip install ".[mediapipe]"  # choose a backend explicitly
-python scripts/setup_gpu.py   # optional: NVIDIA/Intel GPU acceleration, see below
+pip install ".[mediapipe]"  # or ".[yolo]": lighter, less accurate backends
+python scripts/setup_gpu.py   # optional: NVIDIA/Intel GPU acceleration
 myogait-app
 ```
 
@@ -61,13 +72,25 @@ On Linux/macOS:
 python3 -m venv .venv
 source .venv/bin/activate
 pip install .
-pip install ".[mediapipe]"  # choose a backend explicitly
 myogait-app --server.address 127.0.0.1
 ```
 
-`.[backends]` remains a comprehensive GPU-workstation profile; it can install large frameworks such as Torch. `requirements.txt` is a development/experimental profile that follows
-`myogait@master`; it is not the recommended installation for a reproducible
-study.
+`.[backends]` is a comprehensive GPU-workstation profile; it can install large
+frameworks such as Torch. `pip install ".[dev]"` adds the test, build and
+dependency-audit tools.
+
+</details>
+
+## <img src="docs/readme/circle.svg" width="18" height="18" alt=""> Validation
+
+The kinematics, events and spatio-temporal parameters come from myogait, which
+is validated against marker-based motion capture: see
+[myogait's validation](https://github.com/IDMDataHub/myogait/tree/master/validation).
+The app adds no gait algorithm of its own; the automatic recipe choice
+(overground vs standing-start clip, there-and-back walkway) is myogait's
+`detect_recipe`, the same one `run_auto` uses.
+
+## <img src="docs/readme/triangle.svg" width="18" height="18" alt=""> Installation in depth
 
 ### Reproducible study environment
 
@@ -107,7 +130,7 @@ Then open **New assessment** and load a pivot JSON or a video — or follow
 uploaded video to the first kinematic curves and everything else the app
 can measure.
 
-## Environment requirements
+## <img src="docs/readme/bar.svg" width="18" height="18" alt=""> Environment requirements
 
 The app probes the environment at startup and disables what the installed
 version cannot do, rather than failing at click time. Two versions matter:
@@ -259,7 +282,7 @@ already do:
   terms are written to allow, but the call is yours to make for your own
   use, not this document's to make for you.
 
-## What is in it
+## <img src="docs/readme/square.svg" width="18" height="18" alt=""> What is in it
 
 Four screens, ordered as a clinician moves through an assessment. The first
 two are the clinical path; **Advanced** holds the research depth; **Index**
@@ -268,27 +291,25 @@ is the reference.
 | Screen | Does |
 |---|---|
 | **New assessment** | Bring a recording in — a video to extract (runs as a background job, returns a recoverable ticket), a Vicon C3D, or an already-exported pivot JSON — and attach it to a patient. Recent jobs live here. |
-| **Analysis** | The clinical read, as four scopes: **Trial Explorer** (every downstream parameter as a control, kinematics / cycles / spatio-temporal / signal quality updating live), **Markerbased vs Monocular** (one video+C3D pair, every parameter, the two methods drawn together), **Accuracy vs C3D** (markerless-vs-Vicon agreement, paired automatically by patient), **Export** (the clinical subset: data files, figures, native PDF). |
+| **Analysis** | The clinical read, as four scopes: **Trial Explorer** (every downstream parameter as a control, kinematics / cycles / spatio-temporal / signal quality updating live), **Video vs markers** (one video+C3D pair, every parameter, the two methods drawn together), **Accuracy vs C3D** (markerless-vs-Vicon agreement, paired automatically by patient), **Export** (the clinical subset: data files, figures, native PDF). |
 | **Advanced** | The deep dive: **Patient over time**, **Groups** (One group descriptives / Two groups compared with an adaptive difference test), **Comparator** (sweep one parameter, or compare separate extractions), **Accelerometry** (virtual-sensor biomarkers), **Export** (the full surface — video, video report, MoCap PDF), and, when enabled, **Method validation** (Vicon alignment, the AIM degradation grid). |
 | **Index** | Function glossary grounded in myogait's own docstrings, plus task guides. |
 
-## Design decisions worth knowing
+## <img src="docs/readme/circle.svg" width="18" height="18" alt=""> Design decisions worth knowing
 
 **Stage caching.** The pipeline is memoised per stage on everything upstream of
 it. Moving a cycle duration bound recomputes in ~60 ms instead of ~490 ms,
 because the filtering, angles and events above it are reused. Changing the
 Butterworth cutoff correctly invalidates the whole chain below it.
 
-**Bias corrections are off by default, and say why.** myogait's
-`apply_{hip,knee,ankle}_bias_correction` are LASSO models fitted on healthy
-young adults. The package documents that they re-inject a healthy curve exactly
-where neuromuscular disease shows itself — swing knee flexion in DMD and CMT,
-ankle push-off in drop foot, end-stance hip extension in hip weakness. The app
-states this at the control, and gates the hip and knee models behind the M1
-perspective correction their coefficients were fitted on top of. They are also
-phase-indexed, so they run *after* segmentation and the app re-segments
-afterwards — otherwise you would read corrected curves against uncorrected cycle
-statistics.
+**Validated recipe by default, expert settings on request.** The sidebar
+shows only the subject and study fields and a one-line statement of the recipe
+in force (Sapiens 2, 8 Hz, unscaled angles, Zeni events, direction filter,
+atypical cycles excluded), chosen per recording by myogait's own
+`detect_recipe`. Every pipeline stage becomes adjustable under *Expert
+settings*. Deprecated or experimental corrections (ankle push-off
+restoration, LASSO bias corrections) are no longer offered in the interface;
+they remain in the myogait API.
 
 **Colour carries one entity per chart.** On the analysis pages that entity is the
 side; on the comparator it is the model or method, and the side becomes a facet.
@@ -310,7 +331,7 @@ that outlives it is a job ticket, and both are purged on a fixed clock
 **New assessment**, and the retention rule is stated in the interface rather
 than applied silently.
 
-## Reproducibility for a study
+## <img src="docs/readme/triangle.svg" width="18" height="18" alt=""> Reproducibility for a study
 
 The default dependency uses the current `myogait` development branch. That is
 useful for app development, but a study should pin the exact myogait tag or Git
@@ -318,7 +339,7 @@ commit it used and retain its virtual environment (or a lock file). Every export
 also includes a `*.provenance.json` sidecar, or `provenance.json` in a ZIP bundle,
 recording Python/package versions and the complete pipeline configuration.
 
-## Configuration
+## <img src="docs/readme/bar.svg" width="18" height="18" alt=""> Configuration
 
 All settings are environment variables, so the same code runs on a laptop and on
 the lab server.
@@ -336,7 +357,7 @@ the lab server.
 | `MYOGAIT_APP_SHOW_CODE` | `true` | Show the reproducibility panel. |
 | `MYOGAIT_APP_NAME` / `MYOGAIT_APP_LOGO` | neutral | Branding. See below. |
 
-## Deployment
+## <img src="docs/readme/square.svg" width="18" height="18" alt=""> Deployment
 
 `deploy/` holds an nginx location block and a systemd unit for running this
 behind a reverse proxy. The one thing that needs raising from the defaults:
@@ -348,14 +369,14 @@ sudo cp deploy/app-myogait.service /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl enable --now app-myogait
 ```
 
-## Branding
+## <img src="docs/readme/circle.svg" width="18" height="18" alt=""> Branding
 
 The identity is deliberately neutral. Everything a rebrand touches lives in
 `myogait_app/branding.py` — app name, tagline, logo, and the palette. Set
 `MYOGAIT_APP_NAME` and `MYOGAIT_APP_LOGO` for the quick version, or edit the
 dataclass for a full one. No colour or label is hardcoded anywhere else.
 
-## Layout
+## <img src="docs/readme/triangle.svg" width="18" height="18" alt=""> Layout
 
 ```
 app.py                     entry point and page routing
@@ -377,7 +398,7 @@ myogait_app/
 deploy/                    nginx + systemd
 ```
 
-## Author
+## <img src="docs/readme/bar.svg" width="18" height="18" alt=""> Author
 
 Developed by Romain Feigean, lead researcher at Assistmyo · NeuPEL · Institut
 de Myologie. Built on [myogait](https://github.com/IDMDataHub/myogait) and
@@ -385,17 +406,17 @@ de Myologie. Built on [myogait](https://github.com/IDMDataHub/myogait) and
 separately from this application. See [**CHANGELOG.md**](CHANGELOG.md) for
 what changed and why, credited by contributor.
 
-## Citation
+## <img src="docs/readme/square.svg" width="18" height="18" alt=""> Citation
 
 If you use the application in your research, please cite it together with
 myogait (see [`CITATION.cff`](CITATION.cff) and
 [myogait's citation](https://github.com/IDMDataHub/myogait#citation)).
 
-## Contributing
+## <img src="docs/readme/circle.svg" width="18" height="18" alt=""> Contributing
 
 Bug reports, questions and pull requests are welcome — see
 [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md).
 
-## License
+## <img src="docs/readme/triangle.svg" width="18" height="18" alt=""> License
 
 [MIT](LICENSE), also matching myogait's and gaitkit's own licensing.

@@ -54,7 +54,7 @@ def test_analysis_no_longer_offers_the_departed_scopes():
     from myogait_app.ui import page_analysis
 
     assert page_analysis._SCOPES == (
-        "Trial Explorer", "Markerbased vs Monocular", "Accuracy vs C3D", "Export",
+        "Trial Explorer", "Video vs markers", "Accuracy vs C3D", "Export",
     )
     for gone in ("One group", "Two groups", "Patient over time"):
         assert gone not in page_analysis._SCOPES

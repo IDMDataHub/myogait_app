@@ -21,7 +21,7 @@ from .components import page_header
 
 #: Scope labels, in display order.
 _RUN = "Trial Explorer"
-_MARKERBASED = "Markerbased vs Monocular"
+_MARKERBASED = "Video vs markers"
 _ACCURACY = "Accuracy vs C3D"
 _EXPORT = "Export"
 _SCOPES = (_RUN, _MARKERBASED, _ACCURACY, _EXPORT)
@@ -83,7 +83,7 @@ def _default_scope(inv: _Inventory) -> str:
 def _availability(inv: _Inventory) -> dict[str, str]:
     """Scope -> hint when its data is missing (empty string = ready).
 
-    Markerbased vs Monocular is driven by ready video+C3D pairs in job
+    Video vs markers is driven by ready video+C3D pairs in job
     history, not the loaded cohort -- its own page explains the empty
     case, so no hint is set here (that would need a JobManager call).
     """
@@ -115,7 +115,7 @@ def _strip(inv: _Inventory) -> None:
             "Add loaded source to cohort", key="bridge_source_to_pool",
             help="Analyses the loaded recording with the auto-detected recipe "
                  "and adds it to the cohort batch, so it counts in the "
-                 "Markerbased vs Monocular and Accuracy views.",
+                 "Video vs markers and Accuracy views.",
         ):
             with st.spinner("Analysing the loaded recording..."):
                 run: RunResult = analyse_data(
@@ -143,6 +143,9 @@ def render() -> None:
     # ("Single run", "One group", "Two groups", "Patient over time", "Study &
     # conditions") then fall through to the data-aware default below -- for
     # "Single run" that is Trial Explorer, exactly where it used to route.
+    pending_scope = st.session_state.pop("_pending_analysis_scope", None)
+    if pending_scope in ("run", "export"):
+        st.session_state["analysis_scope"] = _RUN if pending_scope == "run" else _EXPORT
     stored = st.session_state.get("analysis_scope")
     if stored is not None and stored not in _SCOPES:
         st.session_state.pop("analysis_scope", None)

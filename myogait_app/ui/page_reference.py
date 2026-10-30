@@ -138,8 +138,8 @@ not also this definitional offset.
     (
         "When not to enable bias corrections",
         """
-Bias corrections (Ankle/Hip/Knee, in the sidebar's "Bias corrections"
-section) are the one family of controls in this app that can make a
+Bias corrections (Ankle/Hip/Knee; no longer offered in the app since 0.10.6,
+still available in the myogait API) are the one family of corrections that can make a
 pathological recording *look healthy* — read this before turning any of
 them on.
 

@@ -22,18 +22,17 @@ def render() -> None:
         "itself.",
     )
 
-    st.info(
-        "**Loading a video and its Vicon C3D for accuracy** — do it in two "
-        "steps, tagging both with the **same patient and condition**:\n\n"
-        "1. **Video → extraction**: pick the file, fill the patient / condition "
-        "identifiers, start it. It runs as a job (see *Recent jobs*).\n"
-        "2. **C3D**: import the matching Vicon trial and give it the *same* "
-        "patient and condition.\n\n"
-        "They then pair **automatically by patient** in **Analysis → Accuracy "
-        "vs C3D**, where the markerless-vs-Vicon accuracy appears on its "
-        "own. A single video alone is fine too — you just get variability, not "
-        "accuracy."
-    )
+    with st.expander("Video + Vicon C3D: how to measure accuracy", expanded=False):
+        st.markdown(
+            "Two steps, tagging both with the **same patient and condition**:\n\n"
+            "1. **Video**: pick the file, fill the patient / condition "
+            "identifiers, start it. It runs as a job (see *Recent jobs*).\n"
+            "2. **C3D**: import the matching Vicon trial and give it the *same* "
+            "patient and condition.\n\n"
+            "They then pair **automatically by patient** in **Analysis → Accuracy "
+            "vs C3D**. A single video alone is fine too — you just get "
+            "variability, not accuracy."
+        )
 
     source = state.get_source()
     if source is not None:
@@ -45,7 +44,7 @@ def render() -> None:
         st.divider()
 
     tab_video, tab_c3d, tab_json, tab_jobs = st.tabs(
-        ["Video -> extraction", "C3D", "Pivot JSON", "Recent jobs"]
+        ["Video", "Vicon C3D", "myogait JSON", "Recent jobs"]
     )
     with tab_video:
         page_data._video_tab()
@@ -54,11 +53,26 @@ def render() -> None:
     with tab_json:
         st.caption(
             "The same pivot JSON can also be loaded straight into a cohort on "
-            "**Advanced → Groups** or **Advanced → Patient over time** (audit C10)."
+            "**Advanced → Groups** or **Advanced → Patient over time** "
         )
         page_data._json_tab()
+        st.divider()
+        st.caption("No recording at hand? Load a synthetic walk to try every control.")
+        if st.button("Load the demo recording", key="load_demo"):
+            _load_demo()
     with tab_jobs:
         page_data._ticket_tab()
 
     st.divider()
     storage_banner()
+
+
+def _load_demo() -> None:
+    """Install the synthetic demo walk and open Trial Explorer on it."""
+    from ..demo import make_demo_data
+
+    data = make_demo_data()
+    state.set_source(state.Source(kind="demo", name="Demo walk (synthetic)",
+                                  data=data, key="demo", model="synthetic"))
+    page_data.go_to_trial_explorer()
+    st.rerun()

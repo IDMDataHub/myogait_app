@@ -5,6 +5,44 @@ entry below is attributed to its actual author; where that is not stated, it
 is Romain Feigean.
 
 
+## 0.10.6 — 2026-10-30 (Frédéric Fer)
+
+Interface audit: the app now runs myogait's validated recipe by default and
+gets out of the way.
+
+Fixed
+- The there-and-back direction filter was silently switched off: the sidebar
+  rebuilt the cycle settings without `filter_direction` / `reject_outliers`.
+- Loading a single recording now applies myogait's automatic recipe
+  (`detect_recipe`, as `run_auto`), shown in the sidebar with its reason;
+  before, Trial Explorer used raw defaults (standing calibration on, no
+  direction filter).
+- A pip-installed `myogait-app` started outside the repository lost the
+  Bauhaus theme (white page) and fell back to Streamlit's 200 MB upload cap;
+  the command now passes the theme and the 2 GB limit itself.
+- Recordings without a patient ID are never paired in Accuracy vs C3D, and
+  the study form no longer pre-fills "P001" / "control" / "baseline".
+
+Changed
+- Pose model defaults to Sapiens 2 0.4B, listed first as "Recommended
+  (validated)"; the no-GPU warning no longer steers to unvalidated models.
+- Sidebar: essential mode (default) shows subject, study and the recipe in
+  force; the pipeline stages appear under *Expert settings*. The ankle
+  push-off restoration and the bias corrections are removed from the
+  interface (deprecated / experimental; still in the myogait API). The
+  angle-scaling help text no longer recommends 0.8.
+- "Analyse" on a finished job (and loading a JSON) opens Analysis > Trial
+  Explorer directly. Trial Explorer states how many cycles were analysed and
+  how many were excluded (atypical, other direction), with a "PDF report"
+  shortcut.
+- New assessment: a "Load the demo recording" button; tabs renamed Video /
+  Vicon C3D / myogait JSON / Recent jobs; the video+C3D how-to is folded.
+- "Markerbased vs Monocular" renamed "Video vs markers"; the duplicated
+  runtime badge is removed from the video tab; the experimental
+  Method-validation tab is off by default (`MYOGAIT_APP_EXPERIMENTAL=1`).
+- README redesigned (Bauhaus banner, quick start in four commands).
+
+
 ## 0.10.5 — 2026-10-29 (Frédéric Fer)
 
 Requires myogait >= 0.9.4.

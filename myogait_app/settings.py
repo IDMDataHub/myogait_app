@@ -77,7 +77,7 @@ class Settings:
 
     # ── Behaviour ────────────────────────────────────────────────────
     #: Show the experimental VICON / AIM benchmark section.
-    enable_experimental: bool = True
+    enable_experimental: bool = False
     #: Show the equivalent YAML config and Python snippet on every page.
     show_reproducibility: bool = True
 
@@ -96,7 +96,7 @@ class Settings:
             job_stale_minutes=_env_int("MYOGAIT_APP_JOB_STALE_MINUTES", 120, minimum=1),
             watch_dir=Path(watch_raw) if watch_raw else None,
             vicon_root=Path(vicon_raw) if vicon_raw else None,
-            enable_experimental=_env_bool("MYOGAIT_APP_EXPERIMENTAL", True),
+            enable_experimental=_env_bool("MYOGAIT_APP_EXPERIMENTAL", False),
             show_reproducibility=_env_bool("MYOGAIT_APP_SHOW_CODE", True),
         )
 

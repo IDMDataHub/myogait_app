@@ -705,6 +705,7 @@ def _apply_cycles(data: dict, cfg: CyclesConfig) -> dict:
                 frame["coherence"] = coherence.get("score")
 
     cycles = segment_cycles(source, **cycles_kwargs)
+    n_segmented = len(cycles.get("cycles", []))
 
     if cfg.filter_direction:
         # Keep only the dominant walking-direction group (drops mirrored
@@ -741,6 +742,13 @@ def _apply_cycles(data: dict, cfg: CyclesConfig) -> dict:
             reject_outlier_cycles = None
         if reject_outlier_cycles is not None:
             cycles = reject_outlier_cycles(cycles)
+
+    # How many segmented cycles each filter excluded, for the quality banner.
+    summary = dict(cycles.get("summary") or {})
+    n_outlier = int(summary.get("n_rejected_outlier", 0) or 0)
+    summary["n_dropped_direction"] = max(
+        0, n_segmented - len(cycles.get("cycles", [])) - n_outlier)
+    cycles = {**cycles, "summary": summary}
 
     return _enrich_cycles_with_isb_dof(data, cycles)
 

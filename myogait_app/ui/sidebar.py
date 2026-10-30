@@ -66,12 +66,12 @@ _K_EXPERT = "sidebar_expert"
 
 
 def _expert_mode() -> bool:
-    """Whether the pipeline sections open expanded (expert) or stay collapsed.
+    """Whether the pipeline stages are shown at all (expert) or not (essential).
 
-    The Trial Explorer sidebar carries ~45 controls; opening every stage by
-    default made it a wall of settings. Essential mode (the default) keeps the
-    advanced stages collapsed so the sidebar reads at a glance, without hiding
-    or removing any control -- expert mode simply re-expands them.
+    The validated myogait recipe needs no tuning, so essential mode (the
+    default) shows only the subject and study metadata plus a one-line
+    statement of the recipe in force; the pipeline stages appear only in
+    expert mode. A hidden stage keeps its current configuration unchanged.
     """
     return bool(st.session_state.get(_K_EXPERT, False))
 
@@ -92,18 +92,22 @@ def render(config: PipelineConfig, source=None) -> PipelineConfig:
         "Expert settings",
         value=False,
         key=_K_EXPERT,
-        help="Off keeps the advanced pipeline sections (signal conditioning, "
-             "joint kinematics, gait events) collapsed for a lighter sidebar; "
-             "on re-expands them. Every control stays available either way.",
+        help="Off: the validated myogait recipe runs as is and only the subject "
+             "and study fields are shown. On: every pipeline stage (filtering, "
+             "angles, events, cycles) becomes adjustable.",
     )
 
     config = _seed_metadata_from_source(config, source)
     subject = _subject_section(config.subject)
     _study_section()
+    if not _expert_mode():
+        _recipe_summary(config)
+        # Ankle restoration and the bias corrections are deprecated /
+        # experimental: never applied from the app, whatever a saved config says.
+        return replace(config, subject=subject, restore_ankle_dynamics=False,
+                       bias=BiasConfig())
     normalize = _normalize_section(config.normalize)
     angles = _angles_section(config.angles, runtime, source)
-    restore_ankle = _ankle_dynamics_toggle(config.restore_ankle_dynamics, runtime)
-    bias = _bias_section(config.bias, angles, runtime)
     events = _events_section(_sync_femur_from_subject(config.events, subject), runtime)
     cycles = _cycles_section(config.cycles, runtime)
 
@@ -112,41 +116,28 @@ def render(config: PipelineConfig, source=None) -> PipelineConfig:
         angles=angles,
         events=events,
         cycles=cycles,
-        bias=bias,
+        bias=BiasConfig(),
         subject=subject,
-        restore_ankle_dynamics=restore_ankle,
+        restore_ankle_dynamics=False,
     )
 
 
-def _ankle_dynamics_toggle(current: bool, runtime) -> bool:
-    """The ankle push-off restoration toggle.
-
-    Unlike the ISB reconstruction (a no-op on anything but a full-marker
-    C3D), this correction acts on *every* source, patient video included --
-    it re-adds the fast plantar-flexion the pose estimator's low-pass
-    attenuates. It is on by default because it is validated
-    (leave-one-subject-out) and cannot fabricate a push-off that is not
-    there (cadence-adaptive, frequency-domain, no template), but it stays a
-    visible switch precisely because it changes the primary measurement.
-    """
-    ok = runtime.has("ankle_dynamics")
-    with st.expander("Ankle dynamics", expanded=False):
-        return st.checkbox(
-            "Restore ankle push-off (deconvolution)",
-            value=current and ok,
-            disabled=not ok,
-            help="The 2-D pose estimator acts as a low-pass filter on the ankle "
-                 "waveform and flattens the fast push-off, under-reading ankle "
-                 "ROM by ~11 deg vs Vicon. This inverts that filter (calibrated "
-                 "once against Vicon, applied cadence-adaptively in Hz) and adds "
-                 "the systematic per-phase deficit back to every cycle, leaving "
-                 "inter-cycle variability untouched. It makes no healthy-gait "
-                 "assumption and will not invent a push-off that is absent, so it "
-                 "is safe on pathological gait -- but it does change the ankle "
-                 "numbers on every source, so it is left switchable. Halves the "
-                 "ankle ROM bias (|error| 10.8 -> 6.7 deg, leave-one-subject-out)."
-            if ok else runtime.missing_feature_hint("ankle_dynamics"),
-        )
+def _recipe_summary(config: PipelineConfig) -> None:
+    """One line stating the recipe in force, and whether it is the validated one."""
+    n, a, e, c = config.normalize, config.angles, config.events, config.cycles
+    validated = (tuple(n.filters) == ("butterworth",) and float(n.butterworth_cutoff) == 8.0
+                 and float(a.correction_factor) == 1.0 and e.method == "zeni"
+                 and c.reject_outliers)
+    filt = (f"Butterworth {n.butterworth_cutoff:g} Hz" if "butterworth" in n.filters
+            else ", ".join(n.filters) or "no filter")
+    parts = [filt, f"angles x{a.correction_factor:g}", f"{e.method} events",
+             "direction filter" if c.filter_direction else "both directions",
+             "atypical cycles excluded" if c.reject_outliers else "all cycles kept"]
+    st.caption(("**Validated recipe** - " if validated else "**Modified recipe** - ")
+               + " · ".join(parts) + ". Tick *Expert settings* to change it.")
+    reasons = st.session_state.get("mg_recipe_reasons") or []
+    if reasons:
+        st.caption("Chosen for this recording: " + "; ".join(reasons) + ".")
 
 
 #: Session-state slots for the metadata round-trip.
@@ -426,7 +417,8 @@ def _angles_section(cfg: AnglesConfig, runtime, source=None) -> AnglesConfig:
         )
         correction = st.slider(
             "2D ROM correction factor", 0.5, 1.2, float(cfg.correction_factor), 0.05,
-            help="myogait suggests 0.8 for MediaPipe and 1.0 for 3D-capable models.",
+            help="Scales every angle. 1.0 (no scaling) is the validated value: "
+                 "the former 0.8 under-estimated knee and ankle range of motion.",
         )
 
         # Split at 13 controls: what you are here to explore (calibration
@@ -633,88 +625,6 @@ def _angles_section(cfg: AnglesConfig, runtime, source=None) -> AnglesConfig:
     )
 
 
-def _bias_section(cfg: BiasConfig, angles: AnglesConfig, runtime) -> BiasConfig:
-    """The bias corrections, behind their warning.
-
-    These are the only controls in the app that can make a pathological
-    recording look healthy, so the warning is shown before the toggles
-    rather than hidden in a tooltip, and the hip and knee models are
-    disabled until the perspective correction they were fitted on top of
-    is enabled.
-    """
-    with st.expander("2b. Bias corrections - read first", expanded=False):
-        st.warning(
-            "These are LASSO models fitted on **healthy young adults** against "
-            "Vicon. myogait's own documentation states they re-inject a healthy "
-            "curve exactly where neuromuscular disease shows itself: swing knee "
-            "flexion (DMD, CMT), ankle push-off (drop foot), end-stance hip "
-            "extension. Use them to benchmark against a healthy reference. Do not "
-            "use them to read a patient."
-        )
-        st.caption(
-            "myogait deprecated this family in 0.8.0, removal planned for 1.0: "
-            "its own validation campaign found the *uncorrected* pipeline already "
-            "at optical-reference level with a modern pose backbone, and that "
-            "these corrections degrade rather than improve accuracy there. Each "
-            "call now also emits a DeprecationWarning. `run_pipeline()`, "
-            "myogait's own recommended entry point, applies no bias correction."
-        )
-
-        available = all(
-            runtime.has(key) for key in ("ankle_bias", "hip_bias", "knee_bias")
-        )
-        if not available:
-            st.caption(runtime.missing_feature_hint("ankle_bias"))
-
-        # These models were fitted on the sagittal method's residuals (M1-
-        # corrected, for hip/knee). ISB reconstruction is a different
-        # angle definition entirely (pelvis-referenced 3-D, not trunk-
-        # referenced 2-D) -- applying a correction fitted on one to the
-        # other has no scientific basis, so all three are blocked outright
-        # while it is on, not just hip/knee the way the perspective
-        # requirement below is.
-        isb_active = angles.isb_reconstruction
-        if isb_active:
-            st.caption(
-                "ISB reconstruction is on: these corrections were fitted on "
-                "the sagittal method's residuals, not ISB's pelvis-referenced "
-                "angles, so all three are disabled while it is active."
-            )
-
-        ankle = st.checkbox(
-            "Ankle bias correction",
-            value=cfg.ankle and available and not isb_active,
-            disabled=not available or isb_active,
-            help="Fitted on the raw signal; does not require the perspective step.",
-        )
-
-        needs = not angles.perspective
-        if needs and not isb_active:
-            st.caption(
-                "Hip and knee need the M1 perspective correction enabled first - "
-                "their coefficients were fitted on M1-corrected residuals, so "
-                "applying them to raw angles double-counts the projection."
-            )
-        hip = st.checkbox(
-            "Hip bias correction",
-            value=cfg.hip and available and not needs and not isb_active,
-            disabled=not available or needs or isb_active,
-        )
-        knee = st.checkbox(
-            "Knee bias correction",
-            value=cfg.knee and available and not needs and not isb_active,
-            disabled=not available or needs or isb_active,
-        )
-
-        if knee:
-            st.error(
-                "The knee correction acts on the 60-75% swing peak - the phase "
-                "where reduced knee flexion is the hallmark sign in DMD and CMT."
-            )
-
-    return BiasConfig(ankle=ankle, hip=hip, knee=knee)
-
-
 def _events_section(cfg: EventsConfig, runtime) -> EventsConfig:
     components.sidebar_section_marker("03", BRANDING.accent_mark)
     with st.expander("3. Gait events", expanded=_expert_mode()):
@@ -831,10 +741,25 @@ def _cycles_section(cfg: CyclesConfig, runtime) -> CyclesConfig:
             if use_coherence and gates_ok else None
         )
 
+        filter_direction = st.checkbox(
+            "Keep the dominant walking direction", value=cfg.filter_direction,
+            help="On a there-and-back walkway, drops the cycles walked in the "
+                 "other direction (mirrored angles). Set automatically when a "
+                 "return pass is detected.",
+        )
+        reject_outliers = st.checkbox(
+            "Exclude atypical cycles", value=cfg.reject_outliers,
+            help="Drops cycles whose hip/knee/ankle curve is far from the "
+                 "subject's median curve (entering or leaving the frame, "
+                 "occlusion) before averaging. Validated default: on.",
+        )
+
     return CyclesConfig(
         n_points=int(n_points),
         min_duration=float(bounds[0]),
         max_duration=float(bounds[1]),
         min_confidence=min_confidence,
         min_coherence=min_coherence,
+        filter_direction=filter_direction,
+        reject_outliers=reject_outliers,
     )

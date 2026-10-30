@@ -1,4 +1,4 @@
-"""Markerbased vs Monocular -- one video+C3D pair, every parameter, side
+"""Video vs markers -- one video+C3D pair, every parameter, side
 by side.
 
 Analysis's "Accuracy vs C3D" answers *how far apart* markerless and Vicon
@@ -47,7 +47,7 @@ _SPATIOTEMPORAL_ROWS = {
 
 def render() -> None:
     page_header(
-        "Markerbased vs Monocular",
+        "Video vs markers",
         "One video+C3D pair, every parameter, monocular vs marker-based "
         "together. The numbers behind the agreement are on Accuracy vs C3D.",
     )

@@ -159,10 +159,35 @@ def set_source(source: Source) -> None:
     current = st.session_state.get(K_SOURCE)
     st.session_state[K_SOURCE] = source
     if current is None or current.key != source.key:
+        _auto_configure(source)
         st.session_state[K_RUNNER] = None
         # Comparator results describe the previous extraction and would be
         # misleading next to a new one.
         st.session_state[K_COMPARE] = {}
+
+
+#: Why the automatic recipe was chosen for the current source (display only).
+K_RECIPE_REASONS = "mg_recipe_reasons"
+
+
+def _auto_configure(source: Source) -> None:
+    """Apply myogait's automatic recipe to a newly loaded source.
+
+    Same choice as ``myogait.run_auto`` (overground vs standing-start clip,
+    there-and-back walkway): the angle/event/cycle stages start from the
+    defaults adapted to this recording; the filtering and subject settings the
+    user already chose are kept.
+    """
+    from ..autoconfig import detect_config
+
+    current = get_config()
+    base = PipelineConfig(normalize=current.normalize, subject=current.subject)
+    try:
+        config, reasons = detect_config(source.data, base)
+    except Exception:  # the recipe choice must never block loading a file
+        config, reasons = base, []
+    st.session_state[K_CONFIG] = config
+    st.session_state[K_RECIPE_REASONS] = list(reasons)
 
 
 def clear_source() -> None:

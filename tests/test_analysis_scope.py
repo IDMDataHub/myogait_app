@@ -1,6 +1,6 @@
 """Analysis scope selection after the Advanced relocation.
 
-Analysis is now four scopes: Trial Explorer, Markerbased vs Monocular,
+Analysis is now four scopes: Trial Explorer, Video vs markers,
 Accuracy vs C3D, Export. "One group" / "Two groups" / "Patient over time"
 moved to Advanced tabs. The page must open on the view that matches the
 data actually loaded, survive scope labels stored by an older app version
@@ -17,7 +17,7 @@ from myogait_app.pooling import RunResult
 
 APP_PY = Path(__file__).resolve().parents[1] / "app.py"
 
-SCOPES = ("Trial Explorer", "Markerbased vs Monocular", "Accuracy vs C3D", "Export")
+SCOPES = ("Trial Explorer", "Video vs markers", "Accuracy vs C3D", "Export")
 DEPARTED = ("One group", "Two groups", "Patient over time", "Study & conditions")
 
 

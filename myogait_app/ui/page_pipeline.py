@@ -74,6 +74,23 @@ def render() -> None:
     elif assessment.status == "warning":
         st.warning(" ".join(assessment.reasons))
 
+    summary = (result.cycles or {}).get("summary") or {}
+    kept = len((result.cycles or {}).get("cycles") or [])
+    excluded = []
+    if summary.get("n_rejected_outlier"):
+        excluded.append(f"{summary['n_rejected_outlier']} atypical (curve far from "
+                        "the median: subject entering/leaving the frame, occlusion)")
+    if summary.get("n_dropped_direction"):
+        excluded.append(f"{summary['n_dropped_direction']} walked in the other "
+                        "direction (there-and-back)")
+    cols = st.columns([4, 1])
+    cols[0].caption(f"**{kept} gait cycles analysed.**"
+                    + (" Excluded: " + "; ".join(excluded) + "." if excluded else ""))
+    if cols[1].button("PDF report →", key="pipeline_to_export", use_container_width=True):
+        st.session_state["_pending_nav_page"] = "Analysis"
+        st.session_state["_pending_analysis_scope"] = "export"
+        st.rerun()
+
     isb_status = (result.data or {}).get("_isb_reconstruction_status")
     if config.angles.isb_reconstruction and isb_status is not None and not isb_status.get("applied"):
         st.warning(

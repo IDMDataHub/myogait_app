@@ -1,4 +1,4 @@
-"""Analysis -> "Markerbased vs Monocular": one video+C3D pair, every
+"""Analysis -> "Video vs markers": one video+C3D pair, every
 parameter, monocular vs marker-based together (Solution A).
 
 Driven by ready video+C3D pairs from job history, not the loaded cohort.
@@ -23,7 +23,7 @@ def _analysis_markerbased(settings=None):
     app = AppTest.from_file(str(APP_PY), default_timeout=120)
     app.run()
     app.session_state["nav_page"] = "Analysis"
-    app.session_state["analysis_scope"] = "Markerbased vs Monocular"
+    app.session_state["analysis_scope"] = "Video vs markers"
     app.run()
     assert not app.exception
     return app

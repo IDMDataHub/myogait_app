@@ -17,6 +17,7 @@ import streamlit as st
 from ..jobs import C3D_IMPORT_MODEL_LABEL, DONE, FAILED, JobManager, RUNNING
 from ..runtime import (
     BACKENDS,
+    VALIDATED_BACKEND,
     DEVICE_CHOICES,
     DEVICE_LABELS,
     SAPIENS2_SIZES,
@@ -143,7 +144,19 @@ def _load_pivot(path: Path, name: str) -> None:
             path=source_path,
         )
     )
+    go_to_trial_explorer()
     st.rerun()
+
+
+def go_to_trial_explorer() -> None:
+    """Open Analysis > Trial Explorer on the next run (after loading a source).
+
+    Navigation widgets cannot be written once instantiated in this run, so
+    this leaves pending keys that ``app.py`` and ``page_analysis`` apply
+    before their widgets exist.
+    """
+    st.session_state["_pending_nav_page"] = "Analysis"
+    st.session_state["_pending_analysis_scope"] = "run"
 
 
 # ── C3D ──────────────────────────────────────────────────────────────
@@ -672,7 +685,6 @@ def _build_isb_context(
 
 def _video_tab() -> None:
     runtime = get_runtime()
-    runtime_badge(runtime)
     availability = cached_backend_availability(runtime, key="video_tab")
 
     if not any(availability.values()):
@@ -683,27 +695,33 @@ def _video_tab() -> None:
     backend_availability_refresh_button(runtime, key="video_tab")
 
     labels = {
-        b.name: f"{b.label} - {b.keypoints} kp"
+        b.name: ("★ Recommended (validated) - " if b.name == VALIDATED_BACKEND else "")
+        + f"{b.label} - {b.keypoints} kp"
         + (f" [{b.weight}]" if b.weight != "light" else "")
         + ("" if availability[b.name] else " (not installed)")
         for b in BACKENDS
     }
+    # The validated model first, then the others in their usual order.
+    names = [VALIDATED_BACKEND] + [b.name for b in BACKENDS if b.name != VALIDATED_BACKEND]
     model = st.selectbox(
         "Pose model",
-        [b.name for b in BACKENDS],
+        names,
+        index=0,
         format_func=lambda name: labels.get(name, name),
-        help="Every backend myogait implements, whether or not it is installed "
-             "on this machine yet. Picking an uninstalled one shows what to run "
-             "next instead of hiding it.",
+        help="Sapiens 2 (0.4B) is the model myogait is validated with against "
+             "marker-based capture. The others are offered for comparison; "
+             "their accuracy has not been validated. Uninstalled models are "
+             "listed with the command to install them.",
     )
     chosen = runtime.backend(model)
 
     if chosen and chosen.weight == "heavy" and not runtime.accelerated:
         st.warning(
-            f"{chosen.label} on CPU will take a very long time on anything but a "
-            "short clip. Consider MediaPipe or YOLO here, and run the heavy model "
-            "from the CLI on a GPU machine, or force GPU below if this "
-            "machine has one that was not auto-detected."
+            f"No GPU detected: {chosen.label} on CPU takes several minutes per "
+            "minute of video. Install GPU support (`python scripts/setup_gpu.py`, "
+            "NVIDIA or Intel Arc), force the GPU below if this machine has one "
+            "that was not detected, or run the extraction from the CLI on a GPU "
+            "machine and load the resulting JSON here."
         )
     if chosen and chosen.note:
         st.caption(chosen.note)
@@ -844,14 +862,17 @@ def _study_form(source_path: Path, key_prefix: str = "study") -> dict:
         )
         c1, c2 = st.columns(2)
         patient_id = c1.text_input(
-            "Patient ID", value=last_study.get("patient_id", "P001"), key=f"{key_prefix}_patient"
+            "Patient ID", value=last_study.get("patient_id", ""), key=f"{key_prefix}_patient",
+            placeholder="e.g. P001",
         )
         # Keyed on the recording's stem so a different file resets the default.
         run = c2.text_input("Run", value=stem, key=f"{key_prefix}_run::{stem}")
         c3, c4 = st.columns(2)
-        group = c3.text_input("Group", value="control", key=f"{key_prefix}_group")
+        group = c3.text_input("Group", value="", key=f"{key_prefix}_group",
+                              placeholder="e.g. control, patient")
         condition = c4.text_input(
-            "Condition", value=last_study.get("condition", "baseline"), key=f"{key_prefix}_condition"
+            "Condition", value=last_study.get("condition", ""), key=f"{key_prefix}_condition",
+            placeholder="e.g. baseline",
         )
         c5, c6 = st.columns(2)
         # Height (and optionally age) travel with the JSON so the cohort can

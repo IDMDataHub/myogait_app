@@ -23,3 +23,13 @@ def test_entry_script_reports_a_missing_entry(monkeypatch, tmp_path):
         assert "Could not find" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("missing entry script should fail")
+
+
+def test_default_flags_carry_theme_and_respect_overrides():
+    from myogait_app.cli import _with_default_flags
+
+    out = _with_default_flags(["--server.port", "9000", "--theme.base=dark"])
+    assert "--theme.backgroundColor=#edeae3" in out
+    assert "--server.maxUploadSize=2048" in out
+    assert not any(a.startswith("--theme.base=light") for a in out)
+    assert out[-3:] == ["--server.port", "9000", "--theme.base=dark"]

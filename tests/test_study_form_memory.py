@@ -42,7 +42,8 @@ def test_c3d_form_prefills_patient_id_from_the_already_filled_video_form():
 
     app = AppTest.from_function(_two_forms_app, default_timeout=30)
     app.run()
-    assert app.text_input(key="study_patient").value == "P001"
+    # No placeholder identifier: an unnamed recording must not pair silently.
+    assert app.text_input(key="study_patient").value == ""
 
     app.text_input(key="study_patient").set_value("P042").run()
     assert app.text_input(key="study_patient").value == "P042"

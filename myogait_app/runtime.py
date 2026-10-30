@@ -267,6 +267,10 @@ BACKENDS: tuple[BackendInfo, ...] = (
     BackendInfo("sapiens2-ultra", "Sapiens 2 5B", ("torch", "safetensors", "huggingface_hub"), "17 + 308", _SETUP_HINT, "heavy"),
 )
 
+#: The pose model myogait is validated with (marker-based capture); the
+#: extraction form selects it by default.
+VALIDATED_BACKEND = "sapiens2-quick"
+
 #: Backends whose auxiliary depth / segmentation heads exist.
 SAPIENS_BACKENDS = tuple(b.name for b in BACKENDS if b.name.startswith("sapiens"))
 
