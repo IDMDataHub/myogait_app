@@ -43,6 +43,12 @@ def render() -> None:
             st.rerun()
         st.divider()
 
+    cols = st.columns([3, 1])
+    cols[0].caption("No recording at hand? Try the example walk: a healthy adult "
+                    "filmed side-on, Sapiens landmarks (CC BY 4.0).")
+    if cols[1].button("Load the example", key="load_demo", use_container_width=True):
+        _load_demo()
+
     tab_video, tab_c3d, tab_json, tab_jobs = st.tabs(
         ["Video", "Vicon C3D", "myogait JSON", "Recent jobs"]
     )
@@ -56,10 +62,6 @@ def render() -> None:
             "**Advanced → Groups** or **Advanced → Patient over time** "
         )
         page_data._json_tab()
-        st.divider()
-        st.caption("No recording at hand? Load a synthetic walk to try every control.")
-        if st.button("Load the demo recording", key="load_demo"):
-            _load_demo()
     with tab_jobs:
         page_data._ticket_tab()
 
@@ -68,11 +70,13 @@ def render() -> None:
 
 
 def _load_demo() -> None:
-    """Install the synthetic demo walk and open Trial Explorer on it."""
-    from ..demo import make_demo_data
+    """Install the bundled example walk and open Trial Explorer on it."""
+    from ..demo import EXAMPLE_JSON, load_example_data
 
-    data = make_demo_data()
-    state.set_source(state.Source(kind="demo", name="Demo walk (synthetic)",
-                                  data=data, key="demo", model="synthetic"))
+    data = load_example_data()
+    model = str((data.get("extraction") or {}).get("model") or "sapiens")
+    state.set_source(state.Source(kind="demo", name="Example walk (healthy adult)",
+                                  data=data, key="example-walk", model=model,
+                                  path=EXAMPLE_JSON))
     page_data.go_to_trial_explorer()
     st.rerun()

@@ -29,14 +29,13 @@ and each screen hands back the exact Python, YAML and CLI that produced it.
 </tr>
 </table>
 
-<!-- Screenshots: drop the captures in docs/readme/ and uncomment.
 <p align="center">
-  <img src="docs/readme/screen_import.png" width="49%" alt="New assessment">
-  <img src="docs/readme/screen_curves.png" width="49%" alt="Trial Explorer">
-  <img src="docs/readme/screen_vicon.png" width="49%" alt="Video vs markers">
-  <img src="docs/readme/screen_report.png" width="49%" alt="Export">
+  <img src="docs/readme/screen_import.jpg" width="49%" alt="New assessment: the validated Sapiens 2 model is the default">
+  <img src="docs/readme/screen_cycles.jpg" width="49%" alt="Trial Explorer: knee flexion over the gait cycle, left and right">
+  <img src="docs/readme/screen_spatiotemporal.jpg" width="49%" alt="Spatio-temporal parameters">
+  <img src="docs/readme/screen_export.jpg" width="49%" alt="Export: data files, OpenSim, C3D, PDF report">
 </p>
--->
+<p align="center"><sub>The bundled example walk (healthy adult, hand-held GoPro, Sapiens landmarks; CC BY 4.0) — <b>New assessment › Load the example</b>.</sub></p>
 
 ## <img src="docs/readme/square.svg" width="18" height="18" alt=""> Quick start
 

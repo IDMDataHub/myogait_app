@@ -92,7 +92,10 @@ def render() -> None:
         st.rerun()
 
     isb_status = (result.data or {}).get("_isb_reconstruction_status")
-    if config.angles.isb_reconstruction and isb_status is not None and not isb_status.get("applied"):
+    # Only meaningful for a marker (C3D) source: on a video, ISB reconstruction
+    # never applies and saying so on every recording is noise.
+    if (config.angles.isb_reconstruction and source.is_c3d and isb_status is not None
+            and not isb_status.get("applied")):
         st.warning(
             "ISB reconstruction was requested but did not run for this recording "
             f"({isb_status.get('reason', 'unknown reason')}). Hip/knee/ankle "
@@ -339,10 +342,16 @@ def _spatiotemporal_tab(result: PipelineResult, config) -> None:
     speed = stats.get("walking_speed") or {}
 
     columns = st.columns(4)
-    columns[0].metric("Cadence", _fmt(spatio.get("cadence_steps_per_min"), "steps/min"))
+    cadence = spatio.get("cadence_steps_per_min")
+    columns[0].metric("Cadence (steps/min)",
+                      f"{cadence:.0f}" if isinstance(cadence, (int, float)) and np.isfinite(cadence)
+                      else "n/a")
     columns[1].metric("Stride time", _fmt(spatio.get("stride_time_mean_s"), "s"))
     columns[2].metric("Cycles", spatio.get("n_cycles_total", result.n_cycles))
-    columns[3].metric("Walking speed", _fmt(speed.get("speed_mean"), "m/s"))
+    # A speed in normalised units must not be labelled m/s (it read "1010 m/s").
+    in_ms = speed.get("unit") == "m/s"
+    columns[3].metric("Walking speed",
+                      _fmt(speed.get("speed_mean"), "m/s") if in_ms else "—")
 
     if speed.get("speed_mean") is not None:
         if speed.get("unit") != "m/s":

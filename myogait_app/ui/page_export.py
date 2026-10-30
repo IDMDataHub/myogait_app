@@ -95,8 +95,8 @@ def render(mode: str = "advanced") -> None:
 
     if source.is_demo:
         st.info(
-            "The loaded dataset is synthetic. Exports will work, but the contents "
-            "are a generated signal."
+            "The loaded recording is the bundled example walk (CC BY 4.0, "
+            "Institut de Myologie)."
         )
 
     labels = ["Data files", "Figures", "PDF report"]

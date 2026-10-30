@@ -5,6 +5,21 @@ entry below is attributed to its actual author; where that is not stated, it
 is Romain Feigean.
 
 
+## 0.10.7 — 2026-10-30 (Frédéric Fer)
+
+- The demo is now a real recording: **Load the example** (top of New
+  assessment) opens a healthy adult's overground walk (hand-held GoPro,
+  Sapiens landmarks, with the simultaneous Vicon C3D shipped alongside;
+  CC BY 4.0, Institut de Myologie) instead of the synthetic signal, whose
+  knee barely moved.
+- Fixed: walking speed in normalised units was labelled m/s ("1010 m/s");
+  it now shows "—" until a height or femur length is set. Cadence is shown
+  as a whole number of steps/min.
+- Fixed: "ISB reconstruction was requested but did not run" appeared on every
+  video; it is now only shown for a C3D source.
+- README: screenshots of the app on the example walk.
+
+
 ## 0.10.6 — 2026-10-30 (Frédéric Fer)
 
 Interface audit: the app now runs myogait's validated recipe by default and

@@ -352,9 +352,9 @@ def source_summary(source: state.Source) -> None:
 
     if source.is_demo:
         st.info(
-            "This is the synthetic dataset - a generated gait-like signal, not a "
-            "recording. Use it to learn the controls; do not read clinical meaning "
-            "into the numbers."
+            "Example recording: one healthy adult (an author of myogait) walking "
+            "overground, filmed side-on with a hand-held GoPro, Sapiens landmarks. "
+            "CC BY 4.0, Institut de Myologie."
         )
     if source.is_c3d and source.c3d_options:
         _c3d_source_summary(source.c3d_options)

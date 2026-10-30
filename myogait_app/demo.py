@@ -18,7 +18,23 @@ the interface labels it as such wherever it is shown.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
+
+#: A real recording shipped with the app (CC BY 4.0, see assets/example/README.md):
+#: one healthy adult walking overground, Sapiens landmarks, with the
+#: simultaneous Vicon trial. The demo button loads this, not the synthetic signal.
+EXAMPLE_DIR = Path(__file__).resolve().parent / "assets" / "example"
+EXAMPLE_JSON = EXAMPLE_DIR / "walk_example_sapiens.myogait.json"
+EXAMPLE_C3D = EXAMPLE_DIR / "walk_example_vicon.c3d"
+
+
+def load_example_data() -> dict:
+    """The bundled real example walk, as a myogait pivot dict."""
+    from myogait import load_json
+
+    return load_json(str(EXAMPLE_JSON))
 
 #: Landmark layout shared with the myogait fixtures (MediaPipe naming).
 _LANDMARKS = (
