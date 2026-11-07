@@ -103,8 +103,8 @@ def render() -> None:
             "definition, not just a precision gap. See the Index for details."
         )
 
-    tab_kinematics, tab_cycles, tab_spatio, tab_advanced, tab_quality = st.tabs(
-        ["Kinematics", "Cycles", "Spatio-temporal", "Advanced analysis", "Signal quality"]
+    tab_kinematics, tab_cycles, tab_spatio, tab_kinetics, tab_advanced, tab_quality = st.tabs(
+        ["Kinematics", "Cycles", "Spatio-temporal", "Kinetics (GRF, moments)", "Advanced analysis", "Signal quality"]
     )
 
     with tab_kinematics:
@@ -113,6 +113,8 @@ def render() -> None:
         _cycles_tab(result, config)
     with tab_spatio:
         _spatiotemporal_tab(result, config)
+    with tab_kinetics:
+        _kinetics_tab(result)
     with tab_advanced:
         _advanced_tab(result, config)
     with tab_quality:
@@ -625,6 +627,69 @@ def _segment_calibration_panel(result: PipelineResult, config) -> None:
 
 
 # ── Advanced analysis ────────────────────────────────────────────────
+
+
+def _kinetics_tab(result: PipelineResult) -> None:
+    """Markerless kinetics: per-foot GRF, centre of pressure and sagittal joint moments (myogait.estimate_kinetics)."""
+    kin = getattr(result, "kinetics", None)
+    if kin is None:
+        empty_state(
+            "Kinetics need the participant's body mass and height (or femur length).",
+            "Enter them in the subject panel; the per-foot ground reaction forces, centre of pressure and joint "
+            "moments are then estimated without force plates.",
+        )
+        return
+    if kin.get("error"):
+        st.warning(f"Kinetics could not be computed: {kin['error']}")
+        return
+    st.caption(
+        "Estimated without force plates: per-foot ground reaction forces (Newton on the whole-body centre of mass, "
+        "learnt double-support transfer, virtual pivot point for the antero-posterior force), foot-rotation "
+        "centre-of-pressure model and 2-D inverse dynamics. Mean ± SD of the stances, per side."
+    )
+    cam = kin.get("camera") or {}
+    cols = st.columns(3)
+    cols[0].metric("Stances", len(kin.get("stances", [])))
+    cols[1].metric("Camera", "moving (stabilised)" if cam.get("moving") else ("fixed" if cam.get("moving") is False else "unknown"))
+    spd = kin.get("walking_speed_m_s")
+    cols[2].metric("Walking speed (kinetics)", _fmt(spd, "m/s") if spd is not None else "n/a")
+    show = st.columns(2)
+    show_grf = show[0].checkbox("Show ground reaction forces and COP", value=True, key="kin_show_grf")
+    show_mom = show[1].checkbox("Show joint moments and ankle power", value=True, key="kin_show_mom")
+    curves = kin.get("mean_curves") or {}
+    panels = []
+    if show_grf:
+        panels += [("vgrf_bw", "Vertical GRF (BW)", 1.0), ("apgrf_bw", "Antero-posterior GRF (BW)", 1.0), ("cop_minus_ankle_m", "COP − ankle (cm)", 100.0)]
+    if show_mom:
+        panels += [("ankle_Nm_kg", "Ankle moment (N·m/kg)", 1.0), ("knee_Nm_kg", "Knee moment (N·m/kg)", 1.0),
+                   ("hip_Nm_kg", "Hip moment (N·m/kg)", 1.0), ("ankle_power_W_kg", "Ankle power (W/kg)", 1.0)]
+    if panels and curves:
+        import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
+        ncol = 3; nrow = int(np.ceil(len(panels) / ncol))
+        fig = make_subplots(rows=nrow, cols=ncol, subplot_titles=[p[1] for p in panels])
+        x = np.linspace(0, 100, 101); colors = {"left": "#1f77b4", "right": "#d62728"}
+        for i, (key, _, sc) in enumerate(panels):
+            r, c = i // ncol + 1, i % ncol + 1
+            for side, cv in curves.items():
+                m, sd = np.asarray(cv[key]["mean"]) * sc, np.asarray(cv[key]["sd"]) * sc
+                fig.add_trace(go.Scatter(x=np.r_[x, x[::-1]], y=np.r_[m + sd, (m - sd)[::-1]], fill="toself", line=dict(width=0),
+                                         fillcolor=colors[side], opacity=0.15, showlegend=False, hoverinfo="skip"), row=r, col=c)
+                fig.add_trace(go.Scatter(x=x, y=m, name=f"{side} (n = {cv[key]['n']})", line=dict(color=colors[side]), showlegend=(i == 0)), row=r, col=c)
+        fig.update_xaxes(title_text="Stance (%)")
+        fig.update_layout(height=320 * nrow, margin=dict(t=40, l=40, r=20, b=40))
+        chart(fig, key="fig_kinetics")
+    table = kin.get("table")
+    if table is not None and len(table):
+        st.dataframe(table.round(3), use_container_width=True, hide_index=True)
+        rows = []
+        for st_ in kin.get("stances", []):
+            for k in ("vgrf_bw", "apgrf_bw", "cop_minus_ankle_m", "ankle_Nm_kg", "knee_Nm_kg", "hip_Nm_kg", "ankle_power_W_kg"):
+                rows.append({"side": st_["side"], "on_frame": st_["on"], "variable": k, **{f"p{j}": float(v) for j, v in enumerate(np.asarray(st_[k]))}})
+        dl = st.columns(2)
+        dl[0].download_button("Download peaks (CSV)", table.to_csv(index=False).encode(), "kinetics_peaks.csv", "text/csv", key="dl_kin_peaks")
+        dl[1].download_button("Download stance curves (CSV, 101 points)", pd.DataFrame(rows).to_csv(index=False).encode(),
+                              "kinetics_curves.csv", "text/csv", key="dl_kin_curves")
 
 
 def _advanced_tab(result: PipelineResult, config) -> None:
