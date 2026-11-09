@@ -666,9 +666,11 @@ def _kinetics_tab(result: PipelineResult) -> None:
     if panels and curves:
         import plotly.graph_objects as go
         from plotly.subplots import make_subplots
-        ncol = 3; nrow = int(np.ceil(len(panels) / ncol))
+        ncol = 3
+        nrow = int(np.ceil(len(panels) / ncol))
         fig = make_subplots(rows=nrow, cols=ncol, subplot_titles=[p[1] for p in panels])
-        x = np.linspace(0, 100, 101); colors = {"left": "#1f77b4", "right": "#d62728"}
+        x = np.linspace(0, 100, 101)
+        colors = {"left": "#1f77b4", "right": "#d62728"}
         for i, (key, _, sc) in enumerate(panels):
             r, c = i // ncol + 1, i % ncol + 1
             for side, cv in curves.items():

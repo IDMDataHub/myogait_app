@@ -33,7 +33,8 @@ def compute_kinetics(data: dict, subject: Any, video_path: Optional[str] = None,
     (per-stance peaks, one row per stance) and ``mean_curves`` (per side, 101 points).
     """
     mass = getattr(subject, "weight_kg", None)
-    height = getattr(subject, "height_m", None); femur = getattr(subject, "femur_length_mm", None)
+    height = getattr(subject, "height_m", None)
+    femur = getattr(subject, "femur_length_mm", None)
     if not mass or not (height or femur):
         return None
     if not kinetics_available():

@@ -35,7 +35,6 @@ from .components import (
     backend_availability_refresh_button,
     cached_backend_availability,
     empty_state,
-    runtime_badge,
 )
 
 #: Extensions myogait can open.
