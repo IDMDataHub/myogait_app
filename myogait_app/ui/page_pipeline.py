@@ -644,7 +644,7 @@ def _kinetics_tab(result: PipelineResult) -> None:
         return
     st.caption(
         "Estimated without force plates: per-foot ground reaction forces (Newton on the whole-body centre of mass, "
-        "learnt double-support transfer, virtual pivot point for the antero-posterior force), foot-rotation "
+        "learnt double-support transfer, antero-posterior force from a moment law about a point above the centre of mass), foot-rotation "
         "centre-of-pressure model and 2-D inverse dynamics. Mean ± SD of the stances, per side."
     )
     cam = kin.get("camera") or {}
