@@ -4,6 +4,14 @@ All notable changes to this project, grouped by date. Newest first. Every
 entry below is attributed to its actual author; where that is not stated, it
 is Romain Feigean.
 
+## 0.11.2 — 2026-11-12 (Frédéric Fer)
+
+Requires myogait >= 0.11.0. The Kinetics tab now uses the DAMP antero-posterior
+force law of myogait 0.11 (moment law about a point above the centre of mass,
+learnt offset and onset lag), which replaces the virtual pivot point: lower
+knee and hip moment errors against force plates (fixed camera hip 0.40 -> 0.28,
+phone 0.35 -> 0.23 N·m/kg). Kinetics caption updated.
+
 ## 0.11.1 — 2026-11-09 (Frédéric Fer)
 
 Requires myogait >= 0.10.1. Publishes 0.11.0 (Kinetics tab): its release was
